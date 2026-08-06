@@ -1,0 +1,1260 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>덱세팅 화면 개편 — 직접 만져보는 목업 (#455 A-0)</title>
+<style>
+  :root{
+    /* apps/web/src/index.css 와 같은 토큰 */
+    --bg:#0f1115; --bg-elevated:#171a21; --text:#eef0f4; --text-muted:#9aa1ad;
+    --border:#2a2e37; --accent:#4f8cff; --surface:#111826; --sunk:#0c111b;
+    --ok:#3ecf8e; --warn:#f0b429; --bad:#ff6b6b; --info:#38bdf8;
+    --grass-a:#1c5c33; --grass-b:#1a5530; --pitch-line:rgba(255,255,255,.35);
+    --gk:#f0b429; --df:#4f8cff; --mf:#3ecf8e; --fw:#ff6b6b;
+    --grade-legend:#c084fc; --grade-dia:#38bdf8; --grade-gold:#f0b429; --grade-silver:#c7ccd6;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);-webkit-text-size-adjust:100%}
+  body{font:14px/1.55 -apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Noto Sans KR","Segoe UI",sans-serif;padding:0 0 76px}
+  h1,h2,h3,h4{margin:0;line-height:1.35}
+  p{margin:0 0 8px}
+  code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.87em;background:var(--sunk);border:1px solid var(--border);border-radius:4px;padding:1px 5px}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 12px}
+
+  header.page{background:linear-gradient(180deg,#141b28,#0f1115);border-bottom:1px solid var(--border);padding:16px 0 12px}
+  header.page h1{font-size:17px;letter-spacing:-.01em}
+  header.page .sub{color:var(--text-muted);font-size:12px;margin-top:4px}
+  .todo{margin-top:11px;background:#12202c;border:1px solid #24455c;border-left:3px solid var(--info);border-radius:10px;padding:10px 12px}
+  .todo h3{font-size:12.5px;color:#bfe3f7;margin-bottom:6px}
+  .todo ol{margin:0;padding-left:18px}
+  .todo li{font-size:12.6px;color:#d3e6f2;margin:3px 0}
+  .todo li b{color:#fff}
+
+  .tabs{position:sticky;top:0;z-index:60;background:rgba(15,17,21,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:8px 0}
+  .tabs .row{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .tabs button{flex:0 0 auto;background:var(--sunk);border:1px solid var(--border);color:var(--text-muted);font:inherit;font-size:12.5px;font-weight:700;border-radius:999px;padding:7px 13px;cursor:pointer}
+  .tabs button[aria-selected="true"]{background:#1c2841;color:#dbe7ff;border-color:#3c5279}
+
+  section.pane{display:none;padding:14px 0 10px}
+  section.pane.on{display:block}
+  .qhead{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+  .qno{font-size:11px;font-weight:800;color:#0f1115;background:var(--accent);border-radius:6px;padding:2px 8px}
+  .qhead h2{font-size:15.5px}
+  .qask{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:10px;padding:11px 13px;font-size:13.4px;color:#dfe6ef;margin-bottom:12px}
+  .qask b{color:#fff}
+  .quote{color:#a8b6c8;font-size:12.4px;border-left:2px solid #33415a;padding-left:9px;margin:7px 0 0}
+  .note{background:#151d2b;border:1px solid #26364d;border-left:3px solid var(--info);border-radius:8px;padding:9px 11px;font-size:12.3px;color:#c8d4e2;margin:10px 0}
+  .note.warn{background:#241d12;border-color:#4a3a1c;border-left-color:var(--warn);color:#e8dbc0}
+
+  .subh{font-size:12.4px;font-weight:700;color:var(--text-muted);margin:2px 0 7px}
+  .pin{font-style:normal;font-size:10.5px;font-weight:800;color:#0f1115;background:#7fd6a0;border-radius:5px;padding:1px 6px;margin-left:auto}
+  .opts{display:grid;gap:8px;margin-bottom:10px}
+  @media(min-width:760px){.opts{grid-template-columns:repeat(3,1fr)}}
+  .opt{display:block;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer}
+  .opt[data-on="1"]{border-color:var(--accent);background:#16203a;box-shadow:0 0 0 1px var(--accent) inset}
+  .opt .t{font-size:13px;font-weight:800;color:#fff;display:flex;gap:7px;align-items:center}
+  .opt .t i{font-style:normal;font-size:11px;font-weight:800;color:#0f1115;background:#7f8da3;border-radius:5px;padding:1px 6px}
+  .opt[data-on="1"] .t i{background:var(--accent)}
+  .opt .d{font-size:12.2px;color:var(--text-muted);margin-top:5px;line-height:1.5}
+  .opt .d b{color:#dbe7ff}
+
+  /* ───────────────── 프로토타입(폰) ───────────────── */
+  .phoneWrap{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start}
+  .phone{
+    width:390px;max-width:100%;height:844px;max-height:calc(100vh - 40px);
+    background:var(--bg);border:1px solid var(--border);border-radius:22px;overflow:hidden;
+    display:flex;flex-direction:column;position:relative;flex:0 0 auto;
+    box-shadow:0 12px 40px rgba(0,0,0,.5);
+  }
+  .phone .topbar{
+    flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:9px 10px;
+    background:var(--bg-elevated);border-bottom:1px solid var(--border);
+  }
+  .topbar .ttl{font-size:13px;font-weight:800}
+  .topbar .pw{font-size:11.5px;color:var(--text-muted)}
+  .topbar .pw b{color:var(--ok);font-size:12.5px}
+  .topbar .sp{flex:1}
+  .btn{background:var(--sunk);border:1px solid var(--border);color:var(--text);font:inherit;font-size:12.5px;font-weight:700;border-radius:8px;padding:7px 11px;cursor:pointer}
+  .btn.pri{background:var(--accent);border-color:var(--accent);color:#08101f}
+  .btn.sm{font-size:11.5px;padding:5px 9px}
+  .btn:disabled{opacity:.4;cursor:not-allowed}
+
+  .stage{flex:1 1 auto;display:flex;flex-direction:column;min-height:0}
+  .phone[data-layout="tabs"] .stage{flex:0 1 auto}
+
+  .pitchBox{position:relative;flex:1 1 auto;min-height:120px;margin:8px 8px 0;border-radius:12px;overflow:hidden;
+    background:repeating-linear-gradient(180deg,var(--grass-a) 0 26px,var(--grass-b) 26px 52px);
+    border:1px solid #24402f}
+  .pitchBox::before{content:"";position:absolute;inset:6px;border:1.5px solid var(--pitch-line);border-radius:4px;pointer-events:none}
+  .pitchBox::after{content:"";position:absolute;left:50%;top:50%;width:74px;height:74px;margin:-37px 0 0 -37px;border:1.5px solid var(--pitch-line);border-radius:50%;pointer-events:none}
+  .goalBox{position:absolute;left:50%;transform:translateX(-50%);width:52%;height:52px;border:1.5px solid var(--pitch-line);border-top:0;pointer-events:none}
+  .goalBox.bot{bottom:6px;border-bottom:0;border-top:1.5px solid var(--pitch-line)}
+  .goalBox.top{top:6px}
+
+  .slot{position:absolute;transform:translate(-50%,-50%);width:56px;height:64px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+  .slot .hole{width:44px;height:44px;border-radius:50%;border:1.5px dashed rgba(255,255,255,.42);display:flex;align-items:center;justify-content:center;font-size:10.5px;color:rgba(255,255,255,.72);font-weight:800}
+  .slot[data-target="1"] .hole{border-style:solid;border-color:var(--accent);background:rgba(79,140,255,.22);box-shadow:0 0 0 3px rgba(79,140,255,.25)}
+  .slot[data-over="1"] .hole{border-color:#fff;background:rgba(79,140,255,.5);box-shadow:0 0 0 5px rgba(79,140,255,.35)}
+  .slot[data-swap="1"] .tok .disc{box-shadow:0 0 0 3px var(--warn),0 0 14px rgba(240,180,41,.6)}
+  .slot .posTag{position:absolute;top:-9px;font-size:9px;font-weight:800;color:rgba(255,255,255,.6)}
+
+  .tok{position:relative;width:56px;display:flex;flex-direction:column;align-items:center;touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none}
+  .tok .disc{position:relative;width:44px;height:44px;border-radius:50%;background:#101722;border:2px solid var(--df);
+    display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:#eaf1ff}
+  .tok[data-pos="GK"] .disc{border-color:var(--gk)} .tok[data-pos="DF"] .disc{border-color:var(--df)}
+  .tok[data-pos="MF"] .disc{border-color:var(--mf)} .tok[data-pos="FW"] .disc{border-color:var(--fw)}
+  .tok .num{position:absolute;right:-3px;bottom:-3px;min-width:16px;height:16px;border-radius:9px;background:#0d1420;border:1px solid var(--border);
+    font-size:9.5px;font-weight:800;color:#c8d3e2;display:flex;align-items:center;justify-content:center;padding:0 3px}
+  .tok .nm{margin-top:3px;font-size:10.5px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.85);white-space:nowrap;max-width:60px;overflow:hidden;text-overflow:ellipsis}
+  .tok .say{position:absolute;left:-2px;top:-2px;width:11px;height:11px;border-radius:50%;background:var(--ok);border:1.5px solid #0f1115}
+  .tok .say[data-empty="1"]{background:#59606d}
+  .tok .up{position:absolute;right:-5px;top:-6px;font-size:10px;line-height:1;background:var(--warn);color:#1a1204;border-radius:6px;padding:2px 4px;font-weight:900;border:1.5px solid #0f1115}
+  .tok .cond{position:absolute;inset:-4px;border-radius:50%;pointer-events:none}
+  .tok[data-grab="1"]{opacity:.35}
+  .tok[data-sel="1"] .disc{box-shadow:0 0 0 3px #fff}
+  .holdRing{position:absolute;inset:-5px;border-radius:50%;border:2.5px solid rgba(255,255,255,.25);pointer-events:none}
+  .holdRing[data-phase="holding"]{border-top-color:#fff;animation:spin .45s linear infinite}
+  .holdRing[data-phase="grabbed"]{border-color:#fff}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .autoFill{position:absolute;right:9px;bottom:9px;z-index:5;background:rgba(12,17,27,.92);border:1px solid var(--accent);color:#dbe7ff;
+    font:inherit;font-size:12px;font-weight:800;border-radius:9px;padding:8px 11px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.5)}
+  .autoFill[hidden]{display:none}
+
+  .benchWrap{flex:0 0 auto;padding:7px 8px 0}
+  .benchWrap .lb{font-size:10.5px;font-weight:800;color:var(--text-muted);margin-bottom:3px;display:flex;gap:6px;align-items:center}
+  .benchRow{display:flex;gap:4px;overflow-x:auto;padding-bottom:2px}
+  .bcell{flex:0 0 auto;width:52px;height:66px;border-radius:9px;background:var(--sunk);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;position:relative}
+  .bcell[data-target="1"]{border-color:var(--accent);background:#16203a}
+  .bcell[data-over="1"]{border-color:#fff;background:#1d2c4d}
+  .bcell[data-swap="1"]{box-shadow:0 0 0 2px var(--warn) inset}
+  .bcell .empty{font-size:10px;color:#5d6674;font-weight:800}
+  .bcell .tok{width:48px} .bcell .tok .disc{width:36px;height:36px;font-size:11.5px} .bcell .tok .nm{font-size:9.5px;max-width:50px}
+
+  /* 경기장을 68 에서 멈추면 아래가 남는다 — 그 여백을 눈에 보이게 둔다(숨기면 판단을 못 한다) */
+  /* ⚠️ flex:1 을 주면 경기장과 남는 세로를 **반씩 나눠 가져** 경기장이 상한에 닿지 못한다
+     (실측으로 잡았다 — 68 상한인데 68:59 에서 멈췄다). 여백은 자라지 않고 그냥 남는 자리다. */
+  .stageSpacer{flex:0 0 auto}
+
+  /* 팀 프롬프트(팀 지시) — 실제 앱 deck/DirectiveRail.tsx. R4 부터 하단 [팀 지시] 버튼으로 연다. */
+  .railHead{display:flex;align-items:center;gap:7px;margin-bottom:6px}
+  .railHead .mini{font-size:9px;font-weight:900;color:#0f1115;background:#7f8da3;border-radius:4px;padding:1px 5px;letter-spacing:.04em}
+  .railHead b{font-size:12.5px}
+  .railHead .hint{font-size:10.5px;color:var(--text-muted)}
+  #teamPrompt,#teamPromptInline{width:100%;min-height:92px;background:var(--sunk);border:1px solid var(--border);border-radius:9px;
+    color:var(--text);font:inherit;font-size:13px;padding:9px 10px;resize:vertical}
+  #teamPrompt:focus,#teamPromptInline:focus{outline:none;border-color:var(--accent)}
+  /* 남는 세로는 프롬프트가 먹는다 — "가장 잘 보여야 한다"를 자리 크기로도 표현한다 */
+  .tabPanel[data-p="team"]{display:flex;flex-direction:column}
+  .tabPanel[data-p="team"][hidden]{display:none}
+  #teamPromptInline{flex:1 1 auto;min-height:72px;max-height:none;resize:none}
+  .railRow{display:flex;align-items:center;gap:7px;margin-top:6px}
+  .railRow .c{font-size:10.5px;color:var(--text-muted)} .railRow .sp{flex:1}
+  .tuneToggle{display:flex;align-items:center;gap:6px;background:var(--sunk);border:1px solid var(--border);color:#c8d4e2;
+    font:inherit;font-size:11.5px;font-weight:700;border-radius:8px;padding:6px 9px;cursor:pointer}
+  .tuneToggle .th{font-weight:600;color:var(--text-muted);font-size:10.5px}
+  .tunePanel{margin-top:7px;display:grid;gap:6px}
+  .tunePanel[hidden]{display:none}
+  .tuneRow{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--text-muted)}
+  .tuneRow .k{width:44px;font-weight:700;color:#c8d4e2} .tuneRow input{flex:1}
+  .tuneRow .v{width:44px;text-align:right;font-size:11px;color:var(--accent);font-weight:800}
+
+  /* 보유 선수 = **모달(바텀시트)**. 실제 앱 deck/PlayerPicker.tsx 와 같은 동선 — 빈 자리를 누르면 올라온다. */
+  /* ── 1안: 경기장 하단 **책갈피 탭**. 프롬프트가 버튼 뒤가 아니라 **펼쳐진 내용**으로 1급이 된다 ── */
+  /* 경기장이 68 에서 멈추고 남는 세로를 **이 탭이 가져간다** — R4 의 249px 여백이 여기로 들어간다 */
+  /* ⚠️ grow 를 1 로 주면 경기장 쪽(.stage)과 남는 세로를 **나눠 가져** 경기장 아래 띠가 남는다
+     (68 상한 스페이서 때와 같은 부류 — 실측 29px 로 잡았다). 반대로 탭에 큰 grow 를 주면
+     이번엔 경기장이 min-height 까지 눌린다(실측 125px). 그래서 grow 로 겨루지 않고,
+     1안에서는 **경기장 쪽이 자기 크기만 갖고**(.stage flex:0) 남는 세로를 탭이 전부 받는다. */
+  .deckTabs{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;background:var(--bg-elevated);border-top:1px solid var(--border)}
+  .deckTabs[hidden]{display:none}
+  .tabRow{display:flex;gap:4px;padding:6px 8px 0}
+  .tabRow button{flex:0 1 auto;display:flex;align-items:center;gap:5px;background:var(--sunk);border:1px solid var(--border);border-bottom:0;
+    color:var(--text-muted);font:inherit;font-size:12px;font-weight:700;border-radius:9px 9px 0 0;padding:7px 11px;cursor:pointer;position:relative;top:1px}
+  .tabRow button[data-on="1"]{background:var(--surface);color:#dbe7ff;border-color:#3c5279;box-shadow:0 -2px 0 var(--accent) inset}
+  /* 프롬프트 탭은 1급이라 넓게 잡고 강조색을 쓴다 — 나머지는 폭을 내용만큼만 */
+  .tabRow button[data-p="team"]{flex:1 1 auto;font-size:12.6px;color:#dbe7ff}
+  .tabRow button[data-p="team"][data-on="1"]{box-shadow:0 -3px 0 var(--accent) inset}
+  .tabRow button[data-p="tune"]{opacity:.72;font-weight:600}
+  .tabRow .dot{font-size:9px;color:#59606d} .tabRow .ic{font-size:13px}
+  .tabPanel{flex:1 1 auto;background:var(--surface);border-top:1px solid #3c5279;
+    padding:9px 10px calc(10px + env(safe-area-inset-bottom,0px));min-height:0;overflow-y:auto}
+  .tabPanel[hidden]{display:none}
+  .tabHint{font-size:11px;color:var(--text-muted);margin-top:6px}
+  .poolCta{width:100%;margin-top:7px;background:var(--sunk);border:1px dashed #3c5279;color:#c8d4e2;font:inherit;font-size:12px;
+    font-weight:700;border-radius:9px;padding:9px;cursor:pointer}
+
+  /* ── 2안: 하단 버튼 바(R4). 팀 지시만 강조색으로 올린다 ── */
+  .poolBar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));
+    border-top:1px solid var(--border);background:var(--bg-elevated)}
+  .poolBar[hidden]{display:none}
+  .poolBar .btn.hero{background:var(--accent);border-color:var(--accent);color:#08101f;font-size:13px;padding:9px 13px}
+  .poolBar .btn.hero .ic{font-size:15px}
+  .poolBar .sp{flex:1}
+  .poolBar .c{font-size:11.5px;color:var(--text-muted)}
+  .poolBar .c b{color:#c8d4e2}
+  .poolList{max-height:46vh;overflow-y:auto;display:flex;flex-direction:column;gap:5px;padding-bottom:2px}
+  .posFilter{display:flex;gap:5px;margin-bottom:8px;overflow-x:auto}
+  .posFilter button{flex:0 0 auto;background:var(--sunk);border:1px solid var(--border);color:#c8d4e2;font:inherit;font-size:11.5px;
+    font-weight:700;border-radius:999px;padding:5px 11px;cursor:pointer}
+  .posFilter button[data-on="1"]{background:#1c2841;color:#dbe7ff;border-color:#3c5279}
+  .prow{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:6px 8px}
+  .prow .tok{width:auto;flex-direction:row;gap:7px;align-items:center}
+  .prow .tok .disc{width:34px;height:34px;font-size:11.5px}
+  .prow .tok .nm{margin:0;font-size:12px;max-width:none;text-shadow:none}
+  .prow .meta{flex:1;min-width:0;display:flex;flex-direction:column}
+  .prow .meta .n{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .prow .meta .s{font-size:10.5px;color:var(--text-muted)}
+  .prow .ent{flex:0 0 auto}
+  .prow[data-locked="1"]{opacity:.5}
+  .prow[data-locked="1"] .ent{background:var(--sunk);border-color:var(--border);color:var(--text-muted)}
+  .gradeDot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:1px}
+
+  .banner{position:absolute;left:8px;right:8px;top:52px;z-index:40;background:#16203a;border:1px solid var(--accent);border-radius:9px;padding:8px 10px;font-size:12px;color:#dbe7ff;display:flex;gap:8px;align-items:center}
+  .banner[hidden]{display:none}
+  .banner b{color:#fff}
+  .banner .sp{flex:1}
+
+  /* 시트(메뉴·프롬프트·정보) */
+  .sheetBack{position:absolute;inset:0;background:rgba(4,6,10,.6);z-index:70;display:none}
+  .sheetBack[data-on="1"]{display:block}
+  .sheet{position:absolute;left:0;right:0;bottom:0;z-index:80;background:var(--bg-elevated);border-top:1px solid var(--border);
+    border-radius:16px 16px 0 0;padding:10px 12px calc(12px + env(safe-area-inset-bottom,0px));transform:translateY(102%);
+    transition:transform .18s ease,opacity .18s ease;max-height:78%;overflow-y:auto}
+  .sheet[data-on="1"]{transform:none}
+  /* ── 모달(가운데 팝업) 모드 — 같은 내용, 뜨는 방식만 다르다 ── */
+  .sheet[data-mode="modal"]{left:50%;right:auto;bottom:auto;top:50%;width:min(342px,88%);max-height:74%;
+    border:1px solid var(--border);border-radius:16px;box-shadow:0 22px 60px rgba(0,0,0,.62);
+    padding:12px 13px 13px;transform:translate(-50%,-46%) scale(.96);opacity:0;pointer-events:none}
+  .sheet[data-mode="modal"][data-on="1"]{transform:translate(-50%,-50%) scale(1);opacity:1;pointer-events:auto}
+  .sheet[data-mode="modal"] .poolList{max-height:38vh}
+  .sheet h4{font-size:13.5px;display:flex;align-items:center;gap:7px;margin-bottom:9px}
+  .sheet h4 .sub{font-size:11px;color:var(--text-muted);font-weight:600}
+  .menuList{display:flex;flex-direction:column;gap:6px}
+  .menuList button{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);color:var(--text);
+    font:inherit;font-size:13.5px;font-weight:700;border-radius:10px;padding:12px 13px;cursor:pointer;text-align:left}
+  .menuList button .ic{width:22px;text-align:center;font-size:14px}
+  .menuList button .hint{font-size:11px;color:var(--text-muted);font-weight:600;margin-left:auto}
+  .menuList button.mgh{background:var(--sunk);color:var(--text-muted)}
+  .menuList button.danger{color:#ffb4b4}
+
+  .sayBox{display:flex;flex-direction:column;gap:7px}
+  .sayBox textarea{width:100%;min-height:104px;background:var(--sunk);border:1px solid var(--border);border-radius:10px;color:var(--text);
+    font:inherit;font-size:13.5px;padding:10px;resize:vertical}
+  .sayBox textarea:focus{outline:none;border-color:var(--accent)}
+  .sayRow{display:flex;gap:7px;align-items:center}
+  .sayRow .c{font-size:11px;color:var(--text-muted)} .sayRow .sp{flex:1}
+  .chips{display:flex;gap:5px;flex-wrap:wrap}
+  .chips button{background:var(--sunk);border:1px solid var(--border);color:#c8d4e2;font:inherit;font-size:11.5px;border-radius:999px;padding:5px 9px;cursor:pointer}
+
+  .statRow{display:flex;align-items:center;gap:8px;margin:5px 0}
+  .statRow .k{width:56px;font-size:11.5px;color:var(--text-muted)}
+  .statRow .bar{flex:1;height:7px;border-radius:4px;background:var(--sunk);overflow:hidden}
+  .statRow .bar i{display:block;height:100%;background:var(--accent)}
+  .statRow .v{width:26px;text-align:right;font-size:11.5px;font-weight:800}
+  .upCard{background:#241d12;border:1px solid #4a3a1c;border-left:3px solid var(--warn);border-radius:9px;padding:9px 11px;margin:9px 0;font-size:12.3px;color:#e8dbc0}
+  .upCard b{color:#ffd98a}
+
+  .toast{position:absolute;left:12px;right:12px;bottom:16px;z-index:95;background:#0d1420;border:1px solid var(--accent);border-radius:10px;
+    padding:10px 12px;font-size:12.3px;color:#dbe7ff;opacity:0;transform:translateY(8px);transition:.18s;pointer-events:none}
+  .toast[data-on="1"]{opacity:1;transform:none}
+  /* 시트가 올라와 있으면 토스트가 시트 내용(필터·[닫기])을 가린다 → 위로 비킨다 */
+  .sheet[data-on="1"] + .toast{bottom:auto;top:56px}
+  .ghost{position:fixed;z-index:999;pointer-events:none;transform:translate(-50%,-50%);display:none}
+  .ghost[data-on="1"]{display:block}
+
+  .sideNote{flex:1 1 320px;min-width:280px}
+  .sideNote h3{font-size:13.5px;margin-bottom:7px}
+  .sideNote ul{margin:0 0 12px;padding-left:17px}
+  .sideNote li{font-size:12.4px;color:#c9d2de;margin:4px 0}
+  .sideNote li b{color:#fff}
+  .knob{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;margin:7px 0}
+  .knob .k{font-size:12.3px;font-weight:700;width:104px}
+  .knob input[type=range]{flex:1}
+  .knob .v{font-size:12px;color:var(--accent);font-weight:800;width:74px;text-align:right}
+  .chk{display:flex;align-items:center;gap:7px;font-size:12.3px;color:#c9d2de;margin:6px 0}
+
+  .sumTable{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:6px 12px}
+  .sumRow{display:flex;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid #1e232c}
+  .sumRow:last-child{border-bottom:0}
+  .sumRow .lb{width:150px;font-size:12.3px;color:var(--text-muted)}
+  .sumRow .vl{font-size:12.8px;font-weight:800;color:#dbe7ff}
+  .sumRow .vl.none{color:#6e7686;font-weight:600}
+  .sumRow .vl.chg{color:#ffd98a}
+  .sumRow .vl.chg::after{content:" (제안과 다름)";font-size:11px;font-weight:700;color:#c8a86a}
+  .verdict{font-size:13.2px;font-weight:800;color:#bfe3c8;background:#132218;border:1px solid #244030;border-radius:10px;padding:10px 12px;margin-bottom:11px}
+  .verdict[data-same="0"]{color:#ffd98a;background:#221c12;border-color:#4a3c22}
+  .copy{display:flex;gap:7px;margin-top:11px}
+  .copy input{flex:1;background:var(--sunk);border:1px solid var(--border);border-radius:8px;color:#cfd8e4;font:inherit;font-size:12px;padding:8px 10px}
+
+  .sticky{position:fixed;left:0;right:0;bottom:0;z-index:70;background:rgba(15,17,21,.97);border-top:1px solid var(--border);padding:8px 0}
+  .sticky .row{display:flex;align-items:center;gap:9px}
+  .sticky .s{flex:1;font-size:12px;color:#c9d2de;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 폰에서 열었을 때 — 화면이 좁으면 프레임을 화면 폭에 맞춘다 */
+  @media(max-width:430px){
+    .phone{width:100%;height:calc(100svh - 150px);border-radius:14px}
+    header.page .todo ol{padding-left:15px}
+    .wrap{padding:0 8px}
+  }
+  /* 전체화면 모드 — 목업만 남기고 설명을 전부 감춘다(폰 테스트용) */
+  body.focus{padding:0;overflow:hidden}
+  body.focus header.page,body.focus .tabs,body.focus .sticky,body.focus .sideNote,body.focus section.pane:not(#pane-proto){display:none}
+  body.focus .wrap{padding:0;max-width:none}
+  body.focus section.pane{padding:0}
+  body.focus .phone{width:100%;max-width:none;height:100svh;max-height:100svh;border:0;border-radius:0;box-shadow:none}
+  .focusBtn{position:fixed;right:10px;top:10px;z-index:200;background:rgba(12,17,27,.92);border:1px solid var(--accent);color:#dbe7ff;
+    font:inherit;font-size:12px;font-weight:800;border-radius:9px;padding:7px 10px;cursor:pointer;display:none}
+  body.focus .focusBtn{display:block}
+  body.focus .topbar{padding-right:138px}   /* [✕ 설명 다시 보기] 와 겹치지 않게 */
+</style>
+</head>
+<body>
+
+<header class="page"><div class="wrap">
+  <h1>덱세팅 화면 개편 — 직접 만져보는 목업 <span style="color:var(--text-muted);font-weight:600;font-size:13px">#455 A-0</span></h1>
+  <div class="sub">이 파일은 <b>정적 HTML 한 장</b>입니다(서버·외부 연결 0). 진짜 화면이 아니라 <b>동작을 먼저 확인</b>하려고 만든 것 — 여기서 컨펌해야 A1~A4 개발을 시작합니다.</div>
+  <div class="todo">
+    <h3>hero 는 <b>만져보고 "OK" 아니면 "다르다"</b> 만 주시면 됩니다 — 고를 것은 없습니다</h3>
+    <ol>
+      <li><b>선수 꾹 누르기 → 드래그드롭</b> — 0.15초 참으면 잡힙니다(링이 돕니다). 다른 선수 위에 놓으면 <b>자리가 맞바뀝니다</b>.</li>
+      <li><b>선수 한 번 누르기 → 메뉴</b> — [자리 옮기기] [한마디 쓰기] [선수 정보] [닫기] 네 개(정한 것 ①).</li>
+      <li><b>한마디(프롬프트) 입력</b> — 메뉴에서 열어 직접 타이핑해 보세요. 저장하면 선수 왼쪽 위에 초록 점이 붙습니다.</li>
+      <li><b>자동 채우기 / auto</b> — 빈칸을 만들면 경기장 우측 하단에 [자동 채우기]가 나타납니다. 상단 [auto]는 최고 전력으로 다시 짜되 <b>써둔 한마디는 건드리지 않습니다</b>(정한 것 ②).</li>
+      <li><b>경기장 세로 비율</b> — <b>68 까지</b>(상한, 정한 것 ③). 남는 세로는 아래 여백으로 두고 <b>크기를 실측</b>해 보여 드립니다.</li>
+      <li><b>하단 버튼 두 개</b> — <b>[👥 가진 선수] [📣 팀 지시]</b>. 빈 자리를 누르면 그 포지션으로 바로 열립니다. <i>R4</i></li>
+      <li><b>시트 ↔ 모달</b> — 옆 <b>[시트 ↔ 모달]</b> 버튼으로 <b>지금 바로 바꿔가며</b> 비교하세요(정한 것 ④ 탭에 판단 근거). <i>R4</i></li>
+      <li><b>포메이션</b> — 상단 <b>4-4-2 ↔ 4-3-3</b>. 선수는 그대로, 자리만 다시 배치됩니다. <i>R3</i></li>
+    </ol>
+    <div style="margin-top:8px;font-size:12.6px;color:var(--text-muted)">
+      ①②③ 은 <b style="color:#dbe7ff">이미 정해서 화면에 켜 뒀습니다</b>. 탭에 "왜 그렇게 정했나"와 <b style="color:#dbe7ff">다른 안 만져보기</b> 가 있으니,
+      만져보고 다르게 느껴질 때만 바꿔보시고 그 결과를 알려주세요.
+    </div>
+  </div>
+</div></header>
+
+<nav class="tabs"><div class="wrap"><div class="row" id="tabs">
+  <button data-t="proto" aria-selected="true">프로토타입 (직접 만져보기)</button>
+  <button data-t="q1" aria-selected="false">정한 것 ① 메뉴 = A안</button>
+  <button data-t="q2" aria-selected="false">정한 것 ② auto 와 한마디 = ㄴ안</button>
+  <button data-t="q3" aria-selected="false">정한 것 ③ 경기장 = 68 까지</button>
+  <button data-t="q4" aria-selected="false">정한 것 ④ 시트 vs 모달</button>
+  <button data-t="q5" aria-selected="false">정한 것 ⑤ 하단 = 1안 탭</button>
+  <button data-t="sum" aria-selected="false">✓ 컨펌</button>
+  <button id="focusOn" style="background:#1c2841;color:#dbe7ff;border-color:#3c5279">📱 전체화면으로 보기</button>
+</div></div></nav>
+
+<main class="wrap">
+
+<!-- ─────────── 프로토타입 ─────────── -->
+<section class="pane on" id="pane-proto">
+  <div class="phoneWrap">
+    <div class="phone" id="phone">
+      <div class="topbar">
+        <span class="ttl">덱 세팅</span>
+        <select id="formation" class="btn sm" style="padding:6px 7px" title="포메이션">
+          <option value="4-4-2">4-4-2</option>
+          <option value="4-3-3">4-3-3</option>
+        </select>
+        <span class="pw">전력 <b id="teamPower">0</b></span>
+        <span class="sp"></span>
+        <button class="btn sm" id="btnAuto" title="현재 가진 전력에서 최선으로 배치">auto</button>
+        <button class="btn sm pri" id="btnSave">저장</button>
+      </div>
+
+      <div class="stage" id="stage">
+        <div class="banner" id="banner" hidden>
+          <span id="bannerText"></span><span class="sp"></span>
+          <button class="btn sm" id="bannerCancel">취소</button>
+        </div>
+
+        <div class="pitchBox" id="pitch">
+          <div class="goalBox top"></div><div class="goalBox bot"></div>
+          <button class="autoFill" id="btnFill" hidden>⚡ 자동 채우기</button>
+        </div>
+
+        <div class="benchWrap" id="benchWrap">
+          <div class="lb">벤치 <span id="benchCount" style="color:#c8d4e2"></span></div>
+          <div class="benchRow" id="bench"></div>
+        </div>
+
+        <div class="stageSpacer"></div>
+      </div>
+
+      <!-- 1안 — 책갈피 탭 -->
+      <div class="deckTabs" id="deckTabs" hidden>
+        <div class="tabRow" id="tabRow">
+          <button data-p="team" data-on="1"><span class="ic">📣</span> 전체 지시 <b class="dot" id="tabTeamDot">●</b></button>
+          <button data-p="sub" data-on="0"><span class="ic">👥</span> 후보 <b id="tabSubN">0</b></button>
+          <button data-p="tune" data-on="0"><span class="ic">⚙</span> 세부 전술</button>
+        </div>
+        <div class="tabPanel" data-p="team" id="panelTeam">
+          <textarea id="teamPromptInline" placeholder="팀 전체에 내릴 작전 (예: 초반부터 강하게 압박, 역습 위주)"></textarea>
+          <div class="railRow"><span class="c" id="tpInlineCount">0 / 500</span><span class="sp"></span>
+            <span class="c">선수를 누르면 <b style="color:#c8d4e2">그 선수 한마디</b></span></div>
+        </div>
+        <div class="tabPanel" data-p="sub" id="panelSub" hidden>
+          <div id="benchHost"></div>
+          <button class="poolCta" id="btnPoolInTab">👥 제외 명단에서 데려오기 <b style="color:var(--accent)" id="poolCountTab">0</b>명</button>
+        </div>
+        <div class="tabPanel" data-p="tune" id="panelTune" hidden>
+          <div class="tunePanel" style="display:grid">
+            <div class="tuneRow"><span class="k">라인</span><input type="range" min="0" max="4" value="2" /><span class="v">보통</span></div>
+            <div class="tuneRow"><span class="k">압박</span><input type="range" min="0" max="4" value="3" /><span class="v">강함</span></div>
+            <div class="tuneRow"><span class="k">템포</span><input type="range" min="0" max="4" value="2" /><span class="v">보통</span></div>
+            <div class="tuneRow"><span class="k">폭</span><input type="range" min="0" max="4" value="2" /><span class="v">보통</span></div>
+          </div>
+          <div class="tabHint">프롬프트로 다 되는 것들입니다 — 손으로 만지고 싶을 때만 씁니다(3순위).</div>
+        </div>
+      </div>
+
+      <!-- 2안 — 하단 버튼 바 -->
+      <div class="poolBar" id="poolBar">
+        <button class="btn hero" id="btnTeam"><span class="ic">📣</span> 팀 지시 <b id="teamDot" style="color:#08101f;opacity:.45">●</b></button>
+        <button class="btn" id="btnPool">👥 가진 선수 <b id="poolCount" style="color:var(--accent)">0</b></button>
+        <button class="btn" id="btnTuneBar" title="세부 전술">⚙</button>
+        <span class="sp"></span>
+        <span class="c" id="poolUp"></span>
+      </div>
+
+      <div class="sheetBack" id="sheetBack"></div>
+      <div class="sheet" id="sheet"><div id="sheetBody"></div></div>
+      <div class="toast" id="toast"></div>
+    </div>
+
+    <div class="sideNote">
+      <h3>지금 켜져 있는 안</h3>
+      <ul>
+        <li><b>메뉴(①)</b> — <span id="liveQ1">A안</span></li>
+        <li><b>auto 와 한마디(②)</b> — <span id="liveQ2">ㄴ안</span></li>
+        <li><b>경기장 비율(③)</b> — <span id="liveQ3">—</span></li>
+        <li><b>뜨는 방식(④)</b> — <span id="liveQ4">시트(아래에서 올라옴)</span></li>
+        <li><b>하단 구조(⑤)</b> — <span id="liveQ5">1안 — 책갈피 탭</span></li>
+      </ul>
+      <div class="knob">
+        <span class="k">하단 구조</span>
+        <span style="flex:1;font-size:12.2px;color:var(--text-muted)"><b style="color:#c8d4e2">1안 탭</b>(프롬프트 펼침) ↔ <b style="color:#c8d4e2">2안 버튼</b></span>
+        <button class="btn sm" id="layoutToggle">1안 ↔ 2안</button>
+      </div>
+      <div class="knob">
+        <span class="k">뜨는 방식</span>
+        <span style="flex:1;font-size:12.2px;color:var(--text-muted)">선수 메뉴 · 가진 선수 · 팀 지시 <b style="color:#c8d4e2">전부 같이</b> 바뀝니다</span>
+        <button class="btn sm" id="surfaceToggle">시트 ↔ 모달</button>
+      </div>
+      <div class="knob">
+        <span class="k">경기장 세로(상한)</span>
+        <input type="range" id="ratio" min="40" max="84" step="4" value="60" />
+        <span class="v" id="ratioV">—</span>
+      </div>
+      <div class="knob">
+        <span class="k">하단 버튼 2개</span>
+        <span style="flex:1;font-size:12.2px;color:var(--text-muted)"><b style="color:#c8d4e2">[👥 가진 선수] [📣 팀 지시]</b> — 빈 자리를 눌러도 그 포지션으로 열립니다</span>
+      </div>
+      <div class="knob">
+        <span class="k">포메이션</span>
+        <span style="flex:1;font-size:12.2px;color:var(--text-muted)">상단 <b style="color:#c8d4e2">4-4-2 ↔ 4-3-3</b> — 선수는 그대로, 자리만 다시 배치</span>
+      </div>
+      <label class="chk"><input type="checkbox" id="optGrowth" checked /> 강화 가능한 선수에 <b style="color:#ffd98a">↑</b> 표시 <span style="color:var(--text-muted)">(A2-2)</span></label>
+      <label class="chk"><input type="checkbox" id="optFillHide" checked /> [자동 채우기]는 빈칸이 있을 때만 보이기 <span style="color:var(--text-muted)">(A3)</span></label>
+      <div class="note">"벤치가 비었다"의 기준은 <b>벤치 앞 3칸</b>으로 잡아 뒀습니다(총 7칸을 다 채우라고 하면 버튼이 늘 떠 있게 됩니다). 이 숫자는 나중에 얼마든지 바꿀 수 있습니다.</div>
+      <div class="note">
+        현재 출하 화면의 폰 경기장 비율은 <code>68 : 44</code>(세로가 짧은 폰은 <code>68 : 40</code>) 입니다.
+        슬라이더 기본값 <code>68 : 60</code> 이 이번 제안이고, 숫자가 클수록 경기장이 세로로 깁니다.
+      </div>
+      <div class="note warn">
+        목업이라 <b>저장은 실제로 되지 않습니다</b>. 새로고침하면 처음 상태로 돌아갑니다(선택한 안은 기억합니다).
+        <button class="btn sm" id="btnReset" style="margin-top:7px">보드 처음 상태로</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── Q1 ─────────── -->
+<section class="pane" id="pane-q1">
+  <div class="qhead"><span class="qno">정한 것 ①</span><h2>선수를 누르면 뜨는 메뉴 = <b style="color:var(--accent)">A안</b> — 자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기</h2></div>
+  <div class="qask">
+    <b>왜 이렇게 정했나:</b> 원문에 <b>'위치 이동' · '프롬프트' · '선수 이동' · '선택 취소'</b> 네 개가 적혀 있는데, 설명이 서로 뒤섞여 있어 그대로 만들면 두 항목이 같은 일을 하고 <b>'선수 정보'(강화 진입점)가 들어갈 자리가 없어집니다</b>. 그래서 겹치는 둘을 하나로 합치고 그 자리에 선수 정보를 넣었습니다.
+    <div class="quote">
+      "누르면 '위치 이동' , '프롬프트', '선수 이동', '선택 취소' 버튼이 있어. <b>위치 이동 누르면 프롬프트로 스크롤 다운</b>해서 보여져,
+      <b>선수 이동 누르면</b> 현재 보드에 포메이션칸 + 벤치자리 활성화되고 누르면 바뀌어. <b>선수 정보 누르면</b> 선수 스탯이랑 강화 할수 있어."
+    </div>
+    <p style="margin-top:9px">즉 실제로 필요한 동작은 <b>①한마디 쓰기 ②자리 옮기기 ③선수 정보·강화 ④닫기</b> 네 가지입니다. <b>메뉴 이름·개수는 상수 한 줄</b>이라 언제든 바꿀 수 있으니, 나중에 [명단에서 빼기]가 필요해지면 C안으로 켜면 됩니다.</p>
+  </div>
+  <div class="subh">다른 안도 눌러볼 수 있습니다 (고르면 프로토타입 메뉴가 즉시 바뀝니다)</div>
+  <div class="opts" id="q1opts">
+    <label class="opt" data-v="A"><div class="t"><i>A안</i>동작 이름 그대로 4개<em class="pin">이 안으로 정함</em></div>
+      <div class="d"><b>자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기</b><br>원문의 '위치 이동'과 '선수 이동'이 같은 일이라 보고 하나로 합친 안. 가장 짧고 헷갈릴 것이 없습니다.</div></label>
+    <label class="opt" data-v="B"><div class="t"><i>B안</i>원문 이름 그대로 4개</div>
+      <div class="d"><b>위치 이동 / 프롬프트 / 선수 이동 / 선택 취소</b><br>'위치 이동' = 한마디 칸으로 내려가기, '선수 이동' = 자리 옮기기. 이름과 동작이 어긋나 보일 수 있습니다. <b>선수 정보는 들어갈 자리가 없습니다.</b></div></label>
+    <label class="opt" data-v="C"><div class="t"><i>C안</i>명단에서 빼기까지 5개</div>
+      <div class="d"><b>자리 옮기기 / 한마디 쓰기 / 선수 정보 / 명단에서 빼기 / 닫기</b><br>A안 + 그 자리에서 바로 뺄 수 있음. 지금은 빼려면 다른 선수를 그 자리에 넣어야 합니다.</div></label>
+  </div>
+  <div class="note">고른 뒤 <b>프로토타입 탭</b>으로 돌아가 선수를 눌러 보세요. 세 안 다 실제로 눌러볼 수 있습니다.</div>
+</section>
+
+<!-- ─────────── Q2 ─────────── -->
+<section class="pane" id="pane-q2">
+  <div class="qhead"><span class="qno">정한 것 ②</span><h2>[auto] 와 써둔 한마디 = <b style="color:var(--accent)">ㄴ안</b> — 쓴 문장은 절대 안 건드리고, 빈 칸만 채운다</h2></div>
+  <div class="qask">
+    <div class="quote">"초기화 대신에 새로 auto로 할거야 … 현재 가진전력에서 최선으로 배치해주는거야. … 주로 뽑기하고 사용하면되게"</div>
+    <p style="margin-top:9px">
+      auto 는 <b>11명을 처음부터 다시 짭니다</b> — 뽑기로 좋은 선수가 들어오면 그 선수가 자리를 가져가고, 밀린 선수는 벤치로 갑니다.
+    </p>
+    <p style="margin-top:7px"><b>왜 이렇게 정했나:</b> 예전에 <b>한마디가 통째로 날아간 사고</b>가 있었습니다(ㄷ안 = 그 사고와 같은 동작이라 <b>영구 기각</b>).
+      남은 것은 "손 안 댐(ㄱ)" 과 "빈 칸만 채움(ㄴ)" 인데, 지금 [자동 채우기] 가 이미 <b>빈 칸만 채우는 규칙</b>으로 돌고 있습니다 —
+      두 버튼이 같은 규칙을 쓰면 <b>유저가 규칙을 하나만 배우면 됩니다</b>. 뽑기 직후 바로 경기에 들어갈 수 있는 것도 ㄴ안입니다.</p>
+  </div>
+  <div class="subh">다른 안도 눌러볼 수 있습니다 (고른 뒤 프로토타입에서 [auto] 를 눌러 보세요)</div>
+  <div class="opts" id="q2opts">
+    <label class="opt" data-v="ㄱ"><div class="t"><i>ㄱ안</i>한마디는 손대지 않는다</div>
+      <div class="d">자리만 바뀌고 <b>내가 쓴 문장은 사람을 따라 그대로</b> 갑니다. 새로 들어온 선수는 한마디가 비어 있습니다.<br><b>가장 안전</b> — 잃는 것이 없습니다.</div></label>
+    <label class="opt" data-v="ㄴ"><div class="t"><i>ㄴ안</i>빈 칸만 기본 문구로 채운다<em class="pin">이 안으로 정함</em></div>
+      <div class="d">쓴 문장은 그대로 두고, <b>비어 있는 선수에게만</b> 포지션 기본 한마디를 넣어 줍니다(지금 [자동 채우기]가 하는 방식과 같음).<br>뽑기 직후 바로 경기 가능.</div></label>
+    <label class="opt" data-v="ㄷ"><div class="t"><i>ㄷ안</i>전부 새로 쓴다</div>
+      <div class="d">모든 선수의 한마디를 <b>포지션 기본 문구로 덮어씁니다</b>. 팀 전술·감독 한마디도 초기값으로.<br>= 사실상 예전 [초기화] 와 같은 피해. <b>권장하지 않습니다.</b></div></label>
+  </div>
+  <div class="note">프로토타입 상단 <b>[auto]</b> 를 누르면 고른 안대로 동작하고, "몇 명의 한마디가 유지/덮어써졌는지"를 알려줍니다.</div>
+</section>
+
+<!-- ─────────── Q3 ─────────── -->
+<section class="pane" id="pane-q3">
+  <div class="qhead"><span class="qno">정한 것 ③</span><h2>경기장 세로 = <b style="color:var(--accent)">68 까지</b> (상한. 지금 출하값은 68 : 44)</h2></div>
+  <div class="qask">
+    <div class="quote">"경기장 크기는 68까지하고 하단에 가진 선수 와 팀지시 버튼 만들자." — R4 지시</div>
+    <p style="margin-top:9px"><b>고정이 아니라 상한입니다.</b> 화면이 작으면 그보다 작게 그려지고, 크면 <b>68 에서 멈춥니다</b>(가로:세로가 1:1). 68 을 넘겨 늘리면 경기장이 세로로 길쭉해져 오히려 실제 축구장 모양에서 멀어집니다.</p>
+    <p style="margin-top:7px"><b>⚠️ 멈춘 뒤 남는 세로는 여백으로 남습니다</b> — 팀 지시까지 하단 버튼으로 빠졌기 때문입니다. 그 여백 크기를 옆에 <b>실측</b>으로 찍어 두었으니(추정 아님) 보시고 "너무 비었다" 싶으면 벤치를 키우거나 상한을 올릴 수 있습니다.</p>
+  </div>
+  <div class="subh">다른 값도 눌러서 비교해 볼 수 있습니다</div>
+  <div class="opts" id="q3opts">
+    <label class="opt" data-v="68"><div class="t"><i>제안</i>68 까지 (1:1)<em class="pin">이 값으로 정함</em></div><div class="d">R4 지시값. 경기장이 정사각형에서 멈추고, 남는 세로는 아래 여백이 됩니다.</div></label>
+    <label class="opt" data-v="44"><div class="t"><i>지금</i>68 : 44</div><div class="d">현재 출하값. 4-4-2 에서 미드필더 4명 이름이 겹칩니다.</div></label>
+    <label class="opt" data-v="auto"><div class="t"><i>R3</i>남는 세로 전부</div><div class="d">상한 없이 화면을 끝까지 씁니다(여백 0). 폰에서 실측 68:65~89.</div></label>
+  </div>
+  <div class="note">슬라이더로 4 단위 상한도 볼 수 있습니다. 최종값·여백은 컨펌 탭에 실측으로 남습니다.</div>
+</section>
+
+<!-- ─────────── Q4 시트 vs 모달 ─────────── -->
+<section class="pane" id="pane-q4">
+  <div class="qhead"><span class="qno">정한 것 ④</span><h2>선수 메뉴·가진 선수·팀 지시가 뜨는 방식 = <b style="color:var(--accent)">시트</b> (모달도 켜서 비교 가능)</h2></div>
+  <div class="qask">
+    <div class="quote">"지금 다 시트 기반인데 시트가 더 좋나? 엄지손가락이랑 가까워서? 모달 기반 (팝업 기반) 더좋은거 같은데 요즘 트랜드야?"</div>
+    <p style="margin-top:9px"><b>답부터:</b> 폰에서는 <b>시트가 지금의 표준</b>이 맞습니다 — 다만 이유가 "요즘 트렌드"라서가 아니라 <b>손가락이 닿는 자리</b>이기 때문입니다. iOS 15 가 시스템 시트를 1급으로 올리고 Android(Material 3)가 다이얼로그를 <code>bottom sheet</code> 로 밀면서 <b>폰에서 뭔가 고르는 UI 는 아래에서 올라오는 것</b>이 기본이 됐습니다. 손 위치가 화면 아래쪽이라 <b>왕복 거리가 짧고</b>, 한 손으로 아래로 쓸어 닫을 수 있습니다.</p>
+    <p style="margin-top:7px"><b>그런데 이 화면은 사정이 좀 다릅니다.</b> 우리 시트는 <b>화면 아래 78% 까지 덮습니다</b> — 그런데 이 화면에서 고르는 대상(경기장·벤치)이 <b>바로 그 덮이는 자리</b>에 있습니다. "이 자리에 누구를 넣을까"를 고르는 동안 <b>그 자리가 안 보이는</b> 것이죠. 가운데 팝업은 위아래를 조금씩 남기므로 <b>경기장 윗부분이 계속 보입니다</b>.</p>
+    <p style="margin-top:7px"><b>그래서 제 판단은:</b> 지금은 <b>시트를 기본</b>으로 두되(폰 표준·엄지 거리), <b>실제로 둘 다 만들어 뒀으니 만져보고 정하시면 됩니다</b>. 어느 쪽이든 <b>내용은 완전히 같고 뜨는 방식만 다릅니다</b> — 즉 나중에 뒤집는 비용이 CSS 한 덩어리라 <b>지금 확정하지 않아도 되는 종류</b>의 결정입니다.</p>
+  </div>
+  <div class="subh">눌러서 바꾼 뒤, 선수를 눌러 메뉴를 열어 보세요 (하단 [가진 선수]·[팀 지시] 도 같이 바뀝니다)</div>
+  <div class="opts" id="q4opts">
+    <label class="opt" data-v="sheet"><div class="t"><i>시트</i>아래에서 올라옴<em class="pin">이 안으로 정함</em></div>
+      <div class="d">폰 표준(iOS 시트 · Material 3 bottom sheet). <b>엄지에서 가장 가깝고</b> 아래로 쓸어 닫습니다.<br>⚠️ 열려 있는 동안 <b>경기장 아래쪽이 가려집니다</b>.</div></label>
+    <label class="opt" data-v="modal"><div class="t"><i>모달</i>가운데 팝업</div>
+      <div class="d">위아래를 남기고 가운데에 뜹니다. <b>경기장이 계속 보여서</b> "어디에 넣을지" 보면서 고를 수 있습니다.<br>⚠️ 손가락이 <b>화면 가운데까지</b> 올라가야 하고, 폰 한 손 조작에선 위쪽 버튼이 멉니다.</div></label>
+  </div>
+  <div class="note">데스크탑(넓은 화면)에서는 모달이 자연스럽고 폰에서는 시트가 자연스럽습니다 — <b>화면 폭에 따라 자동으로 갈라 쓰는 것</b>도 가능합니다(구현 비용 거의 같음). 원하시면 그렇게 잡겠습니다.</div>
+</section>
+
+<!-- ─────────── Q5 하단 구조 ─────────── -->
+<section class="pane" id="pane-q5">
+  <div class="qhead"><span class="qno">정한 것 ⑤</span><h2>경기장 아래 = <b style="color:var(--accent)">1안 · 책갈피 탭</b> — 프롬프트가 펼쳐진 채로 1급</h2></div>
+  <div class="qask">
+    <div class="quote">"팀지시가 더 잘보여야돼. 프롬프트는 우리핵심이기때문에 가장 잘보여야돼 버튼중에서도. … 세부전술은 지시에 들어갈게 아니라 별도 3순위로 있어야할거 같아 이게 1안이고. 2안은 지금처럼하되 아이콘 강조하고. … 뭘더 추천해?"</div>
+    <p style="margin-top:9px"><b>1안을 추천합니다.</b> 이유는 셋인데 <b>첫째가 결정적</b>입니다.</p>
+    <p style="margin-top:7px"><b>① 버튼은 아무리 강조해도 "내용"이 안 보입니다.</b> 아이콘을 키우고 색을 넣어도 보이는 것은 <i>여기에 프롬프트가 있다</i> 까지고, <b>내가 뭐라고 써놨는지</b>는 안 보입니다. 1안은 프롬프트를 <b>펼쳐진 내용</b>으로 올려서, 덱 화면에 들어오면 <b>지금 팀에 내린 지시가 그대로 읽힙니다</b>. "가장 잘 보여야 한다"는 요구는 <b>강조가 아니라 위계</b>의 문제이고, 위계는 "펼쳐져 있느냐 접혀 있느냐"로 갈립니다.</p>
+    <p style="margin-top:7px"><b>② 이미 그 원칙이 코드에 박혀 있습니다.</b> `DirectiveRail` 은 <b>프롬프트를 1급으로 두고 세부조정을 버튼 뒤로 접는</b> 구조입니다(#244 — 다른 축구게임이 세부조정을 두던 자리를 프롬프트가 차지한다고 주석에 적혀 있습니다). 1안은 그 원칙을 덱 화면에 그대로 잇는 것이고, 2안은 프롬프트를 다시 버튼 뒤로 내리는 셈입니다.</p>
+    <p style="margin-top:7px"><b>③ R4 가 남긴 여백 249px(화면의 30%)이 마침 이 탭 자리입니다.</b> 2안은 그 여백이 그대로 남지만, 1안은 그 자리를 <b>프롬프트·후보·세부전술</b>이 채웁니다. 즉 1안은 <b>공짜로 들어갑니다</b> — 경기장 68 상한을 그대로 두고도 화면이 빈 느낌이 없어집니다.</p>
+    <p style="margin-top:7px"><b>세부 전술 = 3순위</b>도 1안이 더 정확히 표현합니다 — 지시 안에 접힌 게 아니라 <b>옆 탭</b>으로, 라벨을 흐리게 해서 "있지만 먼저 볼 것은 아니다"가 됩니다.</p>
+    <p style="margin-top:7px"><b>1안의 대가:</b> 후보(벤치)가 <b>기본으로는 안 보입니다</b> — 탭을 눌러야 나옵니다. 지금은 벤치가 항상 보였으니 <b>이게 바뀌는 유일한 손해</b>입니다. 만져보고 "벤치는 늘 보여야 한다" 싶으면 벤치만 밖으로 빼고 탭은 [전체 지시][세부 전술][가진 선수] 로 줄이면 됩니다.</p>
+  </div>
+  <div class="subh">둘 다 만들어 뒀습니다 — 눌러서 바로 바꿔 보세요</div>
+  <div class="opts" id="q5opts">
+    <label class="opt" data-v="tabs"><div class="t"><i>1안</i>책갈피 탭<em class="pin">이 안을 추천</em></div>
+      <div class="d">경기장 아래에 <b>[📣 전체 지시] [👥 후보] [⚙ 세부 전술]</b>. 기본으로 <b>전체 지시가 펼쳐져</b> 있고, 후보 탭 안에 <b>[제외 명단에서 데려오기]</b> 가 들어갑니다.</div></label>
+    <label class="opt" data-v="buttons"><div class="t"><i>2안</i>하단 버튼 + 아이콘 강조</div>
+      <div class="d">R4 그대로에 <b>[📣 팀 지시]만 강조색</b>으로 키우고 <b>[⚙]</b> 를 그 옆에 둡니다. 벤치는 계속 보입니다.<br>⚠️ 프롬프트 <b>내용</b>은 눌러야 보입니다.</div></label>
+  </div>
+</section>
+
+<!-- ─────────── 요약 ─────────── -->
+<section class="pane" id="pane-sum">
+  <div class="qhead"><span class="qno">✓</span><h2>컨펌</h2></div>
+  <div class="verdict" id="sumVerdict" data-same="1">지금 화면은 제안한 그대로입니다 — 이대로 괜찮으면 “OK” 한 마디면 됩니다.</div>
+  <div class="sumTable">
+    <div class="sumRow"><span class="lb">① 메뉴</span><span class="vl" id="s1">A안</span></div>
+    <div class="sumRow"><span class="lb">② auto 와 한마디</span><span class="vl" id="s2">ㄴ안</span></div>
+    <div class="sumRow"><span class="lb">③ 경기장 비율</span><span class="vl" id="s3">—</span></div>
+    <div class="sumRow"><span class="lb">④ 뜨는 방식</span><span class="vl" id="s4">—</span></div>
+    <div class="sumRow"><span class="lb">⑤ 하단 구조</span><span class="vl" id="s5">—</span></div>
+    <div class="sumRow"><span class="lb">그 밖</span><span class="vl" id="s6">—</span></div>
+  </div>
+  <div class="copy"><input id="sumStr" readonly value="" /><button class="btn pri" id="copyBtn">복사</button></div>
+  <div class="note" style="margin-top:12px">
+    <b>컨펌 = 이 화면의 동작이 이대로면 개발을 시작해도 좋다</b> 는 뜻입니다. 그 뒤에 A1~A4 를 실제 화면에 구현합니다.
+    바꾸신 것이 있으면 위 줄을 복사해 주시거나 <b>"경기장은 더 크게"</b> 처럼 말로 주셔도 됩니다.
+  </div>
+</section>
+
+</main>
+
+<div class="sticky"><div class="wrap"><div class="row">
+  <span class="s" id="stickyStr"></span>
+  <button class="btn sm" id="stickyGo">컨펌 화면</button>
+</div></div></div>
+
+<button class="focusBtn" id="focusOff">✕ 설명 다시 보기</button>
+<div class="ghost" id="ghost"></div>
+
+<script>
+/* ══════════════════ 데이터 ══════════════════ */
+const GRADE_COLOR = {LEGEND:"var(--grade-legend)",DIA:"var(--grade-dia)",GOLD:"var(--grade-gold)",SILVER:"var(--grade-silver)"};
+const POS_DEFAULT_SAY = {
+  GK:"골문을 지키고, 위험할 땐 과감히 나와 걷어내라.",
+  DF:"뒷공간을 먼저 지우고, 확실할 때만 전진하라.",
+  MF:"공을 잡으면 앞을 먼저 보고, 잃으면 즉시 압박하라.",
+  FW:"수비 뒤를 노리고, 기회가 오면 지체 없이 슛하라.",
+};
+/* 이름은 가상. ovr = 전력, cond = 컨디션(0~1), up = 강화 가능 */
+const PLAYERS = [
+  {id:"P01",n:"한도윤",pos:"GK",ovr:82,g:"DIA",cond:.92,up:false},
+  {id:"P02",n:"오세진",pos:"GK",ovr:71,g:"GOLD",cond:.80,up:true},
+  {id:"P03",n:"김태오",pos:"DF",ovr:84,g:"DIA",cond:.88,up:false},
+  {id:"P04",n:"라미레스",pos:"DF",ovr:80,g:"GOLD",cond:.74,up:true},
+  {id:"P05",n:"정우빈",pos:"DF",ovr:78,g:"GOLD",cond:.95,up:false},
+  {id:"P06",n:"바르트",pos:"DF",ovr:76,g:"GOLD",cond:.61,up:false},
+  {id:"P07",n:"문성현",pos:"DF",ovr:69,g:"SILVER",cond:.83,up:true},
+  {id:"P08",n:"이강훈",pos:"MF",ovr:88,g:"LEGEND",cond:.90,up:false},
+  {id:"P09",n:"베르그",pos:"MF",ovr:83,g:"DIA",cond:.77,up:true},
+  {id:"P10",n:"차민석",pos:"MF",ovr:79,g:"GOLD",cond:.86,up:false},
+  {id:"P11",n:"안드레",pos:"MF",ovr:77,g:"GOLD",cond:.58,up:false},
+  {id:"P12",n:"황도현",pos:"MF",ovr:72,g:"SILVER",cond:.91,up:false},
+  {id:"P13",n:"신재우",pos:"MF",ovr:68,g:"SILVER",cond:.70,up:true},
+  {id:"P14",n:"카를로",pos:"FW",ovr:90,g:"LEGEND",cond:.85,up:false},
+  {id:"P15",n:"윤태경",pos:"FW",ovr:85,g:"DIA",cond:.93,up:true},
+  {id:"P16",n:"조민혁",pos:"FW",ovr:81,g:"GOLD",cond:.66,up:false},
+  {id:"P17",n:"셀리모",pos:"FW",ovr:75,g:"GOLD",cond:.79,up:false},
+  {id:"P18",n:"백승우",pos:"FW",ovr:70,g:"SILVER",cond:.88,up:false},
+  {id:"P19",n:"고은성",pos:"DF",ovr:74,g:"SILVER",cond:.72,up:false},
+  {id:"P20",n:"임찬영",pos:"MF",ovr:73,g:"SILVER",cond:.81,up:true},
+];
+const BY_ID = new Map(PLAYERS.map(p=>[p.id,p]));
+
+/* 실측 SoT: apps/web/src/deck/deck-logic.ts FORMATION_LAYOUTS */
+const FORMATIONS = {
+  "4-4-2":[{label:"FW",idx:[9,10]},{label:"MF",idx:[5,6,7,8]},{label:"DF",idx:[1,2,3,4]},{label:"GK",idx:[0]}],
+  "4-3-3":[{label:"FW",idx:[8,9,10]},{label:"MF",idx:[5,6,7]},{label:"DF",idx:[1,2,3,4]},{label:"GK",idx:[0]}],
+};
+const BENCH_MAX = 7;
+/* 실측 SoT: apps/web/src/deck/drag-gesture.ts */
+const TOUCH_ACTIVATION_MS = 150, TOUCH_TOLERANCE_PX = 8, MOUSE_TOLERANCE_PX = 6;
+
+/* 실측 SoT: apps/web/src/deck/tactics-logic.ts starterCoords */
+function starterCoords(formation){
+  const layout = FORMATIONS[formation] || FORMATIONS["4-4-2"];
+  const rows = layout.length, out = [];
+  layout.forEach((row,rowIdx)=>{
+    const y = rows<=1 ? .5 : .1 + (rowIdx/(rows-1))*.82;
+    const n = row.idx.length;
+    row.idx.forEach((slotIndex,i)=>{
+      const x = n===1 ? .5 : .14 + (i/(n-1))*.72;
+      out.push({slotIndex,x,y,label:row.label});
+    });
+  });
+  return out;
+}
+
+/* ══════════════════ 상태 ══════════════════ */
+/* 시작 상태 = "뽑기로 좋은 선수를 막 얻었는데 아직 안 넣은 팀".
+   그래야 [auto](최고 전력 재배치)와 [자동 채우기](빈칸만)의 차이가 눈에 보인다. */
+function initialDraft(){
+  const d = {formation:"4-4-2", slots:[]};
+  const coords = starterCoords(d.formation);
+  const order = [...coords].sort((a,b)=>b.y-a.y);          // GK→DF→MF→FW
+  const byRow = {GK:["P02"],DF:["P05","P06","P07","P19"],MF:["P10","P11","P12","P13"],FW:["P16","P17"]};
+  order.forEach(c=>{ const id=(byRow[c.label]||[]).shift(); if(id) d.slots.push({playerId:id,role:"starter",slotIndex:c.slotIndex,prompt:seedSay(id)}); });
+  ["P18","P20","P04"].forEach((id,i)=>d.slots.push({playerId:id,role:"bench",slotIndex:i,prompt:""}));
+  return d;
+}
+/* 이미 써둔 한마디 — auto 가 이걸 지키는지 보는 표본(질문 2) */
+function seedSay(id){
+  if(id==="P10") return "중원에서 템포를 네가 정해라. 무리한 롱볼 금지.";
+  if(id==="P16") return "뒷공간만 노려라. 오프사이드는 감수한다.";
+  if(id==="P05") return "라인 올리지 말고 뒤부터 지워라.";
+  return "";
+}
+
+let draft = initialDraft();
+let pending = null;   // {playerId} — 자리 고르는 중
+let selected = null;  // 강조 토큰
+let teamPrompt = "";  // 팀 프롬프트(실제 앱 DirectiveRail 의 teamPrompt)
+let poolFilter = "ALL";
+/* 세 가지는 이미 정해서 기본값으로 박아 뒀다 — hero 는 만져보고 "이대로" 아니면 "다르다"만 말하면 된다.
+   다른 안도 그대로 눌러볼 수 있게 남겨 둔다(만져보고 다르게 느끼면 그 자리에서 뒤집을 수 있어야 하므로). */
+const choice = {q1:"A",q2:"ㄴ",q3:68,surface:"sheet",layout:"tabs",pitchRatio:0,growth:true,fillHide:true};
+let deckTab = "team";
+
+/* ══════════════════ 순수 로직 (apps/web 과 같은 규칙) ══════════════════ */
+const getSlot = (role,idx)=>draft.slots.find(s=>s.role===role&&s.slotIndex===idx);
+const findSlot = pid=>draft.slots.find(s=>s.playerId===pid);
+function firstEmptyBench(){ for(let i=0;i<BENCH_MAX;i++) if(!getSlot("bench",i)) return i; return null; }
+function assign(role,idx,pid){
+  const prev = findSlot(pid);
+  draft.slots = draft.slots.filter(s=>s.playerId!==pid).filter(s=>!(s.role===role&&s.slotIndex===idx));
+  draft.slots.push({playerId:pid,role,slotIndex:idx,prompt:prev?prev.prompt:""});
+}
+/* apps/web/src/deck/tactics-logic.ts movePlayerToSlot — 스왑 / 벤치 강등 / 덱아웃 (#442 R4-B) */
+function movePlayerToSlot(pid,toRole,toIdx){
+  const src = findSlot(pid), occ = getSlot(toRole,toIdx);
+  if(src && src.role===toRole && src.slotIndex===toIdx) return "noop";
+  if(occ && occ.playerId!==pid && src){
+    const sr=src.role, si=src.slotIndex;
+    draft.slots = draft.slots.map(s=>{
+      if(s.playerId===pid) return {...s,role:toRole,slotIndex:toIdx};
+      if(s.playerId===occ.playerId) return {...s,role:sr,slotIndex:si};
+      return s;
+    });
+    return "swap";
+  }
+  if(occ && occ.playerId!==pid && !src){
+    const b = firstEmptyBench();
+    if(b!==null){ assign("bench",b,occ.playerId); assign(toRole,toIdx,pid); return "bench"; }
+    assign(toRole,toIdx,pid); return "drop";
+  }
+  assign(toRole,toIdx,pid); return "place";
+}
+function emptySlots(){
+  const coords = starterCoords(draft.formation);
+  let n = coords.filter(c=>!getSlot("starter",c.slotIndex)).length;
+  for(let i=0;i<3;i++) if(!getSlot("bench",i)) n++;   // 벤치는 3칸을 "채워야 할 칸"으로 본다
+  return n;
+}
+const poolPlayers = ()=>PLAYERS.filter(p=>!findSlot(p.id));
+const teamPower = ()=>draft.slots.filter(s=>s.role==="starter").reduce((a,s)=>a+(BY_ID.get(s.playerId)?.ovr||0),0);
+
+/* 적합도: 포지션이 맞으면 가산 (auto / 자동 채우기 공통) */
+const POS_FIT = {GK:{GK:3},DF:{DF:3,MF:1},MF:{MF:3,DF:1,FW:1},FW:{FW:3,MF:1}};
+const fit = (p,label)=>(p.ovr/10) + ((POS_FIT[label]||{})[p.pos]||0)*6;
+
+/* A3 — 빈칸만 채운다(놓인 선수는 안 옮긴다). apps/web fill-empty.ts 와 같은 성질 */
+function fillEmptySlots(){
+  const coords = starterCoords(draft.formation);
+  let cands = poolPlayers().slice();
+  let placed = 0, said = 0;
+  coords.forEach(c=>{
+    if(getSlot("starter",c.slotIndex)) return;
+    cands.sort((a,b)=>fit(b,c.label)-fit(a,c.label));
+    const p = cands.shift(); if(!p) return;
+    assign("starter",c.slotIndex,p.id); placed++;
+    const s = findSlot(p.id); if(!s.prompt){ s.prompt = POS_DEFAULT_SAY[p.pos]; said++; }
+  });
+  for(let i=0;i<3;i++){
+    if(getSlot("bench",i)) continue;
+    cands.sort((a,b)=>b.ovr-a.ovr);
+    const p = cands.shift(); if(!p) break;
+    assign("bench",i,p.id); placed++;
+  }
+  return {placed,said};
+}
+
+/* A4 — 항시 최고 전력으로 다시 짠다. 한마디 처리는 질문 2 의 답이 정한다 */
+function autoBuild(){
+  const keep = new Map(draft.slots.map(s=>[s.playerId,s.prompt]));
+  const coords = starterCoords(draft.formation);
+  let cands = PLAYERS.slice();
+  const next = {formation:draft.formation, slots:[]};
+  /* GK 부터(자리 경쟁이 가장 좁다) */
+  [...coords].sort((a,b)=>b.y-a.y).forEach(c=>{
+    cands.sort((a,b)=>fit(b,c.label)-fit(a,c.label));
+    const p = cands.shift(); if(!p) return;
+    next.slots.push({playerId:p.id,role:"starter",slotIndex:c.slotIndex,prompt:keep.get(p.id)||""});
+  });
+  cands.sort((a,b)=>b.ovr-a.ovr);
+  cands.slice(0,3).forEach((p,i)=>next.slots.push({playerId:p.id,role:"bench",slotIndex:i,prompt:keep.get(p.id)||""}));
+  const before = teamPower();
+  draft = next;
+  let kept=0, filled=0, over=0;
+  draft.slots.forEach(s=>{
+    const p = BY_ID.get(s.playerId);
+    if(choice.q2==="ㄷ"){ s.prompt = POS_DEFAULT_SAY[p.pos]; over++; return; }
+    if(s.prompt){ kept++; return; }
+    if(choice.q2==="ㄴ" && s.role==="starter"){ s.prompt = POS_DEFAULT_SAY[p.pos]; filled++; }
+  });
+  return {before,after:teamPower(),kept,filled,over};
+}
+
+/* ══════════════════ 렌더 ══════════════════ */
+const $ = s=>document.querySelector(s);
+const pitch=$("#pitch"), benchEl=$("#bench");
+
+function tokenHtml(p, numberLabel, sel, prompt){
+  const up = choice.growth && p.up ? '<span class="up">↑</span>' : "";
+  const dot = `<span class="say" data-empty="${prompt?"0":"1"}" title="${prompt?"한마디 있음":"한마디 없음"}"></span>`;
+  return `<div class="tok" data-player="${p.id}" data-pos="${p.pos}" data-sel="${sel?1:0}">
+    <div class="disc">${p.n.slice(0,1)}${dot}${up}<span class="num">${numberLabel}</span></div>
+    <div class="nm">${p.n}</div>
+  </div>`;
+}
+
+function render(){
+  /* 경기장 */
+  const coords = starterCoords(draft.formation);
+  pitch.querySelectorAll(".slot").forEach(e=>e.remove());
+  coords.forEach(c=>{
+    const s = getSlot("starter",c.slotIndex);
+    const el = document.createElement("div");
+    el.className="slot"; el.dataset.role="starter"; el.dataset.idx=c.slotIndex;
+    el.style.left=(c.x*100)+"%"; el.style.top=(c.y*100)+"%";
+    if(s){ const p=BY_ID.get(s.playerId); el.innerHTML = tokenHtml(p,String(c.slotIndex+1),selected===s.playerId,s.prompt); }
+    else { el.innerHTML = `<span class="posTag">${c.label}</span><div class="hole">+</div>`; }
+    pitch.appendChild(el);
+  });
+  /* 벤치 */
+  benchEl.innerHTML="";
+  for(let i=0;i<BENCH_MAX;i++){
+    const s = getSlot("bench",i);
+    const el=document.createElement("div");
+    el.className="bcell"; el.dataset.role="bench"; el.dataset.idx=i;
+    if(s){ const p=BY_ID.get(s.playerId); el.innerHTML = tokenHtml(p,"B"+(i+1),selected===s.playerId,s.prompt); }
+    else el.innerHTML = `<span class="empty">B${i+1}</span>`;
+    benchEl.appendChild(el);
+  }
+  const bn = draft.slots.filter(s=>s.role==="bench").length;
+  $("#benchCount").textContent = `${bn} / ${BENCH_MAX}`;
+  /* 보유 선수 = 모달. 여기서는 하단 바의 숫자만 갱신하고, 열려 있으면 목록도 다시 그린다 */
+  const pool = poolPlayers();
+  $("#poolCount").textContent = String(pool.length);
+  $("#poolCountTab").textContent = String(pool.length);
+  $("#tabSubN").textContent = String(draft.slots.filter(s=>s.role==="bench").length);
+  $("#teamDot").style.opacity = teamPrompt ? "1" : ".45";
+  $("#tabTeamDot").style.color = teamPrompt ? "var(--ok)" : "#59606d";
+  $("#btnTeam").title = teamPrompt ? teamPrompt : "팀 지시 없음";
+  if($("#teamPromptInline") && document.activeElement!==$("#teamPromptInline")) $("#teamPromptInline").value = teamPrompt;
+  $("#tpInlineCount").textContent = `${teamPrompt.length} / 500`;
+  const upN = choice.growth ? pool.filter(p=>p.up).length : 0;
+  $("#poolUp").innerHTML = upN ? `<b style="color:#ffd98a">↑ ${upN}명</b> 강화 가능` : "";
+  if($("#poolList")) renderPoolList();
+  /* 상단·버튼 */
+  $("#teamPower").textContent = teamPower();
+  const empt = emptySlots();
+  $("#btnFill").hidden = choice.fillHide ? empt===0 : false;
+  $("#btnFill").disabled = empt===0;
+  /* 배치 대기 표시 */
+  const on = !!pending;
+  document.querySelectorAll(".slot,.bcell").forEach(el=>{
+    el.dataset.target = on ? "1" : "0";
+    el.dataset.swap = on && el.querySelector(".tok") ? "1" : "0";
+  });
+  $("#banner").hidden = !on;
+  if(on){ const p=BY_ID.get(pending.playerId); $("#bannerText").innerHTML = `<b>${p.n}</b> 을(를) 어디로 보낼까요? 자리를 누르세요 — 이미 선수가 있으면 <b>맞바꿉니다</b>.`; }
+}
+
+/* ══════════════════ 시트 ══════════════════ */
+const sheet=$("#sheet"), sheetBack=$("#sheetBack"), sheetBody=$("#sheetBody");
+function openSheet(html){ sheetBody.innerHTML=html; sheet.dataset.on="1"; sheetBack.dataset.on="1"; }
+function closeSheet(){ sheet.dataset.on="0"; sheetBack.dataset.on="0"; selected=null; render(); }
+sheetBack.addEventListener("click",closeSheet);
+
+const MENUS = {
+  A:[["move","⇄","자리 옮기기","경기장·벤치에서 고르기"],["say","💬","한마디 쓰기",""],["info","👤","선수 정보","스탯·강화"],["close","✕","닫기",""]],
+  B:[["say","⬇","위치 이동","한마디 칸으로 내려가기"],["say","💬","프롬프트",""],["move","⇄","선수 이동","자리 고르기"],["close","✕","선택 취소",""]],
+  C:[["move","⇄","자리 옮기기","경기장·벤치에서 고르기"],["say","💬","한마디 쓰기",""],["info","👤","선수 정보","스탯·강화"],["remove","🚫","명단에서 빼기",""],["close","✕","닫기",""]],
+};
+function openMenu(pid){
+  const p = BY_ID.get(pid); const s = findSlot(pid);
+  selected = pid; render();
+  const items = MENUS[choice.q1];
+  const rows = items.map(([act,ic,label,hint])=>
+    `<button data-act="${act}" data-pid="${pid}" class="${act==="close"?"mgh":act==="remove"?"danger":""}">
+       <span class="ic">${ic}</span><span>${label}</span>${hint?`<span class="hint">${hint}</span>`:""}</button>`).join("");
+  openSheet(`<h4>${p.n} <span class="sub">${p.pos} · 전력 ${p.ovr}${s?"":" · 아직 명단 밖"}</span></h4>
+    <div class="menuList">${rows}</div>`);
+}
+function openSay(pid){
+  const p=BY_ID.get(pid); const s=findSlot(pid);
+  const cur = s? (s.prompt||"") : "";
+  openSheet(`<h4>${p.n} 에게 한마디 <span class="sub">${p.pos} · 최대 500자</span></h4>
+    <div class="sayBox">
+      <textarea id="sayText" placeholder="예) 오른쪽으로 벌려서 크로스 올려라. 무리한 돌파는 하지 마.">${cur.replace(/</g,"&lt;")}</textarea>
+      <div class="chips">
+        <button data-say="${POS_DEFAULT_SAY[p.pos]}">${p.pos} 기본 문구 넣기</button>
+        <button data-say="">비우기</button>
+      </div>
+      <div class="sayRow"><span class="c" id="sayCount">${cur.length} / 500</span><span class="sp"></span>
+        <button class="btn" id="sayCancel">취소</button><button class="btn pri" id="saySave">저장</button></div>
+    </div>`);
+  const ta=$("#sayText"); ta.focus(); ta.setSelectionRange(ta.value.length,ta.value.length);
+  ta.addEventListener("input",()=>{ if(ta.value.length>500) ta.value=ta.value.slice(0,500); $("#sayCount").textContent=`${ta.value.length} / 500`; });
+  sheetBody.querySelectorAll("[data-say]").forEach(b=>b.addEventListener("click",()=>{ ta.value=b.dataset.say; ta.dispatchEvent(new Event("input")); ta.focus(); }));
+  $("#sayCancel").addEventListener("click",closeSheet);
+  $("#saySave").addEventListener("click",()=>{
+    if(!s){ toast("명단에 없는 선수라 저장할 자리가 없습니다 — 먼저 [엔트리]로 넣어주세요."); return; }
+    s.prompt = ta.value; closeSheet(); toast(`${p.n} 에게 한마디를 저장했습니다.`);
+  });
+}
+/* ── 보유 선수 시트 (실제 앱 deck/PlayerPicker.tsx — 빈 자리를 누르면 올라오는 바텀시트) ── */
+const POS_FILTERS = ["ALL","GK","DF","MF","FW"];
+function poolRowHtml(p){
+  const locked = !!findSlot(p.id);
+  return `<div class="prow" data-player="${p.id}" data-locked="${locked?1:0}">
+      <div class="tok" data-player="${p.id}" data-pos="${p.pos}"><div class="disc">${p.n.slice(0,1)}${choice.growth&&p.up?'<span class="up">↑</span>':""}</div></div>
+      <div class="meta">
+        <span class="n"><span class="gradeDot" style="background:${GRADE_COLOR[p.g]}"></span>${p.n}</span>
+        <span class="s">${p.pos} · 전력 ${p.ovr} · 컨디션 ${Math.round(p.cond*100)}%${p.up?" · 강화 가능":""}</span>
+      </div>
+      <button class="btn sm ent" data-entry="${p.id}">엔트리</button>
+    </div>`;
+}
+function renderPoolList(){
+  const list = $("#poolList"); if(!list) return;
+  const rows = poolPlayers().filter(p=>poolFilter==="ALL"||p.pos===poolFilter);
+  list.innerHTML = rows.length ? rows.map(poolRowHtml).join("")
+    : `<div class="note" style="margin:6px 0">${poolFilter==="ALL"?"명단 밖 선수가 없습니다.":poolFilter+" 포지션에 남은 선수가 없습니다."}</div>`;
+  $("#poolSheetCount").textContent = `${rows.length}명`;
+  document.querySelectorAll("#posFilter button").forEach(b=>b.dataset.on = b.dataset.pos===poolFilter?"1":"0");
+}
+/* slotLabel 을 주면 그 자리 포지션으로 자동 필터(실제 앱 autoFilter 와 같은 성질) */
+function openPool(slotLabel){
+  poolFilter = slotLabel && POS_FILTERS.includes(slotLabel) ? slotLabel : "ALL";
+  openSheet(`<h4>보유 선수 <span class="sub">명단 밖 <span id="poolSheetCount">0명</span>${slotLabel?` · ${slotLabel} 자리에 넣을 선수`:""}</span></h4>
+    <div class="posFilter" id="posFilter">${POS_FILTERS.map(f=>`<button data-pos="${f}" data-on="0">${f==="ALL"?"전체":f}</button>`).join("")}</div>
+    <div class="poolList" id="poolList"></div>
+    <div class="sayRow" style="margin-top:8px"><span class="c">선수를 <b>꾹 눌러</b> 경기장으로 끌어놓을 수도 있습니다</span><span class="sp"></span>
+      <button class="btn" id="poolClose">닫기</button></div>`);
+  renderPoolList();
+  $("#posFilter").addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return; poolFilter=b.dataset.pos; renderPoolList(); });
+  $("#poolClose").addEventListener("click",closeSheet);
+}
+
+/* ── 팀 지시 (실제 앱 deck/DirectiveRail.tsx 의 teamPrompt + 팀 세부 조정) ── */
+const TUNE = [["라인","보통"],["압박","강함"],["템포","보통"],["폭","보통"]];
+function openTeamPrompt(){
+  openSheet(`<h4><span class="mini" style="font-size:9px;font-weight:900;color:#0f1115;background:#7f8da3;border-radius:4px;padding:1px 5px">TEAM</span>
+      팀 지시 <span class="sub">선수를 누르면 그 선수 한마디로</span></h4>
+    <textarea id="teamPrompt" placeholder="팀 전체에 내릴 작전 (예: 초반부터 강하게 압박, 역습 위주)">${teamPrompt.replace(/</g,"&lt;")}</textarea>
+    <div class="railRow">
+      <span class="c" id="tpCount">${teamPrompt.length} / 500</span><span class="sp"></span>
+      <button class="tuneToggle" id="btnTune" aria-expanded="false">⚙ 팀 세부 조정 <span class="th">라인 · 압박 · 템포 · 폭</span> <span id="tuneCaret">▸</span></button>
+    </div>
+    <div class="tunePanel" id="tunePanel" hidden>
+      ${TUNE.map(([k,v],i)=>`<div class="tuneRow"><span class="k">${k}</span><input type="range" min="0" max="4" value="${i===1?3:2}" /><span class="v">${v}</span></div>`).join("")}
+    </div>
+    <div class="sayRow" style="margin-top:9px"><span class="sp"></span>
+      <button class="btn" id="tpCancel">취소</button><button class="btn pri" id="tpSave">저장</button></div>`);
+  const tp = $("#teamPrompt"); tp.focus(); tp.setSelectionRange(tp.value.length,tp.value.length);
+  tp.addEventListener("input",()=>{ if(tp.value.length>500) tp.value=tp.value.slice(0,500); $("#tpCount").textContent=`${tp.value.length} / 500`; });
+  $("#btnTune").addEventListener("click",()=>{
+    const on = $("#tunePanel").hidden;
+    $("#tunePanel").hidden = !on; $("#btnTune").setAttribute("aria-expanded", on?"true":"false");
+    $("#tuneCaret").textContent = on ? "▾" : "▸";
+  });
+  $("#tpCancel").addEventListener("click",closeSheet);
+  $("#tpSave").addEventListener("click",()=>{ teamPrompt = tp.value; closeSheet(); toast(teamPrompt?"팀 지시를 저장했습니다.":"팀 지시를 비웠습니다."); });
+}
+
+function openInfo(pid){
+  const p=BY_ID.get(pid);
+  const bars = [["전력",p.ovr],["컨디션",Math.round(p.cond*100)],["포지션 적합",92]];
+  openSheet(`<h4>${p.n} <span class="sub"><span class="gradeDot" style="background:${GRADE_COLOR[p.g]}"></span>${p.g} · ${p.pos}</span></h4>
+    ${bars.map(([k,v])=>`<div class="statRow"><span class="k">${k}</span><span class="bar"><i style="width:${v}%"></i></span><span class="v">${v}</span></div>`).join("")}
+    ${p.up?`<div class="upCard"><b>↑ 강화 가능</b> — 지금 강화 선택지가 도착해 있습니다. 누르면 스탯을 하나 올릴 수 있어요.<div style="margin-top:8px"><button class="btn pri sm" id="goGrow">강화하러 가기</button></div></div>`
+          :`<div class="note" style="margin:9px 0">지금은 강화할 것이 없습니다.</div>`}
+    <div class="sayRow"><span class="sp"></span><button class="btn" id="infoClose">닫기</button></div>`);
+  $("#infoClose").addEventListener("click",closeSheet);
+  const g=$("#goGrow"); if(g) g.addEventListener("click",()=>{ closeSheet(); toast("(목업) 강화 화면으로 이동합니다."); });
+}
+sheetBody.addEventListener("click",e=>{
+  const b = e.target.closest("[data-act]"); if(!b) return;
+  const pid=b.dataset.pid;
+  if(b.dataset.act==="close") return closeSheet();
+  if(b.dataset.act==="say") return openSay(pid);
+  if(b.dataset.act==="info") return openInfo(pid);
+  if(b.dataset.act==="move"){ pending={playerId:pid}; closeSheet(); toast("자리를 누르세요. 선수가 있는 자리를 누르면 맞바뀝니다."); render(); return; }
+  if(b.dataset.act==="remove"){ draft.slots=draft.slots.filter(s=>s.playerId!==pid); closeSheet(); toast(`${BY_ID.get(pid).n} 을(를) 명단에서 뺐습니다.`); }
+});
+
+let toastT=null;
+function toast(msg){ const t=$("#toast"); t.textContent=msg; t.dataset.on="1"; clearTimeout(toastT); toastT=setTimeout(()=>t.dataset.on="0",2600); }
+
+/* ══════════════════ 제스처 (탭 / 꾹 누름 드래그) ══════════════════ */
+const ghost=$("#ghost");
+let g = null; // {pid, startX, startY, grabbed, timer, touch}
+
+function slotAt(x,y){
+  const el = document.elementFromPoint(x,y); if(!el) return null;
+  return el.closest(".slot,.bcell");
+}
+function clearOver(){ document.querySelectorAll('[data-over="1"]').forEach(e=>e.dataset.over="0"); }
+
+function beginGrab(){
+  if(!g||g.grabbed) return;
+  g.grabbed = true;
+  /* 시트에서 끌어내기 시작하면 시트는 비켜준다(경기장이 보여야 놓을 수 있다).
+     closeSheet() 는 다시 그리면서 지금 잡고 있는 토큰을 지워버리므로 표시만 내린다. */
+  if(sheet.dataset.on==="1"){ sheet.dataset.on="0"; sheetBack.dataset.on="0"; }
+  const p = BY_ID.get(g.pid);
+  ghost.innerHTML = `<div class="tok" data-pos="${p.pos}" style="transform:scale(1.12)"><div class="disc">${p.n.slice(0,1)}</div><div class="nm">${p.n}</div></div>`;
+  ghost.dataset.on="1"; moveGhost(g.lastX,g.lastY);
+  document.querySelectorAll(".slot,.bcell").forEach(el=>{ el.dataset.target="1"; el.dataset.swap = el.querySelector(".tok")?"1":"0"; });
+  const tk = document.querySelector(`.tok[data-player="${g.pid}"]`); if(tk) tk.dataset.grab="1";
+  if(navigator.vibrate) try{navigator.vibrate(12)}catch(_){}
+}
+function moveGhost(x,y){ ghost.style.left=x+"px"; ghost.style.top=y+"px"; }
+
+function onDown(e){
+  const tok = e.target.closest(".tok[data-player]"); if(!tok) return;
+  if(e.target.closest("[data-entry]")) return;
+  const pid = tok.dataset.player;
+  const touch = e.pointerType === "touch";
+  g = {pid,startX:e.clientX,startY:e.clientY,lastX:e.clientX,lastY:e.clientY,grabbed:false,touch,timer:null,ring:null};
+  if(touch){
+    const ring=document.createElement("span"); ring.className="holdRing"; ring.dataset.phase="holding";
+    const disc = tok.querySelector(".disc"); if(disc){ disc.appendChild(ring); g.ring=ring; }
+    g.timer = setTimeout(()=>{ if(g&&g.ring) g.ring.dataset.phase="grabbed"; beginGrab(); }, TOUCH_ACTIVATION_MS);
+  }
+  window.addEventListener("pointermove",onMove,{passive:false});
+  window.addEventListener("pointerup",onUp,{once:true});
+  window.addEventListener("pointercancel",onUp,{once:true});
+}
+function onMove(e){
+  if(!g) return;
+  g.lastX=e.clientX; g.lastY=e.clientY;
+  const dist = Math.hypot(e.clientX-g.startX, e.clientY-g.startY);
+  if(!g.grabbed){
+    if(g.touch){ if(dist>TOUCH_TOLERANCE_PX){ clearTimeout(g.timer); if(g.ring) g.ring.remove(); g.ring=null; } }
+    else if(dist>MOUSE_TOLERANCE_PX) beginGrab();
+    return;
+  }
+  e.preventDefault();
+  moveGhost(e.clientX,e.clientY);
+  clearOver();
+  const s = slotAt(e.clientX,e.clientY); if(s) s.dataset.over="1";
+}
+function onUp(e){
+  window.removeEventListener("pointermove",onMove);
+  if(!g) return;
+  const cur=g; g=null;
+  clearTimeout(cur.timer); if(cur.ring) cur.ring.remove();
+  ghost.dataset.on="0"; clearOver();
+  if(cur.grabbed){
+    const s = slotAt(e.clientX,e.clientY);
+    if(s){
+      const r = movePlayerToSlot(cur.pid, s.dataset.role, Number(s.dataset.idx));
+      const p = BY_ID.get(cur.pid);
+      if(r==="swap") toast(`${p.n} 과(와) 자리를 맞바꿨습니다.`);
+      else if(r==="bench") toast(`${p.n} 이(가) 그 자리로 들어가고, 있던 선수는 벤치로 갔습니다.`);
+      else if(r==="drop") toast(`${p.n} 이(가) 그 자리로 들어가고, 벤치가 꽉 차 있던 선수는 명단에서 빠졌습니다.`);
+      else if(r==="place") toast(`${p.n} 을(를) 그 자리에 놓았습니다.`);
+    }
+    pending=null; render(); return;
+  }
+  const dist = Math.hypot(e.clientX-cur.startX, e.clientY-cur.startY);
+  if(dist<=TOUCH_TOLERANCE_PX) openMenu(cur.pid);
+  render();
+}
+document.getElementById("phone").addEventListener("pointerdown",onDown);
+
+/* 슬롯 탭 — 배치 대기 중이면 그 자리로 */
+document.getElementById("phone").addEventListener("click",e=>{
+  const ent = e.target.closest("[data-entry]");
+  if(ent){ pending={playerId:ent.dataset.entry}; closeSheet(); toast("자리를 누르세요. 선수가 있는 자리를 누르면 맞바꿉니다."); render(); return; }
+  const cell = e.target.closest(".slot,.bcell");
+  if(!cell) return;
+  if(pending){
+    const pid = pending.playerId; pending=null;
+    const r = movePlayerToSlot(pid, cell.dataset.role, Number(cell.dataset.idx));
+    const p = BY_ID.get(pid);
+    toast(r==="swap"?`${p.n} 과(와) 자리를 맞바꿨습니다.`
+      : r==="bench"?`${p.n} 이(가) 들어가고 밀린 선수는 벤치로 갔습니다.`
+      : r==="drop"?`${p.n} 이(가) 들어가고 벤치가 꽉 차 밀린 선수는 명단에서 빠졌습니다.`
+      : `${p.n} 을(를) 그 자리에 놓았습니다.`);
+    render(); return;
+  }
+  if(!cell.querySelector(".tok")){   /* 빈 자리 탭 → 보유 선수 시트가 그 포지션으로 올라온다 */
+    const lb = cell.querySelector(".posTag")?.textContent || null;
+    openPool(lb);
+  }
+});
+$("#btnPool").addEventListener("click",()=>openPool(null));
+document.getElementById("bannerCancel").addEventListener("click",()=>{ pending=null; render(); });
+
+/* ══════════════════ 버튼 ══════════════════ */
+$("#btnFill").addEventListener("click",()=>{
+  const before = teamPower();
+  const r = fillEmptySlots();
+  render();
+  toast(r.placed ? `빈 자리 ${r.placed}칸을 채웠습니다. 전력 ${before} → ${teamPower()}${r.said?` · 한마디 없던 ${r.said}명에게 기본 문구를 넣었습니다.`:""} (이미 놓인 선수는 그대로)`
+                 : "채울 빈 자리가 없습니다.");
+});
+$("#btnAuto").addEventListener("click",()=>{
+  const r = autoBuild(); render();
+  const tail = choice.q2==="ㄷ" ? `한마디 ${r.over}명 전부 새로 씀(기존 문장 사라짐)`
+             : choice.q2==="ㄴ" ? `한마디 ${r.kept}명 유지 · 빈 칸 ${r.filled}명 기본 문구로 채움`
+             : `한마디 ${r.kept}명 전부 그대로 유지`;
+  toast(`최고 전력으로 다시 짰습니다. 전력 ${r.before} → ${r.after} · ${tail}`);
+});
+$("#btnSave").addEventListener("click",()=>toast("(목업) 저장 동작은 흉내만 냅니다."));
+/* 포메이션 — 실제 앱 deck/TeamSheetBar.tsx 의 select 와 같다. 슬롯 번호 공간(0~10)이 같아
+   선수는 그대로 있고 자리만 다시 배치된다(apps/web 도 같은 성질). */
+$("#formation").addEventListener("change",e=>{
+  draft.formation = e.target.value; pending=null; render();
+  toast(`포메이션을 ${e.target.value} 로 바꿨습니다 — 선수는 그대로, 자리만 다시 배치됩니다.`);
+});
+$("#btnTeam").addEventListener("click",openTeamPrompt);
+$("#btnTuneBar").addEventListener("click",()=>{ openTeamPrompt(); $("#btnTune").click(); });
+$("#btnPoolInTab").addEventListener("click",()=>openPool(null));
+
+/* ══════════════════ 하단 구조 1안(책갈피 탭) / 2안(버튼 바) ══════════════════ */
+function setDeckTab(p){
+  deckTab = p;
+  document.querySelectorAll("#tabRow button").forEach(b=>b.dataset.on = b.dataset.p===p?"1":"0");
+  document.querySelectorAll(".tabPanel").forEach(el=>el.hidden = el.dataset.p!==p);
+  requestAnimationFrame(measureRatio);
+}
+$("#tabRow").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b) setDeckTab(b.dataset.p); });
+
+function applyLayout(v){
+  choice.layout = v;
+  const tabs = v==="tabs";
+  $("#phone").dataset.layout = v;
+  $("#deckTabs").hidden = !tabs;
+  $("#poolBar").hidden = tabs;
+  /* 벤치는 DOM 을 하나만 유지하고 **자리를 옮긴다** — 두 벌 만들면 렌더가 갈라진다.
+     1안이면 [후보] 탭 안으로, 2안이면 경기장 바로 아래로 돌아간다. */
+  if(tabs){ $("#benchHost").appendChild($("#benchWrap")); setDeckTab(deckTab); }
+  else $("#stage").insertBefore($("#benchWrap"), $(".stageSpacer"));
+  document.querySelectorAll("#q5opts .opt").forEach(o=>o.dataset.on = (o.dataset.v===v)?"1":"0");
+  $("#liveQ5").textContent = tabs ? "1안 — 책갈피 탭" : "2안 — 하단 버튼 바";
+  render(); requestAnimationFrame(measureRatio); syncSum(); save();
+}
+document.getElementById("q5opts").addEventListener("click",e=>{ const o=e.target.closest(".opt"); if(o) applyLayout(o.dataset.v); });
+$("#layoutToggle").addEventListener("click",()=>applyLayout(choice.layout==="tabs"?"buttons":"tabs"));
+
+/* 1안의 인라인 프롬프트 — 시트/모달의 것과 같은 값을 본다(두 입력이 갈라지지 않게) */
+$("#teamPromptInline").addEventListener("input",e=>{
+  if(e.target.value.length>500) e.target.value = e.target.value.slice(0,500);
+  teamPrompt = e.target.value; render();
+});
+$("#btnReset").addEventListener("click",()=>{ draft=initialDraft(); pending=null; selected=null; render(); toast("보드를 처음 상태로 되돌렸습니다."); });
+/* ══════════════════ 노브 · 선택 ══════════════════ */
+/* 보유 선수가 모달로 빠지면서 화면 아래가 비었다 → 기본값은 고정 비율이 아니라
+   **"경기장이 남는 세로를 전부 가져간다"**(choice.q3 = "auto"). 고정값도 눌러볼 수 있게 남긴다. */
+function applyRatio(v){
+  choice.q3 = v;
+  const el = $("#pitch");
+  /* 상한이지 고정이 아니다 — 화면이 작으면 그보다 작아지고, 크면 v 에서 멈춘다.
+     멈춘 뒤 남는 세로는 .stageSpacer 가 여백으로 들고 있는다(숨기지 않는다). */
+  el.style.flex="1 1 auto";
+  const cap = v==="auto" ? "" : Math.round((390-16)*(v/68))+"px";
+  el.style.height = cap; el.style.maxHeight = cap;
+  if(v!=="auto") $("#ratio").value = v;
+  document.querySelectorAll("#q3opts .opt").forEach(o=>o.dataset.on = (String(o.dataset.v)===String(v))?"1":"0");
+  requestAnimationFrame(measureRatio);
+  syncSum();
+}
+/* 실측 — 화면에 실제로 그려진 경기장의 세로:가로를 68 기준으로 환산한다(추정 금지) */
+function measureRatio(){
+  const r = $("#pitch").getBoundingClientRect();
+  const ratio = r.width>0 ? Math.round(68 * r.height / r.width) : 0;
+  choice.pitchRatio = ratio;
+  /* 여백 = 경기장 영역(stage)에서 마지막 내용 아래로 **실제로 비어 있는 자리**.
+     1안은 벤치가 탭 안으로 가므로 마지막 내용이 경기장이고, 2안은 벤치다. */
+  const stage = $("#stage").getBoundingClientRect();
+  const lastEl = $("#stage").contains($("#benchWrap")) ? $("#benchWrap") : $("#pitch");
+  const gap = Math.max(0, Math.round(stage.bottom - lastEl.getBoundingClientRect().bottom));
+  choice.spacer = gap;
+  const txt = `68 : ${ratio}${choice.q3==="auto"?" (남는 세로 전부)":` (상한 68:${choice.q3})`}${gap>4?` · 아래 여백 ${gap}px`:""}`;
+  $("#ratioV").textContent = txt; $("#liveQ3").textContent = txt;
+  syncSum();
+}
+function applySurface(v){
+  choice.surface = v;
+  $("#sheet").dataset.mode = v;
+  document.querySelectorAll("#q4opts .opt").forEach(o=>o.dataset.on = (o.dataset.v===v)?"1":"0");
+  $("#liveQ4").textContent = v==="sheet" ? "시트(아래에서 올라옴)" : "모달(가운데 팝업)";
+  syncSum(); save();
+}
+document.getElementById("q4opts").addEventListener("click",e=>{ const o=e.target.closest(".opt"); if(o) applySurface(o.dataset.v); });
+$("#surfaceToggle").addEventListener("click",()=>applySurface(choice.surface==="sheet"?"modal":"sheet"));
+$("#ratio").addEventListener("input",e=>applyRatio(Number(e.target.value)));
+$("#optGrowth").addEventListener("change",e=>{choice.growth=e.target.checked; render(); syncSum();});
+$("#optFillHide").addEventListener("change",e=>{choice.fillHide=e.target.checked; render(); syncSum();});
+
+function pick(group,val){
+  choice[group]=val;
+  document.querySelectorAll(`#${group}opts .opt`).forEach(o=>o.dataset.on = (o.dataset.v===val)?"1":"0");
+  if(group==="q1") $("#liveQ1").textContent = val+"안";
+  if(group==="q2") $("#liveQ2").textContent = val+"안";
+  syncSum(); save();
+}
+["q1","q2"].forEach(gr=>document.getElementById(gr+"opts").addEventListener("click",e=>{
+  const o=e.target.closest(".opt"); if(o) pick(gr,o.dataset.v);
+}));
+document.getElementById("q3opts").addEventListener("click",e=>{
+  const o=e.target.closest(".opt"); if(!o) return;
+  applyRatio(o.dataset.v==="auto" ? "auto" : Number(o.dataset.v)); save();
+});
+
+const Q1TXT = {A:"A안 — 자리 옮기기 / 한마디 쓰기 / 선수 정보 / 닫기",B:"B안 — 원문 이름 그대로 4개",C:"C안 — A안 + 명단에서 빼기"};
+const Q2TXT = {"ㄱ":"ㄱ안 — 한마디 손대지 않음","ㄴ":"ㄴ안 — 빈 칸만 기본 문구","ㄷ":"ㄷ안 — 전부 새로 씀"};
+const DEFAULTS = {q1:"A",q2:"ㄴ",q3:68,surface:"sheet",layout:"tabs"};
+function syncSum(){
+  const s1=$("#s1"), s2=$("#s2"), s3=$("#s3");
+  const mark = (el,val,key)=>{ el.className = "vl" + (String(val)===String(DEFAULTS[key]) ? "" : " chg"); };
+  s1.textContent = Q1TXT[choice.q1]; mark(s1,choice.q1,"q1");
+  s2.textContent = Q2TXT[choice.q2]; mark(s2,choice.q2,"q2");
+  s3.textContent = choice.q3==="auto" ? `상한 없음 (실측 68 : ${choice.pitchRatio})`
+    : `68 : ${choice.q3} 까지 (실측 68 : ${choice.pitchRatio} · 아래 여백 ${choice.spacer||0}px)`;
+  mark(s3,choice.q3,"q3");
+  const s4=$("#s4"); s4.textContent = choice.surface==="sheet" ? "시트 — 아래에서 올라옴" : "모달 — 가운데 팝업";
+  mark(s4,choice.surface,"surface");
+  const s5=$("#s5"); s5.textContent = choice.layout==="tabs" ? "1안 — 책갈피 탭(프롬프트 펼침)" : "2안 — 하단 버튼 + 아이콘 강조";
+  mark(s5,choice.layout,"layout");
+  $("#s6").textContent = `강화표시 ${choice.growth?"켬":"끔"} · 자동채우기 ${choice.fillHide?"빈칸때만":"항상"}`;
+  const same = choice.q1===DEFAULTS.q1 && choice.q2===DEFAULTS.q2 && String(choice.q3)===String(DEFAULTS.q3)
+    && choice.surface===DEFAULTS.surface && choice.layout===DEFAULTS.layout;
+  $("#sumVerdict").textContent = same
+    ? "지금 화면은 제안한 그대로입니다 — 이대로 괜찮으면 “OK” 한 마디면 됩니다."
+    : "제안과 다르게 바꾸셨습니다 — 아래 줄을 그대로 주시면 그 값으로 만듭니다.";
+  $("#sumVerdict").dataset.same = same ? "1" : "0";
+  const q3s = choice.q3==="auto" ? `상한없음(실측 68:${choice.pitchRatio})` : `68:${choice.q3}까지(실측 68:${choice.pitchRatio}·여백 ${choice.spacer||0}px)`;
+  const str = `메뉴=${choice.q1}안 · auto한마디=${choice.q2}안 · 경기장=${q3s} · 뜨는방식=${choice.surface==="sheet"?"시트":"모달"} · 하단=${choice.layout==="tabs"?"1안탭":"2안버튼"} · 강화표시=${choice.growth?"켬":"끔"}`;
+  $("#sumStr").value=str; $("#stickyStr").textContent = (same?"제안 그대로 — ":"바꿈 — ")+str;
+}
+$("#copyBtn").addEventListener("click",async()=>{
+  try{ await navigator.clipboard.writeText($("#sumStr").value); toastTop("복사했습니다"); }
+  catch(_){ $("#sumStr").select(); document.execCommand("copy"); toastTop("복사했습니다"); }
+});
+function toastTop(m){ const b=$("#copyBtn"); const o=b.textContent; b.textContent=m; setTimeout(()=>b.textContent=o,1200); }
+
+/* 탭 */
+function go(t){
+  document.querySelectorAll("#tabs button").forEach(b=>b.setAttribute("aria-selected", b.dataset.t===t ? "true":"false"));
+  document.querySelectorAll("section.pane").forEach(s=>s.classList.toggle("on", s.id==="pane-"+t));
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+document.getElementById("tabs").addEventListener("click",e=>{ const b=e.target.closest("button"); if(b&&b.dataset.t) go(b.dataset.t); });
+$("#focusOn").addEventListener("click",()=>{ go("proto"); document.body.classList.add("focus"); requestAnimationFrame(measureRatio); });
+$("#focusOff").addEventListener("click",()=>{ document.body.classList.remove("focus"); requestAnimationFrame(measureRatio); });
+$("#stickyGo").addEventListener("click",()=>go("sum"));
+
+/* 선택 기억(로컬만) */
+function save(){ try{ localStorage.setItem("hmb.mock455", JSON.stringify(choice)); }catch(_){} }
+function load(){
+  try{
+    const j=JSON.parse(localStorage.getItem("hmb.mock455")||"{}");
+    if(j.q1) pick("q1",j.q1); if(j.q2) pick("q2",j.q2);
+    if(j.q3) applyRatio(j.q3);
+    if(j.surface) applySurface(j.surface);
+    if(j.layout) applyLayout(j.layout);
+    if(typeof j.growth==="boolean"){ choice.growth=j.growth; $("#optGrowth").checked=j.growth; }
+    if(typeof j.fillHide==="boolean"){ choice.fillHide=j.fillHide; $("#optFillHide").checked=j.fillHide; }
+  }catch(_){}
+}
+["input","change"].forEach(ev=>document.addEventListener(ev,()=>save()));
+
+pick("q1",choice.q1); pick("q2",choice.q2);      // 정한 값이 처음부터 켜져 있게
+$("#formation").value = draft.formation;
+applySurface(choice.surface); applyLayout(choice.layout);
+load(); applyRatio(choice.q3); render(); measureRatio(); syncSum();
+window.addEventListener("resize",measureRatio);
+</script>
+</body>
+</html>

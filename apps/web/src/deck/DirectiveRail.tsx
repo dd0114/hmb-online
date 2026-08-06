@@ -59,6 +59,18 @@ export interface DirectiveRailProps {
    * 만져도 아무 데도 안 가는 손잡이를 남기지 않는다. 서버가 받게 되면 이 플래그만 내리면 된다.
    */
   hideTeamTune?: boolean;
+  /**
+   * **레일의 어느 조각을 그릴 것인가**(#455 A1) — 기본 `"all"` = 지금까지의 모양(프롬프트 + ⚙ 세부조정).
+   *
+   * 덱셋팅의 책갈피 탭은 그 둘을 **다른 탭**에 앉힌다(hero 확정 ⑤: 전체 지시 = 1순위 · 세부 전술 =
+   * 3순위). 그래서 조각을 고를 축이 필요하다:
+   *   · `"prompt"` — 헤드 + 프롬프트만. 선수를 고른 상태면 **선수 레일**이 여기 뜬다(지금과 동일).
+   *   · `"tune"`   — 팀 세부조정만. **선수 선택과 무관하게 팀 다이얼**이다(전술은 팀 단위라서).
+   *
+   * ⚠️ 두 조각은 **서로 겹치지 않는다** — 같은 화면에 둘을 같이 렌더해도 testid 가 중복되지 않는다.
+   *    쪼갠 이유가 그것이고, 겹치게 만들면 `rail-head` 가 두 벌이 되어 기존 계약이 흔들린다.
+   */
+  section?: "all" | "prompt" | "tune";
   /** 라인업 잠금(감독시간) — [덱에서 제거] 처럼 로스터를 바꾸는 액션을 감춘다. */
   lockRoster?: boolean;
   /** 프롬프트 아래에 붙는 화면별 안내(감독시간 교체 안내 등). */
@@ -119,14 +131,22 @@ export function DirectiveRail(props: DirectiveRailProps) {
    */
   const [teamTuneOpen, setTeamTuneOpen] = useState(false);
   const [playerTuneOpen, setPlayerTuneOpen] = useState(false);
+  const section = props.section ?? "all";
+  /**
+   * `"tune"` 조각은 **선수 선택을 보지 않는다** — 전술 다이얼(라인·압박·템포·폭)은 팀 단위 값이라
+   * 선수를 고른 동안 그 탭이 비면 유저는 "세부 전술이 사라졌다"로 읽는다.
+   */
+  const showPlayer = Boolean(player) && section !== "tune";
   return (
     <section
-      id="directive-rail"
+      /* ⚠️ 프롬프트 조각이 계속 `directive-rail` 이다 — 그게 이 화면의 레일이고, 이름을 바꾸면
+         #244·#442 계약이 selector 부재로 죽는다. 새 이름은 **새로 생긴 조각**에만 준다. */
+      id={section === "tune" ? undefined : "directive-rail"}
       className={styles.rail}
-      data-testid="directive-rail"
-      data-mode={player ? "player" : "team"}
+      data-testid={section === "tune" ? "directive-rail-tune" : "directive-rail"}
+      data-mode={showPlayer ? "player" : "team"}
     >
-      {player ? (
+      {showPlayer && player ? (
         <PlayerContext
           key={player.id}
           {...props}
@@ -150,8 +170,16 @@ interface TuneToggleProps {
 function TeamContext(props: DirectiveRailProps & TuneToggleProps) {
   const { tactics, teamPrompt, aiManaged, onTacticsChange, onTeamPromptChange, onToggleAi,
     tuneOpen, onToggleTune } = props;
+  const section = props.section ?? "all";
+  /**
+   * `"tune"` 조각에는 **⚙ 토글이 없다** — 그 조각은 이미 [세부 전술] 탭 **뒤**에 있고(#455 A1 ⑤),
+   * 탭 안에 접힘을 하나 더 두면 같은 것을 두 번 여는 꼴이다. 접힘의 역할을 탭이 가져간 것이지
+   * "세부조정을 앞으로 꺼낸 것"이 아니다 — 3순위라는 위계는 그대로다.
+   */
+  const tuneAlwaysOpen = section === "tune";
   return (
     <>
+      {section !== "tune" && (
       <div className={styles.head} data-testid="rail-head">
         <span className={styles.mini}>TEAM</span>
         <span className={styles.who}>
@@ -159,10 +187,12 @@ function TeamContext(props: DirectiveRailProps & TuneToggleProps) {
           <span>선수를 누르면 그 선수 지시로 바뀐다</span>
         </span>
       </div>
+      )}
 
       <div className={styles.body} data-rail-body>
         {/* ① 프롬프트 = 1급 (#244). 일반 축구게임이 세부조정을 두던 자리를 프롬프트가 차지한다.
             블록은 감독시간과 **같은 컴포넌트**를 쓴다(common/PromptBlock) — 모양이 갈라지지 않게. */}
+        {section !== "tune" && (
         <PromptBlock
           title={props.promptScope === "halftime" ? "팀 전체에게 (후반)" : "팀 전체에게"}
           value={teamPrompt}
@@ -175,12 +205,15 @@ function TeamContext(props: DirectiveRailProps & TuneToggleProps) {
           }
           testId="editor-team-prompt"
         />
+        )}
 
-        {props.note}
+        {section !== "tune" && props.note}
 
         {/* ② 세부조정 = 옆(버튼 뒤). 지우지 않는다 — 접혀 있을 뿐이고 값은 그대로 전송된다.
             단 `hideTeamTune`(감독시간)이면 아예 그리지 않는다 — 전송 경로가 없는 손잡이라서(#254). */}
-        {!props.hideTeamTune && (
+        {/* ⚙ 토글은 **한 화면에 프롬프트와 다이얼이 같이 있는** `"all"` 에서만 뜻이 있다.
+            탭으로 갈린 뒤에는 ①에는 다이얼이 없고 ③에는 접을 이유가 없다. */}
+        {!props.hideTeamTune && section === "all" && (
         <button
           type="button"
           className={styles.tuneToggle}
@@ -200,7 +233,7 @@ function TeamContext(props: DirectiveRailProps & TuneToggleProps) {
         </button>
         )}
 
-        {!props.hideTeamTune && tuneOpen && (
+        {!props.hideTeamTune && section !== "prompt" && (tuneOpen || tuneAlwaysOpen) && (
         <div className={styles.group} id="team-tactics-panel" data-testid="team-tactics-panel">
           <span className={styles.eyebrow}>
             기본 전술

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { CatalogPlayer } from "../api/hooks";
 import type { ConditionMap } from "../api/v2";
@@ -40,6 +41,20 @@ interface TacticsBoardProps {
   /** 보드 카드 하단 바(초기화 / Auto 배치) — 벤치와 같은 카드 안에 붙는다. */
   footer?: ReactNode;
   /**
+   * **경기장 우측 하단**에 얹는 손잡이 (#455 A3 — [⚡ 자동 채우기], hero 확정 목업 `.autoFill`).
+   *
+   * ⚠️ 왜 `footer` 가 아니라 피치 **안**인가: 확정값이 *"경기장 우측 하단"* 이고, 하단 바는
+   * 탭 레이아웃(폰 덱셋팅)에 **아예 없다**(`DeckEditor` 의 `footer` 주석 — 되살리면 48px 를 먹어
+   * 빈 덱에서 팀 프롬프트가 하단 탭바 밑으로 들어간다). 피치는 세 화면 전부에 있다.
+   *
+   * ⚠️ **여기 얹는 것은 반드시 클릭을 먹어야 하고, 슬롯의 클릭을 뺏으면 안 된다.** 피치 위
+   * 레이어는 이 파일에서 두 번 사고를 냈다(센터서클이 중앙 MF 탭을 삼킨 BL-1 · 빈 상태 CTA 가
+   * 선발 2·3 을 가로챈 #106 R3b). 그래서 자리가 **우측 하단 코너**다 — `starterCoords` 의 최대
+   * 좌표는 x 0.86 / y 0.92(GK, x=0.5)이고 토큰 레이어는 `inset: 32px 10px 36px` 라 그 코너는
+   * 어느 포메이션에서도 슬롯이 앉지 않는다. 자리를 옮기려면 그 사실부터 다시 재라.
+   */
+  autoFill?: ReactNode;
+  /**
    * 선발 0/11 첫 진입 안내(#106 R3b A) — 피치 **위**에 얹힌다. 슬롯 자체는 계속 눌려야 하므로
    * 오버레이는 `pointer-events:none` 이고 그 안의 CTA 만 다시 켠다(TacticsBoard.module.css).
    */
@@ -53,6 +68,25 @@ interface TacticsBoardProps {
    * (교체 모드에서는 다시 편다. 세로가 빡빡한 화면에서 82px 를 그냥 두면 프롬프트가 밀린다.)
    */
   hideBench?: boolean;
+  /**
+   * 벤치 줄을 **다른 DOM 자리로 보낸다**(#455 A1 — 책갈피 탭의 [후보] 탭 안).
+   *
+   * ⚠️ 왜 포털인가: 벤치를 탭 안에서 **다시 그리면** 슬롯·드롭 대상·토큰이 두 벌이 되고, 그때부터
+   * 규칙이 두 곳에 산다(#439 major-2 가 정확히 그 사고였다). `createPortal` 은 React 컨텍스트를
+   * 보존하므로 같은 `DndContext`·같은 `SlotCell` 그대로 자리만 옮긴다.
+   * 안 주면(기본) 지금처럼 보드 카드 안에 붙는다 — 경기전·감독시간은 이 값을 넘기지 않는다.
+   */
+  benchPortal?: HTMLElement | null;
+  /**
+   * **선택 대기(강화 3지선다)가 남아 있는 선수** — 토큰에 `↑` 뱃지 (#455 A2-2).
+   *
+   * ⚠️ **보드는 이 값을 조회하지 않는다.** 출처는 `GET /api/growth/choices` 이고 그걸 부르는 것은
+   * `DeckPage` 다 — `DeckEditor`·`TacticsBoard` 는 덱셋팅·경기전·감독시간 **셋이 공유**하므로,
+   * 여기서 훅을 부르면 그 세 화면 전부에 조회가 붙는다. A1 의 `layout`·A2 의 `playerMenu` 와 같은
+   * **명시 축**이다(화면을 `poolScope`·`placementLocked` 로 추론하지 않는 것과 같은 이유).
+   * 안 주면 뱃지가 없다 = 경기전·감독시간의 오늘 모양 그대로.
+   */
+  growthReadyIds?: ReadonlySet<string>;
 }
 
 function slotDroppableId(role: SlotRole, slotIndex: number): string {
@@ -98,6 +132,8 @@ interface TokenProps {
   selected: boolean;
   numberLabel: string;
   compact?: boolean;
+  /** 선택 대기가 남아 있다 → `↑` (#455 A2-2). */
+  growthReady?: boolean;
 }
 
 /**
@@ -114,7 +150,17 @@ interface TokenProps {
  * 꺼낸 원래 핸들러를 우리 핸들러 안에서 **먼저 호출**한다.
  * ⚠️ 활성화 임계는 `drag-gesture.ts` 한 곳에서 온다(센서와 같은 값) — 갈라지면 링이 거짓말한다.
  */
-function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberLabel, compact, out }: TokenProps) {
+function PlayerToken({
+  playerId,
+  player,
+  hasPrompt,
+  condition,
+  selected,
+  numberLabel,
+  compact,
+  out,
+  growthReady,
+}: TokenProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: playerId });
   const [holding, setHolding] = useState(false);
   const originRef = useRef<{ x: number; y: number } | null>(null);
@@ -210,10 +256,43 @@ function PlayerToken({ playerId, player, hasPrompt, condition, selected, numberL
         <span className={styles.discNum}>{numberLabel}</span>
         {/* 지시(프롬프트) 있음 = 말풍선 점. 이름 옆 5px 점은 이름 말줄임에 같이 잘려 안 보였다. */}
         {hasPrompt ? <span className={styles.sayDot} title="지시 있음" /> : null}
+        {/**
+         * 강화 가능(= 선택 대기 있음) — 디스크 **좌상단** (#455 A2-2).
+         *
+         * ⚠️ 자리가 남은 모서리가 여기뿐이다: 우상단 `sayDot`(지시 있음) · 좌하단 `discNum`(번호) ·
+         *    하단중앙 `outBadge`(감독시간 OUT). 넷이 서로를 안 덮는 것이 이 배치의 전부다.
+         * ⚠️ **`pointer-events:none`** — 제스처를 먹으면 드래그가 죽는다(위 `.holdRing` 과 같은 이유).
+         *    그래서 계약도 "뱃지가 히트테스트의 최상단이다"가 아니라 **"그 사각형 위의 최상단이 이
+         *    토큰이다"** 로 잰다(`p455-a22` 머리말).
+         * ⚠️ testid 접두는 **`growup-`** 이다. `token-` 은 "보드 위 토큰 목록"을 세는 스캐너의
+         *    네임스페이스라(`p439`·`p442`·`p244`·`deck-list-dnd`) 여기에 쓰면 strict mode 위반이
+         *    난다 — A1 이 `token-name-*` 로 실제로 밟았다.
+         */}
+        {growthReady ? (
+          <span
+            className={styles.growBadge}
+            data-testid={`growup-token-${playerId}`}
+            title="강화 가능 — 선택 대기가 남아 있습니다"
+            aria-label="강화 가능"
+          >
+            ↑
+          </span>
+        ) : null}
       </span>
       {/* 보드 토큰 = 밀집 UI(390px 에 11칸) → 짧은 이름 축(#406 요구 6). 선수를 못 찾으면
           `미상 선수` — 구 동작은 여기에 **playerId 를 그대로 찍었다**(`P077`). */}
-      <span className={styles.tokenName}>{playerNameOf(player, "short")}</span>
+      {/* ⚠️ testid 는 계약이 **겹침을 잴 수 있게** 하려고 있다(#455 A1 ②) — 이름표가 아랫줄
+          디스크에 닿는 것은 68/52 하한을 잡을 때 실측 여유가 2px 뿐이던 축이라, 피치를 키우는
+          변경마다 사각형 교차로 재야 한다. 클래스명은 CSS 모듈이 해싱해서 손잡이가 못 된다. */}
+      {/* 이름표 실측 손잡이(#455 A1 ② 겹침 0). ⚠️ **`data-testid` 를 쓰면 안 된다** —
+          `token-` 접두는 이 리포에서 "보드 위 토큰 목록"을 세는 스캐너의 것이라(`p439`·`p442`·
+          `p244`·`deck-list-dnd` 가 `[data-testid^="token-"]` 로 훑는다) 이름표까지 토큰으로
+          잡혀 strict mode 위반이 난다(실측: `board-slot-starter-10` 에서 2개 매치).
+          `pool-assign-*` 를 `pick-` 으로 부르지 말라던 #442 의 함정과 같은 부류다.
+          그래서 상호작용 대상이 아닌 **측정 전용 속성**으로 뺀다. */}
+      <span className={styles.tokenName} data-token-name={playerId}>
+        {playerNameOf(player, "short")}
+      </span>
       {/* 교체로 빠지는 선수 — 60초 안에 "누굴 뺐더라"를 보드에서 바로 읽어야 한다(#244). */}
       {out && (
         <span className={styles.outBadge} data-testid={`token-out-${playerId}`}>
@@ -243,13 +322,14 @@ interface SlotCellProps {
   style?: React.CSSProperties;
   className: string;
   compact?: boolean;
+  growthReadyIds?: ReadonlySet<string>;
 }
 
 /** A droppable slot on the pitch or bench. Tap = 탭-투-플레이스(선택/배치/교체, tap-place.ts). */
 function SlotCell(props: SlotCellProps) {
   const {
     draft, playersById, conditions, selectedSlot, selectedPlayerId, pendingPlace, subbedOut,
-    onSlotTap, role, slotIndex, style, className, compact,
+    onSlotTap, role, slotIndex, style, className, compact, growthReadyIds,
   } = props;
   const { setNodeRef, isOver } = useDroppable({ id: slotDroppableId(role, slotIndex) });
   const slot = getSlot(draft, role, slotIndex);
@@ -301,6 +381,7 @@ function SlotCell(props: SlotCellProps) {
           numberLabel={slotNumberLabel(role, slotIndex)}
           compact={compact}
           out={subbedOut?.includes(slot.playerId)}
+          growthReady={growthReadyIds?.has(slot.playerId)}
         />
       ) : (
         <span className={styles.emptyMark}>+</span>
@@ -332,7 +413,28 @@ export function TacticsBoard(props: TacticsBoardProps) {
     pendingPlace: props.pendingPlace,
     subbedOut: props.subbedOut,
     onSlotTap: props.onSlotTap,
+    growthReadyIds: props.growthReadyIds,
   };
+
+  const benchSection = (
+    <div className={styles.benchSection} data-testid="board-bench-section">
+      <span className={styles.benchLabel}>
+        벤치 {benchCount} / {BENCH_MAX}
+      </span>
+      <div className={styles.benchRow} data-testid="board-bench">
+        {Array.from({ length: BENCH_MAX }, (_, i) => (
+          <SlotCell
+            key={`bench-${i}`}
+            {...cellProps}
+            role="bench"
+            slotIndex={i}
+            className={styles.benchCell!}
+            compact
+          />
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div
@@ -375,28 +477,17 @@ export function TacticsBoard(props: TacticsBoardProps) {
             {emptyOverlay}
           </div>
         )}
+        {/* #455 A3 — 빈 상태 안내(`.empty`, z-index 3) **위**에 온다. 빈 덱이 이 버튼의 주요
+            사용처인데 안내 카드가 덮으면 그 자리에서 못 누른다(그 카드는 `pointer-events:none`
+            이지만 자기 배경은 그린다). 계약이 `elementFromPoint` 로 그 순서를 잰다. */}
+        {props.autoFill && <div className={styles.corner}>{props.autoFill}</div>}
       </div>
 
-      {/* 벤치 = 보드 카드의 일부 (#106: 별도 블록 금지) */}
-      {!props.hideBench && (
-      <div className={styles.benchSection} data-testid="board-bench-section">
-        <span className={styles.benchLabel}>
-          벤치 {benchCount} / {BENCH_MAX}
-        </span>
-        <div className={styles.benchRow} data-testid="board-bench">
-          {Array.from({ length: BENCH_MAX }, (_, i) => (
-            <SlotCell
-              key={`bench-${i}`}
-              {...cellProps}
-              role="bench"
-              slotIndex={i}
-              className={styles.benchCell!}
-              compact
-            />
-          ))}
-        </div>
-      </div>
-      )}
+      {/* 벤치 = 보드 카드의 일부 (#106: 별도 블록 금지).
+          단 `benchPortal` 이 오면 **그 자리로 옮긴다**(#455 A1 [후보] 탭) — 그리는 코드는 하나다. */}
+      {!props.hideBench && (props.benchPortal
+        ? createPortal(benchSection, props.benchPortal)
+        : benchSection)}
 
       {footer && <div className={styles.boardBar}>{footer}</div>}
     </div>

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mockAll } from "./p286-mocks";
+import { openTuneTab } from "./deck-tabs";
+import { wheelUntilHit } from "./deck-mock";
 
 /**
  * #286 W2 — 홈/내비 개편 **계약**. 구현 전에 먼저 박았다(E2E-TDD, 루트 §2-3).
@@ -244,9 +246,23 @@ test("셀 게 없으면 뱃지를 그리지 않는다", async ({ page }) => {
 test("팀 사기 위젯이 덱에 살아 있다 — 로비와 함께 사라지지 않았다", async ({ page }) => {
   // 로비를 걷어내면 거기 있던 위젯은 **정의만 남고 화면에서 조용히 없어진다**(독립검증 BL-1 이
   // 실제로 그 상태를 잡았다). 설계 §3.1 이 행선지를 [덱]으로 지정했고, 이 계약이 그걸 지킨다.
+  //
+  // ⚠️ **이 파일은 `beforeEach` 가 390×844 를 건다** — 즉 여기서 보는 `/deck` 은 #455 A1 의
+  //    **책갈피 탭 레이아웃**이고, 팀 사기는 hero 확정 배치대로 `[⚙ 세부 전술]` 탭 꼬리에 있다
+  //    (사기는 곁눈질로 보는 값 · 프롬프트가 1순위, #244). 그래서 **탭을 열고** 본다.
+  // ⚠️ 약화가 아니다 — 존재(`toHaveCount(1)`)를 먼저 재고, 그 다음 열어서 **실제로 보이는지**
+  //    본다. 소비처가 0 이 되면 첫 단언에서, 탭 안에서 안 그려지면 둘째 단언에서 죽는다.
+  //    데스크탑(stack)에서 **탭을 열지 않고도** 보이는지는 `p455-a1-layout-band.spec.ts` ⑨ 가
+  //    같이 잰다(A1 초판이 그 갈래를 통째로 잃었고 이 스펙이 그때 red 였다).
   await mockAll(page);
   await page.goto("/deck");
-  await expect(page.getByTestId("team-morale")).toBeVisible();
+  await expect(page.getByTestId("team-morale")).toHaveCount(1);
+  await openTuneTab(page);
+  // ⚠️ `toBeVisible()` 로 쓰지 마라 — 뷰포트 밖을 통과한다. 실제로 이 위젯은 탭을 연 직후
+  //    화면 밖이고(390×844 실측 y832 · navTop 788.5), 그 상태로 계약이 통과하고 있었다
+  //    (#455 2R blocker-B: `left:-9999px` 변이가 45/45 생존). **굴려서 닿는지**로 잰다.
+  const m = await wheelUntilHit(page, "team-morale", { over: "#deck-tabpanel-tune" });
+  expect(m.hit, `[세부 전술] 탭에서 굴리면 팀 사기에 닿는다 — 휠 ${m.wheels}회 후 y=${m.y}`).toBe(true);
 });
 
 test("보유 선수만 보는 뷰가 남아 있다 — 육성 탭이 사라져도", async ({ page }) => {

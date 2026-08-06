@@ -130,3 +130,37 @@ export function fillEmptySlots(draft: DeckDraft, candidates: AutoPlayer[]): Deck
 export function canFillEmptySlots(draft: DeckDraft, candidates: AutoPlayer[]): boolean {
   return fillEmptySlots(draft, candidates) !== draft;
 }
+
+/**
+ * 노출 판정에서 **"채워야 할 칸"으로 보는 벤치 앞 칸 수** (#455 A3, hero 확정 계약).
+ *
+ * hero: *"7칸 전부로 잡으면 [자동 채우기]가 상시 노출"*. 벤치는 7칸인데 유저가 7명을 다
+ * 채우는 일은 드물어서, 7 로 잡으면 "빈칸이 있을 때만 노출"이라는 규칙 자체가 무효가 된다.
+ * ⚠️ **채우는 범위는 이 값이 아니다** — `fillEmptySlots` 는 계속 `BENCH_MAX`(7)까지 채운다.
+ * 이건 *"버튼을 보여 줄 만큼 비었나"* 라는 **노출** 축이고, 조정 포인트다(값만 바꾸면 된다).
+ */
+export const BENCH_GAP_SLOTS = 3;
+
+/**
+ * 이 덱에 **자동 채우기를 권할 만한 빈 칸**이 있나 — [자동 채우기] 버튼의 **노출** 조건 (#455 A3).
+ *
+ * ⚠️ **`canFillEmptySlots`(활성 조건)와 다른 축이고, 그래서 둘 다 여기 있다.**
+ *   · 이 함수 = *"채워야 할 자리가 비었나"* — **draft 만** 본다. 후보가 없어도 참일 수 있다.
+ *   · `canFillEmptySlots` = *"눌러서 뭐라도 일어나나"* — 후보 목록까지 본다.
+ * 노출을 후보까지 묶어 버리면 **빈 자리가 있는데 화면에 아무 말이 없는 상태**가 생긴다(보유 0명
+ * 신규 유저가 정확히 그 자리다) — 그 상태의 안내는 비활성 버튼 + 사유(`autoHint`)가 맡는다.
+ * 반대로 활성까지 이 함수로 판정하면 **눌러도 아무 일 없는 버튼**이 되살아난다(#439 2R major-2).
+ *
+ * ⚠️ **호출부에서 칸을 따로 세지 마라.** 판정을 두 번 적으면 버튼과 동작이 갈린다
+ * (`canFillEmptySlots` 머리말과 같은 이유) — 그래서 세 화면이 이 한 함수를 공유한다.
+ */
+export function hasEmptySlotGap(draft: DeckDraft): boolean {
+  const starterGap = starterSlotList(draft.formation).some(
+    (s) => !getSlot(draft, "starter", s.slotIndex),
+  );
+  if (starterGap) return true;
+  for (let i = 0; i < BENCH_GAP_SLOTS; i++) {
+    if (!getSlot(draft, "bench", i)) return true;
+  }
+  return false;
+}

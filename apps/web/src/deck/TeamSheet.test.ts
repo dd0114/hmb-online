@@ -462,18 +462,26 @@ describe("⑥ 빈 상태 — 선발 0/11", () => {
     expect(screen.getByTestId("directive-count").textContent).toContain("지시 0/11");
   });
 
-  it("Auto 배치 CTA 가 보드 안에 있고 눌린다", () => {
+  /**
+   * ⚠️ **#455 A3 로 이 자리의 버튼이 바뀌었다** — 빈 상태 전용 CTA(`board-empty-auto`)는 없고,
+   * 손잡이는 경기장 우측 하단 하나(`auto-fill`)뿐이다. 재는 성질은 그대로다: **빈 덱에서
+   * 보드 안에 있고 눌린다**(첫 진입 = 정확히 이 손잡이가 필요한 화면).
+   */
+  it("자동 채우기가 보드 안에 있고 눌린다", () => {
     let calls = 0;
     renderEmpty({ onAuto: () => calls++ });
-    const cta = screen.getByTestId("board-empty-auto");
+    const cta = screen.getByTestId("auto-fill");
     expect(screen.getByTestId("board-card").contains(cta)).toBe(true);
+    // 구 3곳은 되살아나지 않았다(같은 `onAuto` 를 셋이 그리던 상태로 되돌리는 변이를 문다).
+    expect(screen.queryByTestId("board-empty-auto")).toBeNull();
+    expect(screen.queryByTestId("auto-fill-top")).toBeNull();
     fireEvent.click(cta);
     expect(calls).toBe(1);
   });
 
   it("보유 선수 < 11 이면 CTA 는 비활성이지만 직접 배치 길이 열려 있다(막다른 길 금지)", () => {
     renderEmpty({ onAuto: () => {}, autoDisabled: true, autoHint: "보유 선수 부족 (5/11)" });
-    expect((screen.getByTestId("board-empty-auto") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId("auto-fill") as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId("board-empty-note").textContent).toContain("직접 배치");
     // 슬롯은 여전히 눌린다 → 탭-투-플레이스로 한 명 넣으면 안내가 사라진다.
     fireEvent.click(screen.getByTestId("board-slot-starter-0"));
@@ -485,6 +493,81 @@ describe("⑥ 빈 상태 — 선발 0/11", () => {
   it("선발이 하나라도 있으면 안내는 뜨지 않는다", () => {
     renderSheet(placedDraft());
     expect(screen.queryByTestId("board-empty")).toBeNull();
+  });
+});
+
+/**
+ * ⑥ **자동 채우기 = 손잡이 하나** (#455 A3).
+ *
+ * e2e(`p455-a3-auto-fill.spec.ts`)가 실화면·히트테스트로 재는 것과 **다른 축**을 여기서 문다:
+ * 저쪽은 "폰/데스크탑 실화면에서 하나이고 닿나", 여기는 **prop 조합별 분기**다. 특히
+ * `placementLocked`(감독시간) 가드는 e2e 로 재려면 감독시간 목 한 벌이 필요해서, 그 한 줄을
+ * 지우는 변이가 덱·경기전 스펙에서는 **살아남는다**(그 화면들은 잠금이 아니다).
+ */
+describe("⑥ 자동 채우기 — 하나 · 빈칸이 있을 때만", () => {
+  /** 선발 11 + 벤치 앞 3칸 = 이 화면에 "채워야 할 칸"이 없는 덱. */
+  const fullDraft = (): DeckDraft => ({
+    formation: "4-4-2",
+    slots: [
+      ...Array.from({ length: 11 }, (_, i) => ({
+        playerId: `S${i}`, role: "starter" as const, slotIndex: i, promptText: null,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        playerId: `B${i}`, role: "bench" as const, slotIndex: i, promptText: null,
+      })),
+    ],
+  });
+
+  function renderWith(draft: DeckDraft, opts: Record<string, unknown> = {}) {
+    return render(
+      h(function Wrap() {
+        const [state, setState] = useState(initialState(draft));
+        return h(DeckEditor, {
+          state,
+          onChange: setState,
+          aiManaged: false,
+          onToggleAi: () => {},
+          players: PLAYERS,
+          playersById: byId,
+          onAuto: () => {},
+          ...opts,
+        });
+      }),
+    );
+  }
+
+  it("빈칸이 없으면 손잡이가 **없다** (disabled 가 아니라 부재)", () => {
+    renderWith(fullDraft());
+    // 앵커 — 화면은 그려졌다(공허한 null 단언 금지).
+    expect(screen.getByTestId("starter-count").textContent).toBe("선발 11/11");
+    expect(screen.queryByTestId("auto-fill")).toBeNull();
+  });
+
+  it("벤치 **4번째** 칸이 비는 것은 빈칸이 아니다 (hero 확정: 앞 3칸)", () => {
+    // 앞 3칸이 찬 상태 = 위와 같은 덱. 4~7번째가 빈 것은 이 덱의 성질 그 자체다.
+    const d = fullDraft();
+    expect(d.slots.filter((s) => s.role === "bench")).toHaveLength(3);
+    renderWith(d);
+    expect(screen.queryByTestId("auto-fill")).toBeNull();
+  });
+
+  it("벤치 **3번째** 칸이 비면 손잡이가 있다 (경계의 반대편)", () => {
+    const d = fullDraft();
+    d.slots = d.slots.filter((s) => !(s.role === "bench" && s.slotIndex === 2));
+    renderWith(d);
+    expect(screen.getByTestId("auto-fill")).toBeTruthy();
+  });
+
+  it("배치 잠금(감독시간)이면 `onAuto` 를 줘도 손잡이가 없다", () => {
+    renderWith(emptyDraft("4-4-2"), { placementLocked: true });
+    // 앵커 — 잠긴 화면도 보드는 그린다(부재 단언이 "안 그려졌다"로 통과하지 않게).
+    expect(screen.getByTestId("board-card")).toBeTruthy();
+    expect(screen.queryByTestId("auto-fill")).toBeNull();
+  });
+
+  it("`onAuto` 가 없으면(그 화면의 기능이 아니면) 손잡이가 없다", () => {
+    renderSheet(emptyDraft("4-4-2")); // Harness 는 onAuto 를 안 넘긴다
+    expect(screen.queryByTestId("auto-fill")).toBeNull();
   });
 });
 

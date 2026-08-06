@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openCandidatesTab, selectBoardPlayer } from "./deck-tabs";
 
 /**
  * #439 — 폰 덱·선발 UX 근본 수리. **실제 폰 크기 + 실터치**로만 판정한다.
@@ -295,6 +296,7 @@ test("② 경기전 시트에는 벤치 선수만 뜬다 — 나머지는 DOM �
 
 test("② 덱셋팅은 그대로 — 보유 선수 전원이 시트에 있다(대조군)", async ({ page }) => {
   await openDeck(page);
+  await openCandidatesTab(page); // #455 A1: 폰에서 여는 버튼은 [👥 후보] 탭 안
   await page.getByTestId("pool-sheet-open").click();
   await expect(page.getByTestId("player-pool")).toBeVisible();
   for (const id of ["DF1", "MF1", "FW1", "GK1"]) {
@@ -307,10 +309,11 @@ test("③ 경기전에는 [초기화]가 없고 [auto]가 폰에서 보인다", 
   await openBriefing(page);
   await expect(page.getByTestId("board-reset"), "경기전 초기화는 복구 부담이 과대하다(hero)").toHaveCount(0);
 
-  const top = page.getByTestId("auto-fill-top");
-  const board = page.getByTestId("auto-fill");
-  const visible = (await top.isVisible()) ? top : board;
+  /* ⚠️ **#455 A3**: 구판은 `auto-fill-top`(폰) / `auto-fill`(데스크탑) 중 보이는 쪽을 골랐다.
+     이제 자리가 **경기장 우측 하단 하나**라 그 분기가 없다 — 분기를 되살리면 그것이 곧 회귀다. */
+  const visible = page.getByTestId("auto-fill");
   await expect(visible, "폰에서 실제로 보이는 auto 버튼이 있어야 한다").toBeVisible();
+  await expect(page.getByTestId("auto-fill-top"), "구 시트 바 AUTO 는 은퇴했다").toHaveCount(0);
   const box = (await visible.boundingBox())!;
   console.log(`[#439-R3] 경기전 auto 버튼 박스 = ${JSON.stringify(box)}`);
   expect(box.width).toBeGreaterThan(0);
@@ -325,9 +328,8 @@ test("③ 덱셋팅에는 [초기화]가 남아 있다(대조군 — 없앤 것�
 
 // ── ④ auto = 빈 자리만 채운다 + 프롬프트 보존 ────────────────────────────────
 async function clickAuto(page: Page) {
-  const top = page.getByTestId("auto-fill-top");
-  const board = page.getByTestId("auto-fill");
-  const target = (await top.isVisible()) ? top : board;
+  // #455 A3 — 손잡이는 하나(경기장 우측 하단). "보이는 쪽을 누른다" 관용구는 은퇴했다.
+  const target = page.getByTestId("auto-fill");
   await expect(target).toBeEnabled();
   await target.click();
 }
@@ -340,7 +342,9 @@ async function clickAuto(page: Page) {
  * 진입 조건 + 그 조건을 만드는 경로**를 같이 태운다(구 픽스처는 둘 다 건너뛰었다).
  */
 async function vacateSlot(page: Page, playerId: string) {
-  await page.getByTestId(`token-${playerId}`).click();
+  // #455 A2: 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다(경기전은 예전 그대로). 화면이 선언한
+  // `data-layout` 을 읽어 **그 화면에서 참인 경로**를 단언하며 밟는다 — `deck-tabs.ts` 머리말.
+  await selectBoardPlayer(page, playerId);
   await expect(page.getByTestId("rail-remove-player")).toBeVisible();
   await page.getByTestId("rail-remove-player").click();
   await expect(page.getByTestId(`token-${playerId}`), `${playerId} 가 덱에서 빠져야 한다`).toHaveCount(0);
@@ -348,7 +352,7 @@ async function vacateSlot(page: Page, playerId: string) {
 
 /** 레일에서 그 선수의 프롬프트 원문을 읽는다(토큰 탭 → 입력칸 value). */
 async function promptOf(page: Page, playerId: string): Promise<string> {
-  await page.getByTestId(`token-${playerId}`).click();
+  await selectBoardPlayer(page, playerId); // #455 A2 — 위 `vacateSlot` 과 같은 이유
   await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
   return page.getByTestId("rail-prompt-input").inputValue();
 }
@@ -417,6 +421,8 @@ test("④ 덱셋팅 auto 도 같은 규칙 — 빈 자리만 채우고 프롬프
    * 이미 앉아 있다). 덱셋팅에서는 후보가 보유 전체라 **미배치 FW3 가 그 자리로 들어온다**.
    * 규칙을 auto 안에 if 로 넣었다면 이 두 결과를 한 코드로 낼 수 없다.
    */
+  // #455 A1: 폰 덱셋팅에서 벤치 줄은 [👥 후보] 탭 안이다(그리는 코드는 하나 — 포털).
+  await openCandidatesTab(page);
   await expect(page.getByTestId("board-slot-bench-0").getByTestId("token-FW3")).toBeVisible();
 
   expect(await promptOf(page, "MF1")).toBe(MF1_PROMPT);

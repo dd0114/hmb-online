@@ -43,27 +43,33 @@
 }
 
 .boardBtn,
-.boardBtnPrimary {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 12px;
-  min-height: 36px;
-  font-size: 13px;
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  flex: none;
+/* ── #455 A3: [⚡ 자동 채우기] — 경기장 우측 하단 (hero 확정 목업 `.autoFill`) ────────
+   자리는 `TacticsBoard.module.css` 의 `.corner` 가 정하고, 여기서는 **모양만** 정한다.
+   ⚠️ 잔디 위에 뜨는 버튼이라 배경이 불투명해야 읽힌다(반투명이면 스트라이프가 글자를 씹는다).
+   ⚠️ 터치 표적 44px 규칙은 **여기서 지키지 않는다** — 코너에 44px 를 세우면 최전방/측면 슬롯의
+   드롭 여유를 먹는다. 대신 좌우 패딩을 넉넉히 줘 폭으로 표적을 만든다
+   (390×844 실측 **36 × 96.9px**, 히트테스트는 `p455-a3` AC3 가 잰다). */
+.autoFill {
+  padding: 8px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--accent);
+  background: rgba(12, 17, 27, 0.92);
+  color: #dbe7ff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
 }
-.boardBtnPrimary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-weight: 600;
-}
-.boardBtnPrimary:disabled {
+.autoFill:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* 보조 설명 — 기본은 데스크탑 전용.
+   ⚠️ 폰에서는 **비활성일 때만** 편다(`data-when="disabled"`). 터치에는 버튼 `title` 이 안 뜨므로
+   그 상태에서 안 펴면 "빈칸은 있는데 넣을 선수가 없다"가 폰에서 통째로 침묵한다(A3 이 시트 바의
+   `auto-hint-top` 을 비우며 생긴 자리). 활성일 때까지 펴면 탭 레이아웃 세로 예산을 상시로 먹는다. */
 .autoHint {
   display: block;
   margin-top: 6px;
@@ -71,11 +77,8 @@
   color: var(--text-muted);
 }
 
-/* 모바일에서는 AUTO 가 시트 바에 있다(목업) — 보드 하단 바의 Auto/힌트는 중복이라 감춘다.
-   초기화 + 조작 힌트는 남긴다(모바일에서도 필요). */
 @media (max-width: 1023px) {
-  .boardBtnPrimary,
-  .autoHint {
+  .autoHint:not([data-when="disabled"]) {
     display: none;
   }
 }
@@ -221,24 +224,9 @@
   color: var(--text-muted);
   line-height: 1.4;
 }
-/* 빈 상태 CTA — **보드 하단 바**(피치 밖)에 산다. `.boardBtnPrimary`(auto-fill)와 달리
-   모바일에서도 보인다: 첫 진입 = 정확히 이 CTA 가 필요한 화면. R3b blocker-1 참조. */
-.emptyCta {
-  min-height: 44px;
-  padding: 10px 16px;
-  flex: none;
-  white-space: nowrap;
-  border-radius: 10px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: 13px;
-  font-weight: 700;
-}
-.emptyCta:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+/* ⚠️ 구 `.emptyCta`(빈 상태 전용 CTA, `board-empty-auto`)는 **#455 A3 이 없앴다** — 손잡이가
+   `.autoFill` 하나가 되면서 "첫 진입 전용 버튼"이라는 자리 자체가 사라졌다. 되살리려면 그때
+   왜 셋이 됐는지(폭마다 다른 자리)부터 다시 봐라. */
 .emptyNote {
   font-size: 11px;
   color: var(--text-muted);
@@ -297,4 +285,213 @@
     max-width: 560px;
     border-radius: 14px;
   }
+}
+
+/* ══ #455 A2 — 선수 토큰 탭 메뉴(시트) ═══════════════════════════════════════════
+ *
+ * hero 확정 ④ = **시트**(아래에서 올라옴). 위 `.sheetBox` 를 그대로 쓰고 내용만 다르다 —
+ * 껍데기를 따로 만들면 보유 선수 시트와 모양이 갈라지고, ≥1024 모달 분기도 두 벌이 된다.
+ * ⚠️ **높이를 박지 마라.** 4항목이 자기 크기만 갖고(=시트가 짧다) 그 위로 경기장이 남는 것이
+ *    이 화면에서 시트를 고른 이유다(계약 ③ 이 `상자 위 여백 > 화면의 40%` 로 그걸 잰다).
+ */
+.menuBox {
+  gap: 0;
+}
+.menuList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.menuItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* 손가락 표적 — 폰에서 네 항목이 붙어 서므로 44 보다 넉넉하게(오탭이 곧 다른 동작이다). */
+  min-height: 48px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elevated);
+  color: var(--text);
+  font-size: 14.5px;
+  text-align: left;
+}
+.menuItem:disabled {
+  opacity: 0.45;
+}
+/* [닫기]는 나머지 셋과 **다른 종류**다(아무 것도 안 바꾼다) → 강조를 뺀다. */
+.menuItemMuted {
+  color: var(--text-muted);
+  background: none;
+}
+.menuIcon {
+  flex: none;
+  width: 22px;
+  text-align: center;
+  font-size: 14px;
+}
+.menuLabel {
+  font-weight: 700;
+}
+/*
+ * 강화 가능(선택 대기) 알약 — [선수 정보] 항목 (#455 A2-2).
+ * 토큰의 `↑` 와 **같은 노랑**이라야 "저 토큰의 그 신호"로 읽힌다(`TacticsBoard.module.css`
+ * `.growBadge` 와 같은 값 — 갈라지면 두 표시가 서로 다른 것처럼 보인다).
+ * ⚠️ `flex: none` — 줄면 `↑` 만 남아 뜻이 사라진다(폭 예산은 오른쪽 `.menuHint` 가 양보한다).
+ */
+.menuGrow {
+  flex: none;
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #ffcf5c;
+  color: #241a02;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.menuHint {
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: right;
+}
+.menuSub {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* ══ #455 A1 — 책갈피 탭 레이아웃 (덱셋팅 전용, `layout="tabs"`) ══════════════════════
+ *
+ * hero 확정 ③⑤: 경기장은 **68 상한**까지 커지고, 그 아래 남는 세로를 탭 3개가 전부 가져간다.
+ * 목업 R4 에서 68 상한이 남긴 여백이 **249px(폰 화면의 30%)** 였고, 1안이 "공짜로 들어간다"는
+ * 말의 실체가 그 자리를 탭이 채운다는 뜻이다.
+ *
+ * ⚠️ **grow 로 세로를 겨루지 마라 — 목업에서 세 번 틀렸다.**
+ *    ① 스페이서에 `flex:1` → 경기장과 남는 세로를 **반씩** 나눠 가져 68 상한인데 68:59 에서 멈춤
+ *    ② 탭에 `flex:1 1 auto` + 보드에도 `flex:1` → 경기장 아래 **29px 죽은 띠**
+ *    ③ 탭에 `flex:99` → 이번엔 경기장이 min-height 까지 **125px 로 눌림**
+ *    결론 = 보드는 **자기 크기만** 갖고(`flex:0 1 auto`) 남는 세로는 **탭이 전부** 받는다.
+ *
+ * ⚠️ 데스크탑도 같은 한 줄 배치다 — `@container teamsheet` 2컬럼 규칙을 이 레이아웃에서는
+ *    끈다. 폭 넓은 화면에서 보드 옆에 레일을 세우려면 탭 자체를 안 쓰는 게 맞고, 그 분기는
+ *    이 파일이 아니라 `DeckPage` 가 `layout` 으로 고른다(조정 포인트).
+ */
+.sheet[data-layout="tabs"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* ⚠️ `height:100%` 로 쓰면 안 된다 — `main` 의 내용 높이(형제인 안내·CTA 포함)로 풀려서
+     아래로 삐져나간다. 남는 세로를 **받는다**(flex)가 맞다. `Layout fill` 이 그 전제다. */
+  flex: 1 1 auto;
+}
+
+.wrap[data-layout="tabs"] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+/* 보드는 자기 크기만 — 남는 세로를 탭과 다투지 않는다(위 ①②③). */
+.wrap[data-layout="tabs"] .boardCol {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.deckTabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-top: 10px;
+  border-bottom: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+}
+
+/* 책갈피 = 아래가 트인 탭. 선택된 탭이 패널과 이어져 보이도록 아래 테두리를 지운다. */
+.deckTab {
+  display: flex;
+  align-items: center;
+  /* 폰 탭 타깃 하한 44px — 이 화면이 이미 지키는 규칙이다(`deck-teamsheet` R3b C 가 스텝·칩·역할을
+     같은 자로 잰다). 탭이 팀 세부 전술의 **접힘 자체**가 되면서 구 `team-tune-toggle` 의 자리를
+     물려받았으므로 하한도 같이 물려받는다. 처음 34px 로 그렸다가 그 계약에 걸렸다. */
+  min-height: 44px;
+  gap: 5px;
+  padding: 7px 10px 6px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 3순위(세부 전술)는 라벨을 한 단계 흐리게 — "있지만 먼저 볼 것은 아니다"(hero 확정 ⑤). */
+.deckTab[data-rank="3"] {
+  opacity: 0.72;
+}
+
+.deckTab[data-on="1"] {
+  border-color: var(--line, rgba(255, 255, 255, 0.16));
+  background: var(--panel, rgba(255, 255, 255, 0.06));
+  color: var(--text, #fff);
+  opacity: 1;
+}
+
+.deckTabCount {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 패널이 남는 세로를 **전부** 받는다. `min-height:0` 이 없으면 안쪽이 넘칠 때 부모를 늘린다. */
+.wrap[data-layout="tabs"] .tabPanel {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 8px;
+  overflow-y: auto;
+}
+
+.tabPanel[hidden] {
+  display: none;
+}
+
+/* [후보] 탭 안의 벤치 자리 — 벤치 줄은 TacticsBoard 가 포털로 넣는다(그리는 코드는 하나). */
+.benchHost {
+  min-width: 0;
+}
+
+/* 프롬프트가 남는 세로를 먹는다 — "펼쳐져 있다"는 것이 1안의 존재 이유다(hero 확정 ⑤). */
+.wrap[data-layout="tabs"] .tabPanel [data-rail-body] {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* 2컬럼(컨테이너 쿼리)은 이 레이아웃에서 끈다 — 한 줄 배치가 탭의 전제다.
+   ⚠️ **오늘은 발화하지 않는다(백스톱이다).** 덱 화면의 `container-type` 은 `@media (min-width:1024px)`
+   안에만 있고 탭은 **≤1023 에서만** 서므로(`use-deck-layout.ts`) 두 조건이 겹치지 않는다.
+   남겨 두는 이유는 그 전제가 깨졌을 때(누가 컨테이너를 아래로 내릴 때) 탭이 조용히 2컬럼 그리드로
+   갈라지는 것을 막기 위해서다 — 그 이동 자체는 `apps/web/CLAUDE.md` 가 금지하고 있다(시트 백드롭). */
+@container teamsheet (min-width: 640px) {
+  .wrap[data-layout="tabs"] {
+    display: flex;
+    grid-template-columns: none;
+  }
+}
+
+/* [후보] 탭의 액션 줄 — 하단 바에서 옮겨온 [보유 선수]·[초기화]. */
+.tabActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
 }

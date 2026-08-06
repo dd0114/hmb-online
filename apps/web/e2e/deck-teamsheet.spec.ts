@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { openCandidatesTab, openTuneTab, passPlayerMenu } from "./deck-tabs";
 
 /**
  * 팀 시트 재편 R1 (이슈 #106) route-mock 스모크 — 백엔드 없이 vite dev + page.route 로 /api 를
@@ -118,13 +119,21 @@ test("R1 팀 시트 골격: 시트 바 3지표 · 벤치 in 보드카드 · 프�
   await expect(page.getByTestId("formation-select")).toHaveValue("4-4-2");
   await expect(page.getByTestId("sheet-power")).toBeVisible();
 
-  // 2) 벤치가 보드 카드 안 (DOM 포함 관계 실측)
-  const benchInsideCard = await page.evaluate(() => {
+  // 2) 벤치의 자리 — #455 A1 로 **뒤집혔다**.
+  //    구 계약 = "벤치는 보드 카드 안"(#106). 그 근거는 "선발과 벤치를 한 눈에"였는데, A1 이
+  //    경기장을 68 상한까지 키우면서 보드 카드에 벤치까지 담을 세로가 없어졌다(확정 계약
+  //    #455 comment 5196070445 = 경기장 아래 책갈피 탭). 벤치는 **[후보] 탭**으로 갔다.
+  //    ⚠️ 그리는 코드는 하나다(`TacticsBoard.benchPortal` 포털) — 두 벌로 갈라지지 않았다.
+  //    ⚠️ 폰(≤1023)만 그렇다. 데스크탑은 stack 그대로라 아래 R1 반응형이 2컬럼을 계속 잰다.
+  await expect(page.getByTestId("board-bench-section"), "벤치는 보드 카드 밖이다").toHaveCount(1);
+  const benchPlace = await page.evaluate(() => {
     const card = document.querySelector('[data-testid="board-card"]')!;
+    const sub = document.querySelector("#deck-tabpanel-sub")!;
     const bench = document.querySelector('[data-testid="board-bench-section"]')!;
-    return card.contains(bench);
+    return { inCard: card.contains(bench), inSubTab: sub.contains(bench) };
   });
-  expect(benchInsideCard, "벤치는 보드 카드 안에 있어야 한다(#106)").toBe(true);
+  expect(benchPlace.inCard, "벤치가 아직 보드 카드 안이면 경기장이 68 을 못 먹는다").toBe(false);
+  expect(benchPlace.inSubTab, "벤치는 [후보] 탭 안에 있어야 한다(#455 A1)").toBe(true);
 
   // 3) 프리셋 진입점 부재
   for (const id of ["slot-selector", "slot-chip-1", "slot-new-button", "preset-summary", "preset-create"]) {
@@ -187,10 +196,14 @@ test("R1→#244 슬롯 탭 → **보유 선수 시트**(포지션 자동 필터)
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
 
   // 자리 교체 = 레일의 [이 자리 선수 바꾸기] → 같은 시트에서 **이미 배치된 선수**도 고를 수 있다
-  await page.getByTestId("board-slot-starter-0").click();
+  await page.getByTestId("board-slot-starter-0").click(); // ← **빈** 자리라 그대로 시트가 열린다(메뉴 아님)
   await page.getByTestId("pick-GK1").click();
   await expect(page.getByTestId("starter-count")).toHaveText("선발 2/11");
   await page.getByTestId("token-MF1").click();
+  // #455 A2: 폰 덱셋팅(390)은 **찬** 토큰/슬롯 탭이 선수 메뉴를 연다 — 지시 레일로 가는 길은
+  // 그 메뉴의 [한마디 쓰기] 다(빈 자리는 예전 그대로 보유 선수 시트). 헬퍼가 화면이 선언한
+  // `data-layout` 을 읽어 그 화면에서 참인 경로만 밟는다(데스크탑이면 메뉴가 없다는 것까지 단언).
+  await passPlayerMenu(page);
   await page.getByTestId("rail-swap-player").click();
   await expect(page.getByTestId("pool-sheet")).toBeVisible();
   // 자리에서 연 시트는 그 포지션(MF)으로 필터되어 있다 → 전체로 풀고 이미 배치된 GK1 을 고른다.
@@ -265,7 +278,9 @@ test("R2 팀 지시: 5스텝 세그먼트 → 계약값 0/.25/.5/.75/1 로 저�
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
 
-  await page.getByTestId("team-tune-toggle").click(); // #244: 전술 다이얼은 ⚙ 뒤(기본 접힘)
+  // #244: 전술 다이얼은 한 겹 뒤(기본 접힘). #455 A1 로 폰에서는 그 겹이 ⚙ 토글이 아니라
+  // **[⚙ 세부 전술] 탭**이다 — 접힘이 두 겹이 되지 않게 탭 안에는 토글을 두지 않는다.
+  await openTuneTab(page);
   // 슬라이더가 아니다 — 5버튼 세그먼트
   await expect(page.getByTestId("tactics-press").locator("button")).toHaveCount(5);
   await expect(page.getByTestId("tactics-press-step-2")).toHaveAttribute("aria-checked", "true"); // 기본 0.5
@@ -302,32 +317,45 @@ test("R2 r1: 토큰을 **다시** 탭해도 해제되지 않고 그 선수 지�
 
   // 채워진 슬롯(slotIndex 6 = MF2 "미드둘")을 탭 → 배치가 아니라 **선택** 경로 → 독이 펼쳐진다.
   await page.getByTestId("board-slot-starter-6").click();
+  // #455 A2: 폰 덱셋팅(390)은 토큰/찬 슬롯 탭이 **선수 메뉴**를 연다 — 지시 레일로 가는 길은
+  // 그 메뉴의 [한마디 쓰기] 다. 헬퍼가 화면이 선언한 `data-layout` 을 읽어 그 화면에서 참인
+  // 경로만 밟는다(데스크탑이면 메뉴가 없다는 것까지 단언한다).
+  await passPlayerMenu(page);
   await expect(page.getByTestId("rail-title")).toHaveText("미드둘");
   await page.getByTestId("rail-close").click();
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
 
   // 다른 토큰(MF1)을 1탭 → 그 선수 지시가 열린다
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "player");
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
   await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
 
   // r1 계약 본체: **같은** 토큰을 다시 탭해도 팀 지시로 튕기지 않는다(재탭 = 해제 아님).
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "player");
   await expect(page.getByTestId("rail-title")).toHaveText("미드하나");
 
-  // 독이 펼쳐진 상태에서도 보드 하단 바 버튼이 **실제로** 눌려야 한다(가려지면 안 된다).
-  // hit-test 로 먼저 못박는다 — Playwright 자동 스크롤이 가림을 숨기지 못하도록,
-  // 스크롤 후 그 좌표의 최상단 엘리먼트가 그 버튼 자신인지 본다.
-  for (const id of ["board-reset", "select-clear"]) {
-    // 사람이 하는 것과 같은 동작: 그 버튼이 보이도록 페이지를 스크롤한다.
-    // (`scrollIntoViewIfNeeded` 는 "뷰포트 안"이면 아무것도 안 해서 가림을 못 드러낸다 — 실제로
-    //  이 버튼들은 뷰포트 안이면서 독 **아래**에 깔려 있었다. block:"start" 로 독 위까지 올린다.)
+  // 지시 레일이 펼쳐진 상태에서도 두 버튼이 **실제로** 눌려야 한다(가려지면 안 된다).
+  // hit-test 로 못박는다 — Playwright 자동 스크롤이 가림을 숨기지 못하도록,
+  // 그 좌표의 최상단 엘리먼트가 그 버튼 자신인지 직접 본다.
+  //
+  // ⚠️ #455 A1 로 **가림의 모양이 바뀌었다**. 원래 이 계약이 잡던 것은 화면 하단에 겹쳐 뜨던
+  //    독(dock)이 보드 하단 바를 덮는 것이었는데, 폰 덱셋팅은 이제 레일이 겹치지 않고
+  //    [📣 전체 지시] **탭 패널로 흐름 안에** 선다. 그래서 두 버튼의 자리도 갈렸다:
+  //    - `select-clear` = 보드 하단 바(선수를 고른 동안만 뜨는 조건부 바)
+  //    - `board-reset`  = **[👥 후보] 탭 안**(상시 항목은 전부 탭으로 갔다)
+  //    가림 위험이 사라진 게 아니라 **다른 층으로 옮겨졌으므로** 계약은 남긴다.
+  // ⚠️ `select-clear` 는 폰 탭 레이아웃에 **없다** — 보드 하단 바를 되살리면 48px 를 먹어 빈 덱에서
+  //    팀 프롬프트가 하단 탭바 밑으로 들어간다(실측 `p244` AC1-b). 같은 일을 하는 손잡이는 레일의
+  //    **×**(`rail-close`)이고, 이 테스트 마지막 줄 주석이 원래부터 "동치"라고 적어 두었다.
+  for (const id of ["board-reset"]) {
+    await openCandidatesTab(page);
+    // 사람이 하는 것과 같은 동작: 그 버튼이 보이도록 스크롤한다(문서가 아니라 탭 패널이 스크롤한다).
     await page.evaluate((testId) => {
-      document.querySelector(`[data-testid="${testId}"]`)!.scrollIntoView({ block: "start" });
-      // sticky 시트 바(상단)와 독(하단) 사이의 빈 띠로 내린다 — 실사용의 "조금 스크롤해서 누른다".
-      window.scrollBy(0, -200);
+      document.querySelector(`[data-testid="${testId}"]`)!.scrollIntoView({ block: "center" });
     }, id);
     await page.waitForTimeout(120);
     const top = await page.evaluate((testId) => {
@@ -336,12 +364,12 @@ test("R2 r1: 토큰을 **다시** 탭해도 해제되지 않고 그 선수 지�
       return { tag: hit?.tagName ?? "none", isSelf: hit?.closest(`[data-testid="${testId}"]`) != null };
     }, id);
     console.log(`[smoke] ${id} hit-test → ${top.tag} isSelf=${top.isSelf}`);
-    expect(top.isSelf, `${id} 가 하단 독에 가려 눌리지 않는다`).toBe(true);
+    expect(top.isSelf, `${id} 가 다른 층에 가려 눌리지 않는다`).toBe(true);
     await page.screenshot({ path: `${SMOKE_DIR}r2-blocker1-${id}-390.png` }); // 뷰포트 실화면(증적)
   }
-
-  // 해제는 보드 바 [선택 해제] 로 (독 안의 레일 × 와 동치)
-  await page.getByTestId("select-clear").click({ timeout: 8000 });
+  // 해제 — 폰 탭 레이아웃에서는 레일의 × 가 그 손잡이다(위 주석). 레일은 [전체 지시] 탭 안이다.
+  await page.getByTestId("deck-tab-team").click();
+  await page.getByTestId("rail-close").click({ timeout: 8000 });
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
 });
 
@@ -456,6 +484,7 @@ test("R3a m1 × 모바일: 390 에서 문장이 한마디로 옮겨지고 안내
   await openDeck(page);
 
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
   await expect(page.getByTestId("rail-chip-press")).toHaveAttribute("aria-pressed", "true");
   await page.getByTestId("rail-chip-press").click();
@@ -595,6 +624,24 @@ async function scanStarterSlots(page: Page): Promise<Array<{ i: number; blockedB
  */
 const SIX = PLAYERS.slice(0, 6);
 
+/**
+ * 이 화면의 Auto 버튼 — **하나뿐이다**(#455 A3, 경기장 우측 하단).
+ *
+ * ⚠️ 구판은 세 후보(`board-empty-auto`·`auto-fill-top`·`auto-fill`)를 훑어 "보이는 쪽"을 골랐다.
+ * 자리가 폭·레이아웃마다 달랐기 때문인데, A3 이 그 산재를 없애서 이 헬퍼도 분기를 잃었다.
+ * 헬퍼를 남겨 둔 이유는 호출부 문장이 "이 화면의 auto 를 누른다"라는 **의도**를 계속 말하게
+ * 하기 위해서다 — 은퇴한 두 id 는 여기서 **부재로 단언**해 되살아나면 걸리게 한다.
+ */
+async function visibleAuto(page: Page) {
+  for (const id of ["board-empty-auto", "auto-fill-top"]) {
+    await expect(page.getByTestId(id), `${id} 는 #455 A3 에서 은퇴했다`).toHaveCount(0);
+  }
+  const el = page.getByTestId("auto-fill");
+  await expect(el, "이 화면에 보이는 Auto 버튼이 하나도 없다").toBeVisible();
+  return el;
+}
+
+
 for (const width of [390, 1280]) {
   for (const owned of [12, 6, 0] as const) {
     test(`R3b A: 빈 상태에서 선발 11 슬롯이 전부 눌린다 (${width} · 보유 ${owned}명)`, async ({ page }) => {
@@ -627,14 +674,15 @@ for (const width of [390, 1280]) {
        * 있습니다"*. **그렇게 지시하는 화면에서 그 오버레이가 슬롯을 가리면 막다른 길**이고,
        * 그게 이 테스트가 원래 겨누던 블로커다. 이 갈래가 있어야 아래 히트테스트가 실물을 상대한다.
        */
+      const auto = await visibleAuto(page);
       if (owned === 0) {
-        await expect(page.getByTestId("board-empty-auto")).toBeDisabled();
+        await expect(auto).toBeDisabled();
         await expect(
           page.getByTestId("board-empty-note"),
           "히트테스트가 겨누는 오버레이가 실제로 렌더돼 있어야 한다",
         ).toBeVisible();
       } else {
-        await expect(page.getByTestId("board-empty-auto")).toBeEnabled();
+        await expect(auto).toBeEnabled();
         await expect(page.getByTestId("board-empty-note")).toHaveCount(0);
       }
 
@@ -664,12 +712,13 @@ test("R3b A: 빈 상태 CTA 를 누르면 선발이 채워지고 안내가 사�
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
 
-  const cta = page.getByTestId("board-empty-auto");
+  const cta = await visibleAuto(page);
   await expect(cta).toBeEnabled();
   await cta.click();
   await expect(page.getByTestId("starter-count")).toHaveText("선발 11/11");
   await expect(page.getByTestId("board-empty")).toHaveCount(0);
-  await expect(page.getByTestId("board-empty-auto")).toHaveCount(0);
+  // 다 찼으면 Auto 는 눌러도 할 일이 없다 — stack 은 CTA 가 사라지고, 탭은 시트 바 버튼이 잠긴다.
+  await expect(await visibleAuto(page)).toBeDisabled();
 });
 
 test("R3b A: 빈 상태에서도 슬롯 배치가 끝까지 동작한다(안내 → 배치 → 안내 사라짐)", async ({ page }) => {
@@ -689,6 +738,7 @@ test("R3b B: 컨디션 3단계가 색 **외** 축으로도 구분된다(등급 �
   await mockApi(page, seededDeck());
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
+  await openCandidatesTab(page); // #455 A1: 폰에서 [보유 선수]는 [👥 후보] 탭 안이다
   await page.getByTestId("pool-sheet-open").click(); // #244: 보유 선수는 시트 뒤
 
   // 목 컨디션: GK1 0.9(high) / MF1 0.5(mid) / FW1 0.2(low)
@@ -799,6 +849,7 @@ test("R3b C: 모바일 44px 탭 타깃 — 스텝·칩·역할·세부조정 토
   await page.setViewportSize({ width: 390, height: 844 });
   await openDeck(page);
   await page.getByTestId("token-MF1").click();
+  await passPlayerMenu(page);
   await page.getByTestId("rail-tune-toggle").click(); // #244: 역할·칩은 ⚙ 뒤
 
   const ids = ["rail-tune-toggle", "rail-role-attack", "rail-chip-press"];
@@ -810,7 +861,12 @@ test("R3b C: 모바일 44px 탭 타깃 — 스텝·칩·역할·세부조정 토
   // 5스텝은 한 줄에 5개가 붙어 있어 특히 위험 — 팀 컨텍스트로 돌아가 잰다.
   await page.getByTestId("rail-close").click();
   await expect(page.getByTestId("directive-rail")).toHaveAttribute("data-mode", "team");
-  await page.getByTestId("team-tune-toggle").click();
+  // #455 A1: 폰에서 팀 세부 전술의 접힘은 ⚙ 토글이 아니라 [⚙ 세부 전술] 탭이다.
+  // 그래서 44px 대상 목록의 마지막 항목도 토글이 아니라 **그 탭 자신**이다(같은 손가락이 누른다).
+  await openTuneTab(page);
+  const tabH = await page.getByTestId("deck-tab-tune").evaluate((el) => el.getBoundingClientRect().height);
+  console.log(`[smoke] tap target deck-tab-tune = ${tabH.toFixed(1)}px`);
+  expect(tabH, "세부 전술 탭 탭 타깃이 44px 미만").toBeGreaterThanOrEqual(44);
   const stepH = await page.getByTestId("tactics-press-step-2").evaluate((el) => el.getBoundingClientRect().height);
   console.log(`[smoke] tap target tactics-press-step-2 = ${stepH.toFixed(1)}px`);
   expect(stepH).toBeGreaterThanOrEqual(44);

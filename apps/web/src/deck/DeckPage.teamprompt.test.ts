@@ -65,6 +65,15 @@ vi.mock("../api/hooks", () => {
   };
 });
 
+/**
+ * #455 A2-2 — `DeckPage` 가 강화 `↑` 뱃지 신호를 위해 `usePendingChoices()` 를 부른다.
+ * 이 파일은 `TokenProvider` 없이 렌더하므로(그래서 위 두 모듈도 통째로 목이다) 이것도 스텁한다.
+ * **빈 목록 = 뱃지 없음** — 이 파일의 단언은 뱃지 축과 무관하고, 그 축은 `p455-a22` 가 잰다.
+ */
+vi.mock("../api/growth-hooks", () => ({
+  usePendingChoices: () => ({ data: [], isLoading: false, isError: false, isSuccess: true }),
+}));
+
 vi.mock("../api/hooks-v2", () => {
   const query = (data: unknown) => ({ data, isLoading: false, isError: false, isSuccess: true });
   return {

@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync, readFileSync } from "node:fs";
+import { openCandidatesTab, openTuneTab, passPlayerMenu } from "./deck-tabs";
 
 /**
  * #244 — 덱·게임 UI 개편 "프롬프트 1급" 계약 (E2E-TDD: 구현보다 먼저 작성됐다, 루트 CLAUDE §2-3).
@@ -286,12 +287,27 @@ test.describe("#244 프롬프트 1급 — 덱 편성", () => {
     await page.screenshot({ path: `${SMOKE_DIR}p244-deck-empty-390.png`, fullPage: true });
   });
 
-  test("AC2 세부조정은 기본 접힘 — 토글을 눌러야 전술 다이얼이 나온다", async ({ page }) => {
+  /**
+   * ⚠️ #455 A1 로 **접힘의 모양이 바뀌었다**(뜻은 더 강해졌다).
+   * 폰 덱셋팅은 이제 경기장 아래가 책갈피 탭이고, 팀 세부 전술은 3순위 탭 `[⚙ 세부 전술]` 이다 —
+   * 즉 접힘 장치가 ⚙ 토글에서 **탭 그 자체**로 바뀌었다(`team-tune-toggle` 은 이 화면에 없다).
+   * 두 겹으로 두지 않은 이유: 탭 안에 다시 토글을 두면 유저가 같은 것을 두 번 펴야 한다.
+   * 이 스펙이 재는 것(= "프롬프트가 1급, 세부조정은 뒤")은 그대로이고 오히려 더 뒤에 있다 —
+   * 첫 화면에서 다이얼이 **DOM 에 그려져 있지도 않다**(구 동작은 hidden 으로 존재했다).
+   * ⚠️ 경기전·감독시간은 `layout="stack"` 이라 ⚙ 토글이 살아 있다(`briefing-teamsheet` 가 잰다).
+   */
+  test("AC2 세부조정은 기본 접힘 — [⚙ 세부 전술] 탭을 열어야 전술 다이얼이 나온다", async ({ page }) => {
     await openDeck(page);
     await expect(page.getByTestId("team-tactics-panel")).toBeHidden();
-    await page.getByTestId("team-tune-toggle").click();
+    await expect(page.getByTestId("team-tune-toggle"), "탭이 접힘이므로 토글은 없다").toHaveCount(0);
+    // 첫 화면의 기본 탭은 [📣 전체 지시] — 프롬프트가 먼저다.
+    await expect(page.getByTestId("deck-tab-team")).toHaveAttribute("aria-selected", "true");
+
+    await openTuneTab(page);
     await expect(page.getByTestId("team-tactics-panel")).toBeVisible();
-    await page.getByTestId("team-tune-toggle").click();
+
+    // 다시 [📣 전체 지시] 로 넘기면 다이얼은 도로 화면 밖이다(접힘이 왕복한다).
+    await page.getByTestId("deck-tab-team").click();
     await expect(page.getByTestId("team-tactics-panel")).toBeHidden();
   });
 
@@ -337,6 +353,7 @@ test.describe("#244 프롬프트 1급 — 덱 편성", () => {
         slot: s.getAttribute("data-testid"),
         player: s.querySelector('[data-testid^="token-"]')?.getAttribute("data-testid") ?? null,
       })));
+    await openCandidatesTab(page); // #455 A1: 폰에서 여는 버튼은 [👥 후보] 탭 안
     await page.getByTestId("pool-sheet-open").click();
     await page.getByTestId("pick-DF1").click();
     await expect(page.getByTestId("pool-sheet")).toBeHidden();
@@ -352,6 +369,10 @@ test.describe("#244 프롬프트 1급 — 덱 편성", () => {
   test("AC5 선수 세부조정(역할·지시 칩)도 기본 접힘", async ({ page }) => {
     await openDeck(page);
     await page.getByTestId("token-MF1").click();
+    // #455 A2: 폰 덱셋팅은 토큰 탭이 **선수 메뉴**를 연다 — 지시 레일로 가는 길은 [한마디 쓰기] 다.
+    // ⚠️ AC5 가 재는 것은 그대로다: "레일이 열렸을 때 역할·칩이 **기본 접힘**인가". 메뉴는 그 앞에
+    // 한 걸음을 더한 것이지 접힘의 뜻을 바꾸지 않는다(오히려 세부조정은 한 겹 더 뒤로 갔다).
+    await passPlayerMenu(page);
     await expect(page.getByTestId("rail-prompt-input")).toBeVisible();
     await expect(page.getByTestId("rail-tactical-layer")).toBeHidden();
     await page.getByTestId("rail-tune-toggle").click();
@@ -376,6 +397,7 @@ test.describe("#244 프롬프트 1급 — 덱 편성", () => {
     });
     await page.goto("/deck");
     await expect(page.getByTestId("deck-editor")).toBeVisible();
+    await openCandidatesTab(page); // #455 A1
     await page.getByTestId("pool-sheet-open").click();
     await expect(page.getByTestId("pool-sheet")).toBeVisible();
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openCandidatesTab } from "./deck-tabs";
 
 /**
  * 실터치 회귀 계약 — "폰에서 선수 리스트→보드 드래그가 안 된다"(hero 제보, 독립 QA 근본원인 확정).
@@ -113,7 +114,17 @@ async function quickSwipe(page: Page, x: number, y: number, dy: number) {
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
   await page.waitForTimeout(400); // let momentum scrolling settle
   await cdp.detach();
-  return page.evaluate(() => (document.querySelector("ul") as HTMLElement).scrollTop);
+  /**
+   * ⚠️ **`document.querySelector("ul")` 로 재면 안 된다.** 그건 "문서의 첫 `<ul>`" 이지
+   * 시트 리스트가 아니다 — #455 A1 이 덱 규칙 위반 안내(`deck-pre-issues`, 그것도 `<ul>`)를
+   * [전체 지시] 탭 안으로 옮기자 그게 첫 번째가 되어 **항상 scrollTop 0** 이 나왔다
+   * (실측 145 → 0). 재는 대상을 행에서 거슬러 올라가 못박는다.
+   */
+  return page.evaluate(() => {
+    const row = document.querySelector('[data-testid^="pick-"]');
+    const list = (row?.closest("ul") ?? document.querySelector("ul")) as HTMLElement;
+    return list.scrollTop;
+  });
 }
 
 /**
@@ -172,6 +183,7 @@ test("실폰(390x844, 터치): 시트 리스트 스와이프=스크롤 / 보드 
    */
 
   // (A) 시트를 열고 행 위에서 짧게 스와이프 → 리스트가 스크롤된다.
+  await openCandidatesTab(page); // #455 A1: 폰에서 여는 버튼은 [👥 후보] 탭 안
   await page.getByTestId("pool-sheet-open").click();
   await expect(page.getByTestId("player-pool")).toBeVisible();
   const listScrolls = await page.getByTestId("pick-FW_TOP").evaluate((el) => {

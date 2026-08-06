@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useDeck, usePlayers, useUpdateDeck, type CatalogPlayer, type Deck } from "../api/hooks";
 import { useRelations, useTodayConditions } from "../api/hooks-v2";
+import { usePendingChoices } from "../api/growth-hooks";
 import { Layout } from "../common/Layout";
 import { TeamMoraleWidget } from "../common/RelationBits";
 import { CardGrowthDetail } from "../codex/CardGrowthDetail";
@@ -24,6 +25,8 @@ import { isDirty, makeBaseline, type EditorBaseline } from "./preset-selector-lo
 import { canAutoBuild } from "./auto-lineup";
 import { canFillEmptySlots, fillEmptySlots } from "./fill-empty";
 import { DeckEditor } from "./DeckEditor";
+import { useDeckLayout } from "./use-deck-layout";
+import { growthReadyIdsOf } from "./growth-ready";
 import styles from "./DeckPage.module.css";
 
 interface ServerDeckError {
@@ -74,6 +77,8 @@ export function DeckPage() {
   // 당일(KST) 컨디션 — 보드 토큰/리스트/레일 헤드에 표시. 실패해도 화면은 그대로.
   const { data: conditions } = useTodayConditions();
   const updateDeck = useUpdateDeck();
+  // #455 A1 — 폭 1023 이하만 책갈피 탭. 데스크탑은 종전 2컬럼 그대로다.
+  const deckLayout = useDeckLayout();
 
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [baseline, setBaseline] = useState<EditorBaseline | null>(null);
@@ -111,6 +116,21 @@ export function DeckPage() {
    */
   const matchLocked = useNavLocked();
   const growthLockedReason = matchLocked ? "경기 중에는 강화할 수 없습니다" : null;
+
+  /**
+   * **강화 가능(선택 대기) 신호** (#455 A2-2) — 토큰·선수 메뉴의 `↑`.
+   *
+   * ⚠️ **왕복은 1회다.** `GET /api/growth/choices` 는 `playerId` 를 안 주면 그 유저의 **전 카드**를
+   * 한 번에 준다(`GrowthService.pendingChoices(userId, null)`) — 선수 11명에게 카드 조회를 각각
+   * 때리는 설계가 아니다. 그 사실은 DOM 으로 못 재므로 `p455-a22` ③ 이 **요청 수**를 직접 센다.
+   * 쿼리 키(`["growthChoices", null]`)가 결과 화면·보상 봉투와 **같아서** 앱 전역에서 캐시를 공유한다.
+   * ⚠️ 무효화는 새로 배선할 것이 없다 — `useApplyChoice` 가 성공·실패 양쪽에서 `["growthChoices"]`
+   * 접두를 무효화하므로, 강화 시트에서 선택을 적용하면 이 화면의 뱃지가 저절로 사라진다.
+   * ⚠️ 훅을 `DeckEditor` 안으로 내리지 마라 — 그 컴포넌트는 경기전·감독시간과 공유라 조회가
+   * 세 화면에 붙는다(그 prop 선언부 주석).
+   */
+  const { data: openChoices } = usePendingChoices();
+  const growthReadyIds = useMemo(() => growthReadyIdsOf(openChoices), [openChoices]);
 
   // 첫 진입: 활성 덱 하나만 로드한다(프리셋 조회/적용 없음 — #106).
   useEffect(() => {
@@ -245,11 +265,43 @@ export function DeckPage() {
     </div>
   );
 
+  /** 덱 규칙 위반 안내 — 레이아웃에 따라 페이지 형제(stack) 또는 [전체 지시] 탭 꼬리(tabs)로 간다. */
+  const preIssueList =
+    preIssues.length > 0 ? (
+      <ul className={styles.issueList} data-testid="deck-pre-issues">
+        {preIssues.map((issue) => (
+          <li key={issue.rule + (issue.playerId ?? "")} className={styles.issue}>
+            {issue.message}
+          </li>
+        ))}
+      </ul>
+    ) : null;
+
+  // `fill` = 문서 스크롤 0(에디터가 화면 높이를 정확히 채운다). 탭 레이아웃의 전제라
+  // 데스크탑 stack 에서는 켜지 않는다 — 켜면 2컬럼 화면이 잘린다.
   return (
-    <Layout header={header} nav>
+    <Layout header={header} nav fill={deckLayout === "tabs"}>
       <DeckEditor
+        /* #455 A1 — 덱셋팅**만** 탭 레이아웃(경기장 68 상한 + 책갈피 탭 3개). 경기전·감독시간은
+           같은 컴포넌트를 쓰지만 기본값 `"stack"` 그대로라 이 웨이브에서 안 움직인다.
+           ⚠️ 그리고 **폭 1023 이하에서만** 탭이다 — 데스크탑은 보드 | 레일 2컬럼이 그대로 산다.
+           근거·임계는 `use-deck-layout.ts` 머리말(구현이 범위를 넘어 2컬럼을 죽였던 실측 포함). */
+        layout={deckLayout}
+        /* #455 A2 ①④ — 선수 토큰 탭이 **메뉴 시트**를 연다. `layout` 과 **다른 축**이라 prop 이
+           따로다(`DeckEditor` 의 그 선언부에 이유가 있다) — 여기서 같은 조건을 넘기는 것은
+           "확정 계약이 폰 덱셋팅 개편"이라는 **스코프 결정**이지 두 축이 같아서가 아니다.
+           데스크탑(stack)은 지시 레일이 보드 옆에 상시 서 있어 메뉴가 한 단계를 더할 뿐이다. */
+        playerMenu={deckLayout === "tabs"}
+        /* 팀 사기 = [세부 전술] 탭 꼬리(#455 A1) — **탭 레이아웃에서만**이다. 아래 주석의
+           "프롬프트 우선"과 같은 이유다: 에디터 형제로 두면 폰에서 68px 를 먹어 그만큼 프롬프트
+           칸이 줄어든다(실측). stack 은 아래 형제 자리를 그대로 쓴다(BL-1). */
+        teamExtra={<TeamMoraleWidget relations={relations} compact />}
+        teamPanelNotice={preIssueList}
         onOpenGrowth={(p) => setGrowthPlayer(p)}
         growthLockedReason={growthLockedReason}
+        /* 강화 가능 `↑` (#455 A2-2). **`layout` 과 무관하게** 넘긴다 — 정보이지 폰 화면
+           개편이 아니다(그 prop 선언부 주석 · `p455-a22` ⑦). */
+        growthReadyIds={growthReadyIds}
         state={editor}
         onChange={mutateEditor}
         aiManaged={aiManaged}
@@ -282,7 +334,10 @@ export function DeckPage() {
                 `빈 자리를 채웁니다 — 보유 ${ownedPlayers.length}명이라 선발 ${STARTER_COUNT}명은 다 못 채웁니다`
             : ownedPlayers.length === 0
               ? "보유 선수가 없습니다"
-              : "채울 빈 자리가 없거나 넣을 선수가 없습니다"
+              : /* ⚠️ "채울 빈 자리가 없거나" 를 되살리지 마라 — A3 이후 이 버튼은
+                   `hasEmptySlotGap` 일 때만 그려지므로, 이 문장이 화면에 뜨는 순간
+                   그 절은 **항상 거짓**이다(A3 독립검증 minor-2). 남는 이유는 하나뿐이다. */
+                "보유 선수를 모두 배치했습니다"
         }
       />
 
@@ -294,19 +349,20 @@ export function DeckPage() {
           ⚠️ **에디터 위로 올리지 마라.** 처음엔 보드 위에 뒀는데, 그 한 줄이 지시 레일을 통째로
           아래로 밀어 **팀 프롬프트가 하단 탭바에 가렸다**(390px 실측 여백 79 → 11, 요구 ≥24).
           #244 의 "프롬프트는 어디서나 첫 화면에"가 이 위젯보다 우선이다 — 사기는 곁눈질로 보는
-          값이고 프롬프트는 이 화면에 온 이유다. 계약 = `p244-prompt-first.spec.ts` AC1·AC13. */}
-      <TeamMoraleWidget relations={relations} compact />
+          값이고 프롬프트는 이 화면에 온 이유다. 계약 = `p244-prompt-first.spec.ts` AC1·AC13.
+
+          ⚠️ **탭 레이아웃에서만 `teamExtra` 로 옮긴다 — 옮기는 게 아니라 갈래다.** A1 초판이
+          이 줄을 지우고 `teamExtra` 만 넘겼는데, `DeckEditor` 는 그 노드를 `tabs` 분기 안에서만
+          렌더한다 → **데스크탑(stack)에서 위젯이 통째로 사라졌다**(1024·1280 실측 존재 0,
+          독립검증 BL-1 / `p286-home-nav.spec.ts` 가 이미 red 였다). 위 "소비처가 0 이 되면
+          조용히 사라진다"가 같은 자리에서 두 번째로 일어난 것이다. 두 갈래 다 계약이 있다. */}
+      {deckLayout === "stack" && <TeamMoraleWidget relations={relations} compact />}
 
       <div className={styles.notes}>
-        {preIssues.length > 0 && (
-          <ul className={styles.issueList} data-testid="deck-pre-issues">
-            {preIssues.map((issue) => (
-              <li key={issue.rule + (issue.playerId ?? "")} className={styles.issue}>
-                {issue.message}
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* ⚠️ 탭 레이아웃에서는 이 목록이 **[전체 지시] 탭 안**으로 간다(`teamPanelNotice`).
+            페이지 형제로 두면 탭 패널을 짧게 만들어 팀 프롬프트를 밀어내고 **그 위를 덮는다**
+            (390×844 빈 덱 실측 — `DeckEditor` 의 그 자리 주석에 수치가 있다). */}
+        {deckLayout === "stack" && preIssueList}
         {serverError && (
           <p className={styles.serverError} data-testid="deck-server-error">
             저장 실패 [{serverError.rule}] {serverError.message}

@@ -25,14 +25,14 @@ test.beforeEach(async ({ page }) => {
 });
 
 /**
- * 자동 배치 버튼은 **폭에 따라 두 자리 중 한 곳**에 뜬다(상단 바 `auto-fill-top` = 모바일 /
- * 보드 바 `auto-fill` = 데스크탑). 둘 다 DOM 에는 있으므로 **보이는 쪽**을 눌러야 한다 —
- * 한쪽을 박으면 폭 규칙이 바뀌는 순간 계약이 조용히 거짓 실패한다.
+ * 자동 배치 버튼 — **하나뿐이다**(#455 A3, 경기장 우측 하단).
+ *
+ * ⚠️ 구판은 폭에 따라 두 자리(`auto-fill-top` 모바일 / `auto-fill` 데스크탑) 중 보이는 쪽을
+ * 눌렀다. A3 이 손잡이를 하나로 합치면서 그 폭 분기가 없어졌다 — 이 셋업 워크스루가
+ * 코치마크로 **보드**를 겨누던 이유(`tutorial-steps.ts` `setup-auto`)도 같은 산재였다.
  */
 async function clickAutoFill(page: import("@playwright/test").Page) {
-  const top = page.getByTestId("auto-fill-top");
-  const board = page.getByTestId("auto-fill");
-  const target = (await top.isVisible()) ? top : board;
+  const target = page.getByTestId("auto-fill");
   await expect(target).toBeVisible();
   await target.click();
 }

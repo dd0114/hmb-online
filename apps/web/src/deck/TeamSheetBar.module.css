@@ -21,31 +21,15 @@
   font-weight: 600;
 }
 
-.auto {
-  margin-left: auto;
-  min-height: 36px;
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: 13px;
-  font-weight: 600;
-}
-.auto:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+/* ⚠️ **AUTO 는 이 바에 없다**(#455 A3) — 손잡이 셋을 경기장 우측 하단 하나로 합쳤다
+   (`DeckEditor.module.css` 의 `.autoFill`). 구 `.auto`/`.autoHint` 규칙은 그래서 지웠다:
+   남겨 두면 다음 사람이 "자리는 이미 있으니 버튼만 다시 달자"로 산재를 되살린다. */
 
 .formationLabel {
   margin-left: auto;
   display: inline-flex;
   align-items: center;
 }
-.auto + .formationLabel {
-  margin-left: 0;
-}
-
 .formation {
   min-height: 36px;
   padding: 6px 10px;
@@ -145,18 +129,8 @@
   flex: none;
 }
 
-.autoHint {
-  margin: 6px 0 0;
-  font-size: 11px;
-  color: var(--text-muted);
-}
 
-/* 데스크탑: AUTO 는 보드 하단 바가 담당(목업) — 시트 바에서는 감춘다. */
 @media (min-width: 1024px) {
-  .auto,
-  .autoHint {
-    display: none;
-  }
   .bar {
     margin: -16px -16px 16px;
     padding: 12px 16px 10px;
@@ -245,10 +219,6 @@
   grid-row: 2;
   margin-top: 0;
   font-size: 11px;
-}
-/* 만에 하나 렌더되면(덱 전용) 한 줄을 통째로 쓰게 — 자동 배치로 그리드를 흐트러뜨리지 않는다. */
-.barStatic .autoHint {
-  grid-column: 1 / -1;
 }
 .barStatic .gauge {
   display: none;

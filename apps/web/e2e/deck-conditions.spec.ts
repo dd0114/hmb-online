@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { openCandidatesTab } from "./deck-tabs";
 
 /**
  * W3 컨디션 표시(이슈 #98 요구 6) route-mock 스모크. 백엔드 없이 vite dev + page.route 로
@@ -76,6 +77,8 @@ test("W3 리스트 + 보드에 당일 컨디션 표시", async ({ page }) => {
   await openDeck(page);
 
   // #244: 보유 선수 리스트는 시트 뒤 — 먼저 연다(보드 단언은 시트를 닫고 한다).
+  // #455 A1: 폰(≤1023)에서 그 여는 버튼은 [👥 후보] 탭 안이다.
+  await openCandidatesTab(page);
   await page.getByTestId("pool-sheet-open").click();
   await expect(page.getByTestId("player-pool")).toBeVisible();
 
@@ -111,6 +114,7 @@ test("W3 리스트 + 보드에 당일 컨디션 표시", async ({ page }) => {
 test("W3 컨디션 응답이 비거나 실패해도 리스트는 정상(graceful)", async ({ page }) => {
   await mockApi(page, "error");
   await openDeck(page);
+  await openCandidatesTab(page); // #455 A1: 폰에서 여는 버튼은 [👥 후보] 탭 안
   await page.getByTestId("pool-sheet-open").click(); // #244: 리스트는 시트 뒤
 
   // 시계는 없지만 행/스탯총량은 그대로 — 화면이 깨지지 않는다.

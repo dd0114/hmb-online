@@ -86,13 +86,15 @@ test("W2 Auto 구성: 빈 편집기 → Auto 클릭 → 선발 11 채움 + dirty
   await page.goto("/deck");
 
   // 1) 첫 진입: 활성 덱 없음 → 선발 0/11, Auto 버튼 활성(보유 14명 ≥ 11).
-  //    (#106 R1: 모바일에서 AUTO 는 시트 바(auto-fill-top), 데스크탑은 보드 하단 바(auto-fill).)
+  //    ⚠️ **#455 A3 로 자리가 하나가 됐다** — 구 동작은 폭에 따라 시트 바(`auto-fill-top`)와
+  //    보드 하단 바(`auto-fill`)로 갈렸다. 지금은 폭과 무관하게 **경기장 우측 하단 `auto-fill`**
+  //    하나뿐이라 이 스펙에도 분기가 없다(계약 = `p455-a3-auto-fill.spec.ts`).
   await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/);
-  await expect(page.getByTestId("auto-fill-top")).toBeEnabled();
+  await expect(page.getByTestId("auto-fill")).toBeEnabled();
   await page.screenshot({ path: `${SMOKE_DIR}w2-auto-before.png`, fullPage: true });
 
   // 2) Auto 클릭 → 결정론 로직으로 선발 11 채워짐 + dirty 뱃지.
-  await page.getByTestId("auto-fill-top").click();
+  await page.getByTestId("auto-fill").click();
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
   await expect(page.getByTestId("deck-dirty-badge")).toBeVisible();
   // GK 슬롯(slotIndex 0)에 실제 GK 토큰이 놓였는지(우선 배정).
@@ -102,11 +104,13 @@ test("W2 Auto 구성: 빈 편집기 → Auto 클릭 → 선발 11 채움 + dirty
   /*
    * 3) 다 채운 뒤에는 **버튼이 스스로 닫힌다** (#439 major-2).
    *    구 스텝은 "다시 눌러도 11/11 유지"(전면 재구성의 결정론)를 쟀는데, 지금 Auto 는 빈 자리
-   *    채우기라 채울 것이 없으면 **비활성 + 사유**가 맞다. 활성인 채로 두면 눌러도 아무 일이
-   *    안 일어나는 버튼이 된다 — 그게 이 웨이브가 고친 결함이다.
+   *    채우기라 채울 것이 없으면 손잡이가 남아 있으면 안 된다. 활성인 채로 두면 눌러도 아무 일이
+   *    안 일어나는 버튼이 된다 — 그게 #439 가 고친 결함이다.
+   *    ⚠️ **#455 A3 로 그 "닫힘"이 비활성 → 부재가 됐다**(hero 확정 ②: 빈칸이 있을 때만 노출).
+   *    보유 14 를 다 쓰면 선발 11 + 벤치 3 이라 **벤치 앞 3칸까지 차서** 빈칸이 0 이다.
    *    (결정론 자체는 `fill-empty.test.ts` 가 순수 함수 층에서 계속 잰다.)
    */
-  await expect(page.getByTestId("auto-fill-top")).toBeDisabled();
+  await expect(page.getByTestId("auto-fill")).toHaveCount(0);
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
 
   // 4) 저장: #106 R1 부터 이 화면은 **활성 덱 하나**만 저장한다(프리셋 슬롯 UI 는 화면에서 내림).
@@ -145,21 +149,41 @@ test("W2 Auto: 보유 < 11 이어도 **있는 만큼 채운다**(비활성 아�
   await page.goto("/deck");
 
   await expect(page.getByTestId("starter-count")).toHaveText(/0\/11/);
-  await expect(page.getByTestId("auto-fill-top")).toBeEnabled();
+  await expect(page.getByTestId("auto-fill")).toBeEnabled();
   // 안내는 **누르기 전에** "왜 11 이 안 되나"를 말한다 — 침묵하면 유저는 버튼이 고장난 줄 안다.
-  // ⚠️ 폰에서 읽는 자리는 보드 아래 `auto-hint` 가 아니라 **버튼의 `title`** 이다
-  //    (`auto-hint` 는 ≤1023px 에서 `display:none`, `auto-hint-top` 은 비활성일 때만 뜬다).
-  //    폰에서 실제로 도달 가능한 축으로 잰다.
-  await expect(page.getByTestId("auto-fill-top")).toHaveAttribute("title", /다 못 채웁니다/);
+  // ⚠️ 활성일 때 폰에서 읽는 자리는 **버튼의 `title`** 이다(`auto-hint` 는 ≤1023px 에서
+  //    `display:none` — 활성 상태까지 펴면 탭 레이아웃 세로 예산을 상시로 먹는다).
+  await expect(page.getByTestId("auto-fill")).toHaveAttribute("title", /다 못 채웁니다/);
 
-  await page.getByTestId("auto-fill-top").click();
+  await page.getByTestId("auto-fill").click();
   await expect(page.getByTestId("starter-count")).toHaveText(/6\/11/);
-  // 6명을 다 쓴 뒤에는 더 넣을 사람이 없으므로 버튼이 닫힌다(사유와 함께).
-  await expect(page.getByTestId("auto-fill-top")).toBeDisabled();
-  await expect(page.getByTestId("auto-hint-top")).toContainText("채울 빈 자리가 없");
+  /**
+   * ⚠️ 여기서는 버튼이 **사라지지 않는다** — 선발 5칸이 여전히 비어 있기 때문이다(#455 A3 의
+   * 노출 축 = 빈칸). 넣을 사람이 없다는 것은 **활성** 축이라 비활성 + 사유로 남는다.
+   * 두 축을 하나로 묶으면 이 상태에서 화면이 통째로 침묵한다(보유 부족 신규 유저가 그 자리다).
+   */
+  await expect(page.getByTestId("auto-fill")).toBeDisabled();
+  /**
+   * ⚠️ **사유가 이 상태에서 참이어야 한다** — 구 문구는 `"채울 빈 자리가 없거나 …"` 였는데,
+   * A3 이 노출을 빈칸에 묶은 뒤로 그 첫 절은 **이 문장이 뜨는 모든 상태에서 거짓**이다
+   * (A3 독립검증 minor-2). 그런데 이 계약이 그 절을 리터럴로 들고 있어서, 거짓 절을 지우는
+   * 것이 곧 red 였다 = 계약이 결함을 굳히고 있었다.
+   */
+  await expect(page.getByTestId("auto-fill")).toHaveAttribute("title", /모두 배치했습니다/);
+  await expect(page.getByTestId("auto-fill")).not.toHaveAttribute("title", /빈 자리가 없/);
+  /**
+   * ⚠️ **비활성 사유는 폰에서 실제로 읽혀야 한다.** `title` 은 터치에 안 뜨고, A3 이 시트 바의
+   * `auto-hint-top`(구 폰 전용 사유 줄)을 없앴다 — 그래서 이 상태에서만 보드 아래 `auto-hint`
+   * 가 폰에도 펴진다. 뷰포트 밖 통과를 막으려고 `boundingBox` 로 화면 안인지까지 본다.
+   */
+  const hint = page.getByTestId("auto-hint");
+  await expect(hint).toContainText("모두 배치했습니다");
+  const hb = (await hint.boundingBox())!;
+  console.log(`[deck-auto] 폰 비활성 사유 줄 = ${JSON.stringify(hb)}`);
+  expect(hb.height, "폰에서 사유 줄이 접혀 있으면(display:none) 높이가 0 이다").toBeGreaterThan(0);
 });
 
-test("W2 Auto: 덱이 이미 꽉 차 있으면 **비활성 + 사유**(눌러도 무반응이던 결함, #439 major-2)", async ({ page }) => {
+test("W2 Auto: 덱이 이미 꽉 차 있으면 **손잡이가 사라진다**(#439 major-2 → #455 A3)", async ({ page }) => {
   await mockApi(page, PLAYERS);
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
@@ -169,9 +193,11 @@ test("W2 Auto: 덱이 이미 꽉 차 있으면 **비활성 + 사유**(눌러도 
   await page.goto("/deck");
 
   // 먼저 Auto 로 채운다(보유 14 → 선발 11 + 벤치 3 = 더 넣을 자리가 없다).
-  await page.getByTestId("auto-fill-top").click();
+  await page.getByTestId("auto-fill").click();
   await expect(page.getByTestId("starter-count")).toHaveText(/11\/11/);
 
-  await expect(page.getByTestId("auto-fill-top")).toBeDisabled();
-  await expect(page.getByTestId("auto-hint-top")).toContainText("채울 빈 자리가 없");
+  // #439 는 여기를 "비활성 + 사유"로 고쳤고, #455 A3 이 한 걸음 더 갔다: **빈칸이 없으면 부재**.
+  // (앵커 = 위 11/11 — 화면이 안 그려져서 통과하는 것이 아니다.)
+  await expect(page.getByTestId("auto-fill")).toHaveCount(0);
+  await expect(page.getByTestId("auto-hint")).toHaveCount(0);
 });
