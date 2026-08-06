@@ -84,10 +84,41 @@ describe("#456 B4 — 팀색 단일 출처", () => {
       if (Object.keys(EXEMPT).some((e) => rel.endsWith(e))) continue;
       const src = readFileSync(`${root}${rel}`, "utf8");
       for (const hex of hexes) {
-        if (src.includes(hex)) offenders.push(`${rel} :: ${hex}`);
+        // 대소문자 무감각 — CSS hex 는 `#3B82F6` 도 같은 색이다(독립검증 minor-2 가 이 구멍을 실측).
+        if (src.toLowerCase().includes(hex.toLowerCase())) offenders.push(`${rel} :: ${hex}`);
       }
     }
     expect(offenders, "팀색 리터럴은 `common/team-colors.ts` 에서만 산다").toEqual([]);
+  });
+
+  /*
+   * **미탐 경계를 음성 대조로 고정한다**(루트 CLAUDE.md 표 #9).
+   *
+   * 이 스캐너는 hex 문자열 포함 검사다 — **같은 색을 다른 표기로** 적으면 못 잡는다. 그 사실을
+   * 적어만 두면 다음 사람이 "목록에 없으니 잡히는 형태"로 읽으므로(#406 W1b 가 그렇게 세 번
+   * 헛돌았다) 경계 자체를 단언한다. 넓히면 **이 단언이 먼저 깨져** 경계가 움직였다고 알려 준다.
+   *
+   * ⚠️ 넓히지 않은 이유: `rgb()`/`color-mix()` 까지 잡으려면 색 파서가 필요하고, 이 리포에서
+   * 팀색을 그렇게 적은 전례가 0 이다. 대소문자는 **실제로 흔한 실수**라 그것만 닫았다.
+   */
+  it("미탐 경계 — hex 표기가 아니면 이 스캐너는 못 잡는다(알고 남긴 구멍)", () => {
+    const hex = TEAM_COLORS.home.strong; // "#3b82f6"
+    const scan = (src: string) =>
+      SIDES.flatMap((s) => ROLES.map((r) => TEAM_COLORS[s][r])).some((h) =>
+        src.toLowerCase().includes(h.toLowerCase()),
+      );
+
+    // 잡는다: 소문자·대문자·혼합 hex
+    expect(scan(`background: ${hex};`), "소문자 hex 를 놓친다").toBe(true);
+    expect(scan(`background: ${hex.toUpperCase()};`), "대문자 hex 를 놓친다").toBe(true);
+    expect(scan("background: #3B82f6;"), "혼합 hex 를 놓친다").toBe(true);
+
+    // 못 잡는다(경계) — 이 줄이 깨지면 스캐너가 넓어진 것이니 위 주석을 같이 갱신해라.
+    expect(scan("background: rgb(59, 130, 246);"), "rgb() 를 잡게 됐다면 경계가 움직였다").toBe(false);
+    expect(
+      scan("background: color-mix(in srgb, #3b82f7 90%, black);"),
+      "근사색을 잡게 됐다면 경계가 움직였다",
+    ).toBe(false);
   });
 
   it("예외 목록이 전부 실재한다(낡은 예외가 조용히 남지 않게)", () => {

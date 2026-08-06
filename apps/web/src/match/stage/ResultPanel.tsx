@@ -249,7 +249,18 @@ export function ResultPanel({
           {nextError}
         </p>
       )}
-      <div className={styles.ctaRow} data-testid="result-cta-row">
+      {/*
+        `data-cta-count` 가 배치를 가른다(CSS 머리말이 SoT) — 둘이면 데스크탑에서 **가로 한 줄**이
+        되어 바닥 높이가 CTA 없을 때와 같아진다. 세로로 쌓으면 그 62px 를 `.scroll` 이 내고
+        #355 의 "팀 스탯의 시작이 보인다"가 1024×768·1280×720 에서 깨진다(S3-R1 blocker-1).
+        ⚠️ 개수는 **여기서 파생**한다 — CSS 에 버튼 목록을 다시 적으면 세 번째 버튼이 생기는 날
+        조용히 어긋난다.
+      */}
+      <div
+        className={styles.ctaRow}
+        data-testid="result-cta-row"
+        data-cta-count={nextCtaLabel ? 2 : 1}
+      >
         {nextCtaLabel && (
           <button
             type="button"

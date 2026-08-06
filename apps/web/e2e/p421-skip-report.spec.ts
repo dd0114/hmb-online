@@ -537,7 +537,12 @@ test.describe("#421 스킵 버튼 · 하프 리포트", () => {
      * 실화면 캡처 — **계약 안에서** 찍는다(apps/web CLAUDE.md: *"캡처를 별도 스펙으로 떼지는 마라 —
      * 계약이 본 것과 다른 화면을 찍게 된다. 목적지만 가른다"*). 색·대비·톤은 좌표·속성으로 못 보고
      * 판정은 독립 QA 몫이라(루트 §2-2) 이 파일은 그 입력을 남기는 데까지만 한다.
-     * 기본 목적지는 `test-results/`(gitignore) — 리포에 쓰려면 `HMB_WRITE_EVIDENCE=1`(#314).
+     *
+     * ⚠️ **정정**(독립검증 minor-6): 한때 *"리포에 쓰려면 `HMB_WRITE_EVIDENCE=1`"* 이라고 적었는데
+     * 부정확하다 — `.smoke/` 도 `apps/web/.gitignore` 에 걸려 있어 **어느 쪽으로도 리포엔 안
+     * 들어간다**(리포 오염 0 은 #314 가 원한 그대로다). 두 목적지의 실제 차이는 **수명**이다:
+     * 기본 `test-results/` 는 playwright 가 **매 실행 시작에 비우므로** 다른 스펙을 한 번만 돌려도
+     * 사라진다. 눈으로 볼 그림을 남기려면 `HMB_WRITE_EVIDENCE=1` 로 `.smoke/` 에 찍어라.
      */
     test("캡처 — 실화면(계약이 본 그 화면)", async ({ page }) => {
       await openTimeline(page);

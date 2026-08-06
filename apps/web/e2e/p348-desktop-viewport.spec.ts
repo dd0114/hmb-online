@@ -95,7 +95,7 @@ const PLAYERS = [
 ];
 
 /** ⚠️ 라우트는 pathname 술어로 — glob('**\/api\/**') 는 vite 소스 /src/api/*.ts 까지 잡아 흰 화면이 된다. */
-async function mockApi(page: Page, state: string, growth = false) {
+async function mockApi(page: Page, state: string, growth = false, mode?: string) {
   await page.route("**/*", async (route) => {
     const url = new URL(route.request().url());
     if (!url.pathname.startsWith("/api/")) return route.continue();
@@ -119,6 +119,14 @@ async function mockApi(page: Page, state: string, growth = false) {
           opponent: { name: "봇 FC" },
           userDeckSnapshot: SNAPSHOT,
           clock: null,
+          /*
+           * ⚠️ **`mode` 를 안 실으면 결과 화면의 다음 경기 CTA 가 렌더되지 않는다**(#456 B5).
+           * 그 상태로 이 파일 전체가 green 이었고, 정작 CTA 가 그려지는 리그·원정에서 아래 ⑥ 의
+           * 세로 예산이 깨져 있었다 — apps/web CLAUDE.md "초록으로 거짓말하는 방식" **#4**
+           * (픽스처가 두 상태를 뭉갠다) 그대로다. 기본은 계속 미탑재(= 연습, 구 표본 보존)이고
+           * ⑥-b 가 그 팔을 따로 태운다.
+           */
+          ...(mode ? { mode } : {}),
         },
       });
     }
@@ -172,8 +180,8 @@ async function mockApi(page: Page, state: string, growth = false) {
   });
 }
 
-async function openMatch(page: Page, state: string, growth = false) {
-  await mockApi(page, state, growth);
+async function openMatch(page: Page, state: string, growth = false, mode?: string) {
+  await mockApi(page, state, growth, mode);
   await page.addInitScript(() => {
     localStorage.setItem("hmb.auth.token", "mock-token");
     localStorage.setItem("hmb.auth.provider", "local");
@@ -590,6 +598,73 @@ test.describe("⑥ 결과 화면 — [로비로] 가 어느 데스크탑 비율�
       }
     });
   }
+
+  /**
+   * ⑥-b **다음 경기 CTA 가 그려지는 모드**(#456 B5) — 이 대역이 통째로 비어 있었다.
+   *
+   * 위 ⑥ 의 목은 `mode` 를 안 실어 CTA 가 **렌더되지 않는다**. 그래서 리그·원정에서 바닥 버튼이
+   * 하나 더 생겨 `.scroll` 이 62px 줄어든 것을 **아무도 재지 않았고**, `p348`+`p403`+`p456`
+   * 126건이 전부 green 인 채로 1024×768 · 1280×720 에서 팀 스탯 머리가 잘려 있었다
+   * (독립검증 blocker-1 실측: statsTop 잔량 4px / 0px).
+   *
+   * ⚠️ **단언은 ⑥ 과 같은 것을 쓴다** — 새 임계를 만들면 두 대역이 서로 다른 약속을 하게 된다.
+   * 여기서 재는 것은 "CTA 가 늘어도 그 약속이 그대로인가" 하나다.
+   * ⚠️ 전 비율 스윕은 **리그만** 돈다 — 이 축의 변수는 **바닥 버튼 개수**이지 라벨이 아니라
+   * 원정은 같은 지오메트리다(가장 빠듯한 비율에서 한 점만 대조로 확인한다).
+   */
+  const CTA_MODE_VIEWPORTS = DESKTOP.filter((v) => v.height >= 700);
+
+  for (const vp of CTA_MODE_VIEWPORTS) {
+    test(`⑥-b ${vp.name} — 리그(다음 경기 CTA)에서도 팀 스탯의 시작이 보인다`, async ({ page }) => {
+      await page.setViewportSize(vp);
+      await openMatch(page, "FINISHED", false, "league");
+      await expect(page.getByTestId("result-page")).toHaveCount(1);
+      // 전제: 이 팔은 CTA 가 **실제로** 그려져야 의미가 있다(안 그려지면 ⑥ 과 같은 화면이다).
+      await expect(page.getByTestId("result-next-cta")).toHaveCount(1);
+
+      const cta = await box(page, "to-lobby");
+      expect(cta.inViewport, `${vp.name}: [로비로] 가 화면 밖 — bottom ${cta.bottom} > ${cta.vh}`).toBe(true);
+      expect(cta.hitSelf, `${vp.name}: [로비로] 중심을 다른 것이 받는다`).toBe(true);
+
+      const next = await box(page, "result-next-cta");
+      expect(next.inViewport, `${vp.name}: 다음 경기 CTA 가 화면 밖 — bottom ${next.bottom}`).toBe(true);
+      expect(next.hitSelf, `${vp.name}: 다음 경기 CTA 중심을 다른 것이 받는다`).toBe(true);
+
+      const reward = await box(page, "reward-daily");
+      expect(
+        reward.inViewport,
+        `${vp.name}: 결과 카드 마지막 줄이 잘렸다 — bottom ${reward.bottom} > ${reward.vh}`,
+      ).toBe(true);
+
+      const statsTopVisible = await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="team-stats"]') as HTMLElement | null;
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        if (r.top + 6 >= window.innerHeight) return false;
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 6);
+        return !!hit && (hit === el || el.contains(hit));
+      });
+      expect(
+        statsTopVisible,
+        `${vp.name}: 다음 경기 CTA 가 생기자 팀 스탯의 시작이 잘렸다 — 이 화면이 "스코어 카드 하나"로 읽힌다`,
+      ).toBe(true);
+    });
+  }
+
+  test("⑥-b 원정도 같은 지오메트리다 — 가장 빠듯한 비율 한 점 대조 (1280×720)", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await openMatch(page, "FINISHED", false, "away");
+    await expect(page.getByTestId("result-next-cta")).toHaveText("다음 원정 떠나기");
+    const statsTopVisible = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="team-stats"]') as HTMLElement | null;
+      if (!el) return false;
+      const r = el.getBoundingClientRect();
+      if (r.top + 6 >= window.innerHeight) return false;
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + 6);
+      return !!hit && (hit === el || el.contains(hit));
+    });
+    expect(statsTopVisible, "원정 CTA 에서 팀 스탯의 시작이 잘렸다").toBe(true);
+  });
 
   test("성장 리포트가 붙어도(내용 상한 없음) CTA 는 화면 안 — 1280×800", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });

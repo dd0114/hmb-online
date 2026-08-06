@@ -33,6 +33,8 @@ interface Harness {
   awayOfferCalls: number;
   /** 다음 경기 요청에 돌려줄 실패(없으면 성공). */
   nextFailure?: { status: number; code: string; message: string; detail?: unknown };
+  /** `GET /api/deck` 을 404 로 — 덱 없는 유저(`useDeck` 이 404 만 `null` 로 정규화한다). */
+  deckMissing?: boolean;
 }
 
 function detailOf(h: Harness, id = MATCH_ID) {
@@ -78,6 +80,15 @@ async function mockApi(page: Page, h: Harness) {
     if (url.pathname.startsWith("/api/away/") && req.method() === "POST") {
       h.awayOfferCalls++;
       return route.fulfill({ json: {} });
+    }
+    if (url.pathname === "/api/deck") {
+      /*
+       * ⚠️ `deckMissing(undefined)` 은 false 다 — `useDeck` 은 **404 만** `null` 로 정규화하고
+       * `undefined` 는 "아직 모른다"(로딩)이다. 그래서 표본은 `{}` 가 아니라 **404** 여야 한다.
+       */
+      return h.deckMissing
+        ? route.fulfill({ status: 404, json: { code: "NOT_FOUND", message: "덱 없음" } })
+        : route.fulfill({ json: { formation: "4-3-3", slots: [] } });
     }
     if (url.pathname === `/api/matches/${MATCH_ID}`) return route.fulfill({ json: detailOf(h) });
     if (url.pathname === `/api/matches/${MATCH_ID}/result`) {
@@ -190,6 +201,52 @@ test.describe("#456 B5 — 종료 후 다음 행동 CTA", () => {
     // 화면에 남되 나갈 길은 열려 있다.
     await expect(page.getByTestId("result-page")).toBeVisible();
     await expect(page.getByTestId("to-lobby")).toBeVisible();
+
+    /*
+     * ⚠️ **`toBeVisible()` 로는 이 계약이 성립하지 않는다**(루트 CLAUDE.md 표 #3 — 뷰포트 밖도
+     * 통과한다). #294 MAJOR 가 정확히 그 모양이었다: 실패 안내가 스크롤 영역 **끝**에 있어 고정
+     * CTA 가 그 위에 앉았고, 화면이 클릭 전과 똑같아 "버튼 먹통"으로 읽혔는데 계약은 green 이었다.
+     * ⇒ ⓐ 스크롤러 **밖**에 산다 ⓑ 자기 중심을 자기가 받는다 ⓒ 패널을 끝까지 굴려도 **자리가
+     * 안 움직인다**(= 고정층) 를 좌표로 잰다.
+     */
+    const before = await page.evaluate(() => {
+      const el = document.querySelector('[data-testid="result-next-error"]') as HTMLElement | null;
+      const scroll = document.querySelector('[data-testid="result-scroll"]');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        y: Math.round(r.top),
+        insideScroll: !!scroll && scroll.contains(el),
+        hitSelf: !!hit && (hit === el || el.contains(hit)),
+        inViewport: r.top >= -1 && r.bottom <= window.innerHeight + 1,
+      };
+    });
+    expect(before!.insideScroll, "실패 안내가 스크롤 영역 안에 있다 — 고정 CTA 가 덮는다").toBe(false);
+    expect(before!.hitSelf, "실패 안내 중심을 다른 것이 받는다").toBe(true);
+    expect(before!.inViewport, `실패 안내가 화면 밖 — top ${before!.y}`).toBe(true);
+
+    const after = await page.evaluate(() => {
+      const scroll = document.querySelector('[data-testid="result-scroll"]');
+      if (scroll) scroll.scrollTop = scroll.scrollHeight;
+      const el = document.querySelector('[data-testid="result-next-error"]') as HTMLElement | null;
+      return el ? Math.round(el.getBoundingClientRect().top) : null;
+    });
+    expect(after, "패널을 끝까지 굴리자 실패 안내가 따라 움직였다(= 스크롤 안에 있다)").toBe(before!.y);
+  });
+
+  /*
+   * 덱 없는 유저가 이 버튼을 누르면 **안내가 뜬다**(apps/web CLAUDE.md L2 — 새로 매치를 만드는
+   * 버튼에는 `guard()` 를 앞에 붙인다). 배선은 되어 있었지만 **지워도 red 가 되는 곳이 없었다**
+   * (독립검증 minor-4) — `p286-w35-deckless` 에도 이 버튼 표본이 없다.
+   * ⚠️ 서버를 치지 않는 것까지 재야 계약이 성립한다: 다이얼로그만 확인하면 "안내를 띄우고
+   * **그래도 요청은 보냈다**"가 통과한다.
+   */
+  test("g. 덱 없는 유저는 다음 경기를 만들지 못한다 — 안내가 뜨고 서버를 치지 않는다", async ({ page }) => {
+    const h = await openResult(page, { mode: "league", deckMissing: true });
+    await page.getByTestId("result-next-cta").click();
+    await expect(page.getByTestId("deckless-dialog")).toBeVisible();
+    expect(h.nextCalls, "덱이 없는데 다음 경기 요청을 보냈다").toBe(0);
   });
 
   test("f. 409(이미 진행 중)는 에러가 아니라 이어가기 안내다 — 그 매치로 간다", async ({ page }) => {
