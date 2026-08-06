@@ -98,6 +98,24 @@ export async function wheelUntilHit(
 ) {
   const { over, maxWheels = 16, step = 240 } = opts;
   const vp = page.viewportSize()!;
+
+  /**
+   * 휠을 굴릴 지점. `over` 를 주면 **존재를 먼저 단언**한다 — 그 셀렉터가 스테일해지면
+   * `boundingBox()` 가 조용히 **행**해서 180s 테스트 타임아웃이 된다(3R n-3 실측: 8초에도
+   * 미반환, `actionTimeout` 미설정). 거짓 통과는 아니지만 진단이 나쁘다: "계약이 깨졌다"가
+   * "테스트가 멈췄다"로 보인다. 한 번만 재고 루프 안에서 다시 묻지 않는다(구판은 17회 왕복).
+   */
+  let px = vp.width / 2;
+  let py = vp.height * 0.8;
+  if (over) {
+    await expect(page.locator(over), `휠을 굴릴 스크롤러 \`${over}\` 가 없다`).toHaveCount(1);
+    const b = await page.locator(over).boundingBox();
+    if (b) {
+      px = b.x + b.width / 2;
+      py = b.y + b.height / 2;
+    }
+  }
+
   for (let i = 0; i <= maxWheels; i++) {
     const box = await page.getByTestId(testId).first().boundingBox();
     if (box) {
@@ -108,10 +126,10 @@ export async function wheelUntilHit(
         return { hit: true, wheels: i, h: Math.round(box.height), y: Math.round(box.y) };
       }
     }
-    const point = over ? await page.locator(over).first().boundingBox() : null;
-    const px = point ? point.x + point.width / 2 : vp.width / 2;
-    const py = point ? point.y + point.height / 2 : vp.height * 0.8;
-    await page.mouse.move(px, Math.min(Math.max(py, 1), vp.height - 1));
+    await page.mouse.move(
+      Math.min(Math.max(px, 1), vp.width - 1),
+      Math.min(Math.max(py, 1), vp.height - 1),
+    );
     await page.mouse.wheel(0, step);
     await page.waitForTimeout(60);
   }
