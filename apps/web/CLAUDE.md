@@ -1426,7 +1426,37 @@ hero: *"경기 종료 보상 페이지를 순차화하자 — 골드 보상, 레
 - **로딩은 막다른 화면이 아니다**(major-3) — `PENDING_ESCAPE_MS`(5s) 뒤 `[결과 보기]`.
   이 그릇은 `dismissable={false}` 라 ESC·백드롭이 안 먹고 `apiFetch` 에는 타임아웃이 없다
   (3s 는 runtime config 조회 전용). **자동으로 넘기지는 않는다** — 늦게 와도 보상은 보여 줘야 한다.
+### 전 구간 E2E — `e2e/p456-full-journey.spec.ts` (AC5)
+
+위 계약들은 전부 **한 층씩**이다: `p424` = 브릿지가 뜨는가 · `p456-match-reward` = 보상 오버레이
+**안** · `p456-result-cta` = **결과 화면에 착지한 상태에서 시작**(`state:"FINISHED"` 로 goto).
+그래서 **종료부터 다음 행동까지 한 사람이 끊기지 않고 걷는** 계약이 없었다.
+
+```
+GEN2(진행 중) → [서버] FINISHED → 브릿지 `보상 받기` → 골드 → (모드별) →
+선수① [이 스탯 선택] → 선수② [다음에] → #405 시트 [확인](ack) → 결과 화면 → 모드별 CTA 클릭
+```
+
+- ⚠️ **그 공백은 가설이 아니라 측정됐다.** `ResultPanel` 의 `nextCtaLabel` 을 `hasRewardSheet` 로
+  잠그는 변이(MUT-J1 — *"봉투가 있으면 시트가 안내하니 CTA 는 빼도 된다"* 라는 그럴듯한 리팩터)는
+  **이 스펙만 죽인다**: journey 2 failed / `p456-result-cta` 9 · `p456-match-reward` 21 ·
+  `p348` 103 · `p405` 18 = **151건 전부 green**. 이유는 구조적이다 — `p456-result-cta` 의 목은
+  `rewardBundle` 이 **없어서** 그 상태에 도달할 수 없다(`p405` 가 브릿지를 못 덮는 것과 같은 사각).
+- ⚠️ **상태를 갈아끼워 단계를 건너뛰지 않는다.** 서버 상태를 바꾸는 것은 **경기 종료 이벤트 한 번**
+  뿐이고 나머지는 전부 실제 클릭이다. 그 규율을 사람이 지키지 않고 **하니스가 문다** —
+  `h.finish()` 는 두 번 부르면 던지고, 각 여정 끝이 `h.finishes === 1` 을 단언하며, **테스트 D 가
+  그 가드 자체를 검사한다**(없으면 `finishes === 1` 은 장식이다).
+- **선수 카드는 두 갈래를 한 흐름에서 섞는다** — 한 명 `[이 스탯 선택]`, 한 명 `[다음에]`.
+  섞어야 "적용이 다음 장을 삼키지 않는다"가 걸린다(BL-1 부류의 재발 감시).
+- 최종 CTA 는 **좌표로** 잰다(`inViewport` + `elementFromPoint` 자기 히트) — `toBeVisible()` 은
+  뷰포트 밖을 통과한다(표 #3, #355 가 그 자리에서 실제로 깨져 있었다).
+- **B4 시안 정합은 매 실행 확인된다** — 브릿지 CTA `보상 받기` 가 시안
+  `docs/plan-v5/mock/424-bridge/index.html:330` 과 같은 문자열인지 여정 안에서 단언한다.
+- ⚠️ `GEN2` 에서 시작하는 이유 = 캔버스를 안 띄워 `match-log.json` 신선도(**#464**)에 의존하지
+  않는다. `GEN2 → FINISHED` 는 지어낸 경로가 아니라 시계 롤백 실경로다(`p424` ⑧).
+
 - 계약 = `rewards/match-reward-cards.test.ts`(순서·부재·금액 통과·선수 카드) +
+  `e2e/p456-full-journey.spec.ts`(**전 구간 3모드**) +
   `e2e/p456-match-reward.spec.ts`(a~o) + `e2e/p424-flow-bridge.spec.ts` ⑥⑨ +
   `e2e/p405-reward-sheet.spec.ts` **f·i**(감량으로 다시 쓴 둘 — `j`·`k` 는 이 축을 안 봤고 무접촉이다)
   + `e2e/growth-mock.spec.ts`(강화탭 동형).
