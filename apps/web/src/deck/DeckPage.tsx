@@ -270,8 +270,9 @@ export function DeckPage() {
            ⚠️ 그리고 **폭 1023 이하에서만** 탭이다 — 데스크탑은 보드 | 레일 2컬럼이 그대로 산다.
            근거·임계는 `use-deck-layout.ts` 머리말(구현이 범위를 넘어 2컬럼을 죽였던 실측 포함). */
         layout={deckLayout}
-        /* 팀 사기 = [세부 전술] 탭 꼬리(#455 A1). 아래 주석의 "프롬프트 우선"과 같은 이유다 —
-           에디터 형제로 두면 폰에서 68px 를 먹어 그만큼 프롬프트 칸이 줄어든다(실측). */
+        /* 팀 사기 = [세부 전술] 탭 꼬리(#455 A1) — **탭 레이아웃에서만**이다. 아래 주석의
+           "프롬프트 우선"과 같은 이유다: 에디터 형제로 두면 폰에서 68px 를 먹어 그만큼 프롬프트
+           칸이 줄어든다(실측). stack 은 아래 형제 자리를 그대로 쓴다(BL-1). */
         teamExtra={<TeamMoraleWidget relations={relations} compact />}
         teamPanelNotice={preIssueList}
         onOpenGrowth={(p) => setGrowthPlayer(p)}
@@ -320,7 +321,15 @@ export function DeckPage() {
           ⚠️ **에디터 위로 올리지 마라.** 처음엔 보드 위에 뒀는데, 그 한 줄이 지시 레일을 통째로
           아래로 밀어 **팀 프롬프트가 하단 탭바에 가렸다**(390px 실측 여백 79 → 11, 요구 ≥24).
           #244 의 "프롬프트는 어디서나 첫 화면에"가 이 위젯보다 우선이다 — 사기는 곁눈질로 보는
-          값이고 프롬프트는 이 화면에 온 이유다. 계약 = `p244-prompt-first.spec.ts` AC1·AC13. */}
+          값이고 프롬프트는 이 화면에 온 이유다. 계약 = `p244-prompt-first.spec.ts` AC1·AC13.
+
+          ⚠️ **탭 레이아웃에서만 `teamExtra` 로 옮긴다 — 옮기는 게 아니라 갈래다.** A1 초판이
+          이 줄을 지우고 `teamExtra` 만 넘겼는데, `DeckEditor` 는 그 노드를 `tabs` 분기 안에서만
+          렌더한다 → **데스크탑(stack)에서 위젯이 통째로 사라졌다**(1024·1280 실측 존재 0,
+          독립검증 BL-1 / `p286-home-nav.spec.ts` 가 이미 red 였다). 위 "소비처가 0 이 되면
+          조용히 사라진다"가 같은 자리에서 두 번째로 일어난 것이다. 두 갈래 다 계약이 있다. */}
+      {deckLayout === "stack" && <TeamMoraleWidget relations={relations} compact />}
+
       <div className={styles.notes}>
         {/* ⚠️ 탭 레이아웃에서는 이 목록이 **[전체 지시] 탭 안**으로 간다(`teamPanelNotice`).
             페이지 형제로 두면 탭 패널을 짧게 만들어 팀 프롬프트를 밀어내고 **그 위를 덮는다**

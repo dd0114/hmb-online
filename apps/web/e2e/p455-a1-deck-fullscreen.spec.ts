@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { hitAt, openDeck } from "./deck-mock";
 
 /**
  * #455 A1 — **전술보드 전체화면·세로 확장**(메가에픽2-A, 덱셋팅 화면 전면 개편).
@@ -31,85 +32,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 // ── 픽스처 ────────────────────────────────────────────────────────────────────
-const attrs = (v: number) => ({
-  technical: v, mental: v, physical: v, passing: v, shooting: v,
-  tackling: v, pace: v, stamina: v, positioning: v,
-});
-const P = (id: string, name: string, position: string, grade: string, ov: number) => ({
-  id, name, position, grade, owned: true, ownedCount: 1, attributes: attrs(ov), personality: "CALM",
-});
-
-const PLAYERS = [
-  P("GK1", "골리원", "GK", "GOLD", 70), P("GK2", "골리투", "GK", "SILVER", 62),
-  P("DF1", "수비하나", "DF", "GOLD", 76), P("DF2", "수비둘", "DF", "SILVER", 68),
-  P("DF3", "수비셋", "DF", "SILVER", 64), P("DF4", "수비넷", "DF", "BRONZE", 55),
-  P("MF1", "미드하나", "MF", "DIA", 84), P("MF2", "미드둘", "MF", "GOLD", 74),
-  P("MF3", "미드셋", "MF", "SILVER", 66), P("MF4", "미드넷", "MF", "SILVER", 61),
-  P("FW1", "공격하나", "FW", "LEGEND", 90), P("FW2", "공격둘", "FW", "GOLD", 72),
-  P("FW3", "공격셋", "FW", "SILVER", 69), P("FW4", "공격넷", "FW", "GOLD", 80),
-];
-
-/** 선발 11 — **제품이 저장할 수 있는 상태**(`validateDraft` STARTER_COUNT=11). */
-const ELEVEN = ["GK1", "DF1", "DF2", "DF3", "DF4", "MF1", "MF2", "MF3", "MF4", "FW1", "FW2"];
-const BENCH = ["FW3", "GK2"];
-
-function deckSlots() {
-  return [
-    ...ELEVEN.map((playerId, i) => ({ playerId, role: "starter", slotIndex: i, promptText: null })),
-    ...BENCH.map((playerId, i) => ({ playerId, role: "bench", slotIndex: i, promptText: null })),
-  ];
-}
-
-const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
-
-async function bootstrap(page: Page, slots: unknown[], teamPrompt: string | null = null) {
-  const state = { deck: { formation: "4-4-2", slots, teamPrompt } };
-  await page.route((url) => url.pathname.startsWith("/api/"), (r) => r.fulfill(json({})));
-  await page.route((url) => url.pathname === "/api/players", (r) => r.fulfill(json(PLAYERS)));
-  await page.route((url) => url.pathname === "/api/presets", (r) => r.fulfill(json([])));
-  await page.route((url) => url.pathname === "/api/presets/team", (r) =>
-    r.fulfill(json([1, 2, 3].map((slot) => ({ slot, name: null, snapshot: null })))));
-  await page.route((url) => url.pathname === "/api/relations", (r) =>
-    r.fulfill(json({ morale: 60, streak: 0, players: [] })));
-  await page.route((url) => url.pathname === "/api/conditions/today", (r) =>
-    r.fulfill(json(Object.fromEntries(ELEVEN.map((id, i) => [id, 0.3 + (i % 5) * 0.15])))));
-  await page.route((url) => url.pathname === "/api/me", (r) => r.fulfill(json({
-    user: { id: "u1", nickname: "테스터", provider: "guest", tutorialDone: true },
-    wallet: { points: 1000 }, records: { played: 0, wins: 0, draws: 0, losses: 0 },
-  })));
-  await page.route((url) => url.pathname === "/api/me/active-match", (r) =>
-    r.fulfill(json({ match: null, locked: false, abandonable: false })));
-  await page.route((url) => url.pathname === "/api/deck", (r) => {
-    if (r.request().method() === "PUT") {
-      const b = r.request().postDataJSON();
-      state.deck = { formation: b.formation, slots: b.slots, teamPrompt: b.teamPrompt ?? null };
-    }
-    return r.fulfill(json(state.deck));
-  });
-  await page.addInitScript(() => {
-    localStorage.setItem("hmb.auth.token", "mock-token");
-    localStorage.setItem("hmb.auth.provider", "guest");
-  });
-}
-
-async function openDeck(page: Page, teamPrompt: string | null = null) {
-  await bootstrap(page, deckSlots(), teamPrompt);
-  await page.goto("/deck");
-  await expect(page.getByTestId("deck-editor")).toBeVisible();
-  await expect(page.getByTestId("token-FW1")).toBeVisible();
-}
-
-/** 이 지점이 **실제로 화면에 있나** — `toBeVisible()` 은 뷰포트 밖을 통과한다. */
-async function hitAt(page: Page, x: number, y: number, testId: string) {
-  return page.evaluate(
-    ({ x, y, testId }) => {
-      const el = document.elementFromPoint(x, y);
-      if (!el) return false;
-      return !!el.closest(`[data-testid="${testId}"]`);
-    },
-    { x, y, testId },
-  );
-}
+// ⚠️ 목·헬퍼는 `e2e/deck-mock.ts` 로 뺐다 — **폭 밴드 계약**(`p455-a1-layout-band.spec.ts`)이
+//    같은 화면을 다른 뷰포트로 재야 하는데 `test.use({viewport})` 가 파일 단위라 갈렸다.
+//    목이 갈라지면 두 계약이 서로 다른 세계를 검사한다(apps/web/CLAUDE.md "초록으로 거짓말").
 
 // ── ① 경기장이 상한 68 에 닿는다 ─────────────────────────────────────────────
 /**
@@ -247,7 +172,6 @@ test("⑥ 경기장 아래 죽은 여백이 없다 (탭이 바닥까지)", async
       inside: Math.round(editor.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom),
       below: Math.round(floor - editor.getBoundingClientRect().bottom),
       panelH: Math.round(panel.getBoundingClientRect().height),
-      docOver: document.documentElement.scrollHeight - window.innerHeight,
     };
   });
   // ⓐ 에디터 **안**에 죽은 띠가 없다 — 목업에서 세 번 났던 flex 버그(29px 띠 · 보드가 눌림)의 자리다.
@@ -256,7 +180,24 @@ test("⑥ 경기장 아래 죽은 여백이 없다 (탭이 바닥까지)", async
   // ⓑ 에디터 **아래**는 안내(`deck-pre-issues`·저장 안내)가 앉는 자리라 0 이 아니다. 다만 화면을
   //    넘겨서는 안 된다 — "전체화면"의 뜻이 그것이고, 넘치면 그만큼이 탭에서 깎인 것이다.
   expect(m.below, `에디터 아래 안내 영역 ${m.below}px`).toBeGreaterThanOrEqual(0);
-  expect(m.docOver, `문서가 화면을 ${m.docOver}px 넘친다`).toBeLessThanOrEqual(0);
+  /**
+   * ⚠️ **여기 있던 `docOver ≤ 0` 은 지웠다 — 반증 불가능한 단언이었다**(독립검증 MAJ-1).
+   * `.app-container--fill` 이 `overflow: hidden` 이라 **문서는 정의상 안 넘친다**: 피치를
+   * `68/140` 으로 부풀려 프롬프트를 1011~1113(뷰포트 844 밖)으로 밀어내도 `docOver` 는 0 이었다.
+   * 커밋 메시지의 "문서 넘침 172 → 0" 이 그 자를 헤드라인으로 썼는데, 넘침이 사라진 게 아니라
+   * **스크롤이** 사라진 것이고 그 대가가 정확히 BL-2(폭 900~1023 에서 패널 0px)였다.
+   *
+   * ⚠️ **대체 자를 두 번 시도했고 둘 다 공허했다 — 그래서 바꾸지 않고 지운다.**
+   * ⓐ `에디터 바닥 ≤ 바닥선` : `Layout fill` 을 통째로 떼는 변이(M-F)에도 **7/7 통과**.
+   *   에디터는 flex 아이템이라 이 픽스처에서 어차피 자라지 않는다.
+   * ⓑ `.tabPanel{min-height:600px}` 강제(M-E)에도 통과 — 패널은 스크롤러라 그건 결함도 아니다.
+   * 즉 이 뷰포트·픽스처에서 "넘치지 않는다"는 **flex 가 구조적으로 보장**한다. 공허한 단언을
+   * 다른 공허한 단언으로 바꾸면 고친 것처럼 보이기만 한다(§"초록으로 거짓말하는 방식").
+   *
+   * ⇒ "전체화면"이 실제로 지켜지는지는 **닿는가**로 판정한다. 그 자들은 변이로 죽는 것을
+   *   확인했다: ④(프롬프트 히트) · ⓐ 아래 `inside`(패널이 바닥까지) · ⓒ `panelH ≥ 120` ·
+   *   그리고 폭 축은 `p455-a1-layout-band.spec.ts` ⑧(M-C 변이에서 2건 사망).
+   */
   // ⓒ 그 결과 프롬프트 칸이 실제로 쓸 만한 크기다(19px 짜리 패널은 "탭이 채웠다"가 아니다).
   expect(m.panelH, `[전체 지시] 패널 ${m.panelH}px`).toBeGreaterThanOrEqual(120);
 });
