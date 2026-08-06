@@ -34,8 +34,15 @@ ENGINE_RT=$(curl -s --max-time 4 http://localhost:18790/health 2>/dev/null | nod
 JAVA_IMG=$(imgid hmb/server-java:p3); SERVANTS_IMG=$(imgid hmb/servants:p3)
 
 # 터널
-API_URL="${API_URL:-$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-cf-tunnel.log 2>/dev/null | tail -1 || true)}"
-WEB_URL="${WEB_URL:-$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-web-tunnel.log 2>/dev/null | tail -1 || true)}"
+# ⚠️ `grep -a` 와 `api.` 배제는 **둘 다 필수**다 — start-tunnel.sh / tunnel-heal.sh 의 같은 자리와
+#    동일한 하드닝이다. 여기만 빠져 있어서 v3.22 배포에서 실제로 재현됐다:
+#    이 캡처가 URL 대신 **`Binary file /tmp/hmb-cf-tunnel.log matches`** 를 돌려줘 그 문자열이
+#    `dist/version.json` 의 apiUrl 로 박혔다(2026-08-03 에는 같은 부류가 web config.json 까지 가서
+#    서비스를 끊었다).
+#    ① `-a` 없으면 cloudflared 로그에 제어문자가 섞이는 순간 grep 이 바이너리로 판정한다.
+#    ② `api.trycloudflare.com` 은 cloudflared 의 **등록 엔드포인트**이지 우리 터널이 아니다(#391).
+API_URL="${API_URL:-$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-cf-tunnel.log 2>/dev/null | grep -v '^https://api\.trycloudflare\.com$' | tail -1 || true)}"
+WEB_URL="${WEB_URL:-$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' /tmp/hmb-web-tunnel.log 2>/dev/null | grep -v '^https://api\.trycloudflare\.com$' | tail -1 || true)}"
 TUNNEL_KIND="${TUNNEL_KIND:-cloudflare-quick}"
 
 # ⚠️ node 의 process.env 가 보려면 export 필요(그냥 쉘 변수는 자식 프로세스에 안 넘어감).
