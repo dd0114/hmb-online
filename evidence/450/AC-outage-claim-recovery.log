@@ -1,0 +1,50 @@
+═══ #450 수령 불가 — 원인 확정 + 공개경로 수령 재현 (2026-08-07) ═══
+
+[원인] 수령 API·payload·클라 로직이 아니라 **인프라(quick tunnel 사멸)** 였다.
+  - 구 터널 호스트 suites-held-facts-growing.trycloudflare.com 이 NXDOMAIN 인데
+    cloudflared 프로세스(pid 21763)는 살아 있어 status.sh 가 '터널: 실행 중 ✓' 로 표시.
+  - 배포 번들 index-e5WgZxiP.js 에 그 죽은 URL 만 인라인 → Pages 에서 오는 모든 API 호출 실패.
+  - 즉 [받기] 만 안 된 게 아니라 로그인·경기·상점 전부 실패하는 상태였다.
+  - hero 가 우편함을 본 것은 터널 생존 중(read 2 흔적), [받기] 를 누른 것은 사멸 후.
+
+[복구] 2026-08-07 01:02:39 새 cloudflared(pid 29837) 기동 + web 재배포(번들 index-zHMNRi65.js).
+       ※ 이 세션이 실행하지 않았다 — 다른 세션/hero 가 start-tunnel.sh 를 돌렸다.
+
+── AC1. 터널 경유 백엔드 200 계열 ──
+════════ HMB 배포 상태 ════════
+  ✓ hmb-java: running (healthy)
+  ✓ hmb-runner: running (healthy)
+  ✓ executor: 실행 중 (2 proc, /Users/peter.park/spider2/hmb-online)
+  ✓ 백엔드 로컬(18080): health 200
+  ✓ 터널: 실행 중 (pid 29837)  URL=https://swap-organizational-targeted-greg.trycloudflare.com
+  ✓ 터널 경유 백엔드: 응답 401 (경로 정상)
+  ✓ web(Pages): https://hmb-online.pages.dev → 200
+  ✓ CORS 결선: https://hmb-online.pages.dev
+  ✓ 자가복구 워치독: 가동 중 (최근: 2026-08-04T02:02:56Z	HEAL_OK)
+  ✓ web→백엔드 결선: https://swap-organizational-targeted-greg.trycloudflare.com
+═══════════════════════════════
+테스터 접속: https://hmb-online.pages.dev
+
+── AC2. 배포 번들의 API base == 라이브 터널 URL ──
+$ curl -s https://hmb-online.pages.dev/ | grep -o 'assets/index-[A-Za-z0-9]*\.js'
+assets/index-zHMNRi65.js
+$ curl -s https://hmb-online.pages.dev/assets/index-zHMNRi65.js | grep -o 'https://[a-z-]*\.trycloudflare\.com' | sort -u
+https://swap-organizational-targeted-greg.trycloudflare.com
+  → status.sh 의 'web→백엔드 결선' 과 일치.
+
+── AC3. 공개 경로(터널+CORS) 실계정 수령 E2E ──
+테스트 계정 qa450claim(01KZBTA4B11T11AXWEZ1Y8D2R3) · 실제 은퇴 우편과 동일한 10종 payload.
+실제 유저 우편은 건드리지 않았다(재발송 0, 회수 0).
+
+1) CORS preflight  OPTIONS /api/mails/{id}/claim  Origin: https://hmb-online.pages.dev
+   status=200 / access-control-allow-origin: https://hmb-online.pages.dev
+2) POST /api/auth/login (guest)  → 200, user 01KZBTA4B11T11AXWEZ1Y8D2R3
+3) GET  /api/mails               → 200, UNREAD 1건(players=10)
+4) POST /api/mails/{id}/claim    → 200
+   {"id": "01KZBX8HPYS2C97MXAVXNEWEXC", "claimed": true, "applied": true, "granted": {"points": 0, "gems": 0, "players": [{"playerId": "P001", "count": 3, "isNew": true}, {"playerId": "P002", "count": 3, "isNew": true}, {"playerId": "P003", "count": 3, "isNew": true}, {"playerId": "P004", "count": 3, "isNew": true}, {"playerId": "P005", "count": 3, "isNew": true}, {"playerId": "P006", "count": 3, "isNew": true}, {"playerId": "P007", "count": 3, "isNew": true}, {"playerId": "P008", "count": 3, "isNew": true}, {"playerId": "P009", "count": 3, "isNew": true}, {"playerId": "P010", "count": 3, "isNew"
+   → claimed:true / applied:true / 10종 전량 지급(isNew:true)
+
+── 실유저 수령 카운터(참고, 복구 직후 시점) ──
+GET /api/admin/mails?limit=60 → reason 에 '#450' 포함 34건(실 33 + QA 1)
+  targetCount 221 / readCount 3 / claimedCount 1  ← claimed 1 은 QA 테스트 계정분
+  실유저 220통은 아직 미수령 = 터널 사멸 구간과 정합(수령 시도 자체가 서버에 도달 못 했다).
