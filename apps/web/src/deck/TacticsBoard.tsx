@@ -41,6 +41,20 @@ interface TacticsBoardProps {
   /** 보드 카드 하단 바(초기화 / Auto 배치) — 벤치와 같은 카드 안에 붙는다. */
   footer?: ReactNode;
   /**
+   * **경기장 우측 하단**에 얹는 손잡이 (#455 A3 — [⚡ 자동 채우기], hero 확정 목업 `.autoFill`).
+   *
+   * ⚠️ 왜 `footer` 가 아니라 피치 **안**인가: 확정값이 *"경기장 우측 하단"* 이고, 하단 바는
+   * 탭 레이아웃(폰 덱셋팅)에 **아예 없다**(`DeckEditor` 의 `footer` 주석 — 되살리면 48px 를 먹어
+   * 빈 덱에서 팀 프롬프트가 하단 탭바 밑으로 들어간다). 피치는 세 화면 전부에 있다.
+   *
+   * ⚠️ **여기 얹는 것은 반드시 클릭을 먹어야 하고, 슬롯의 클릭을 뺏으면 안 된다.** 피치 위
+   * 레이어는 이 파일에서 두 번 사고를 냈다(센터서클이 중앙 MF 탭을 삼킨 BL-1 · 빈 상태 CTA 가
+   * 선발 2·3 을 가로챈 #106 R3b). 그래서 자리가 **우측 하단 코너**다 — `starterCoords` 의 최대
+   * 좌표는 x 0.86 / y 0.92(GK, x=0.5)이고 토큰 레이어는 `inset: 32px 10px 36px` 라 그 코너는
+   * 어느 포메이션에서도 슬롯이 앉지 않는다. 자리를 옮기려면 그 사실부터 다시 재라.
+   */
+  autoFill?: ReactNode;
+  /**
    * 선발 0/11 첫 진입 안내(#106 R3b A) — 피치 **위**에 얹힌다. 슬롯 자체는 계속 눌려야 하므로
    * 오버레이는 `pointer-events:none` 이고 그 안의 CTA 만 다시 켠다(TacticsBoard.module.css).
    */
@@ -463,6 +477,10 @@ export function TacticsBoard(props: TacticsBoardProps) {
             {emptyOverlay}
           </div>
         )}
+        {/* #455 A3 — 빈 상태 안내(`.empty`, z-index 3) **위**에 온다. 빈 덱이 이 버튼의 주요
+            사용처인데 안내 카드가 덮으면 그 자리에서 못 누른다(그 카드는 `pointer-events:none`
+            이지만 자기 배경은 그린다). 계약이 `elementFromPoint` 로 그 순서를 잰다. */}
+        {props.autoFill && <div className={styles.corner}>{props.autoFill}</div>}
       </div>
 
       {/* 벤치 = 보드 카드의 일부 (#106: 별도 블록 금지).

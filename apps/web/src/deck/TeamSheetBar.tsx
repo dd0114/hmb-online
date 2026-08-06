@@ -13,11 +13,14 @@ interface TeamSheetBarProps {
   opponentName?: string;
   /** 상대 파워가 등급 기반 근사값이면 ≈ 로 표기(구 TeamPowerBar 의 주석 대체). */
   opponentApprox?: boolean;
-  /** 모바일 시트 바에 붙는 AUTO (데스크탑은 보드 하단 바가 담당) */
-  autoDisabled?: boolean;
-  autoHint?: string;
-  onAuto?: () => void;
-  /** 배치 잠금(감독시간) — Auto 배치는 **스쿼드 밖에서 선수를 데려오는** 일이라 감춘다. */
+  /**
+   * 배치 잠금(감독시간) — 바가 정적 모양이 된다.
+   *
+   * ⚠️ **AUTO 는 여기 없다**(#455 A3). 구 동작은 이 바(`auto-fill-top`, 폰)와 보드 하단 바
+   * (`auto-fill`, 데스크탑)와 빈 상태(`board-empty-auto`)가 **같은 `onAuto` 를 셋이** 그려서,
+   * 폭에 따라 어느 것이 보이는지가 달랐다. 지금은 경기장 우측 하단 하나뿐이다
+   * (`TacticsBoard.autoFill`). 여기에 다시 붙이면 그 산재가 되살아난다.
+   */
   placementLocked?: boolean;
   /**
    * 포메이션 셀렉트를 감춘다 — **배치 잠금과는 다른 축**(#276).
@@ -51,7 +54,7 @@ interface TeamSheetBarProps {
  * 모바일에서는 보드 하단 바가 접히므로 AUTO 만 이 바에 얹는다(목업 askin-mobile).
  */
 export function TeamSheetBar(props: TeamSheetBarProps) {
-  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, autoDisabled, autoHint, onAuto, placementLocked, formationLocked, formationDisabled, onOpponentInfo } = props;
+  const { draft, onFormationChange, power, opponentPower, opponentName, opponentApprox, placementLocked, formationLocked, formationDisabled, onOpponentInfo } = props;
   const m = sheetMetrics(draft);
   const share = opponentPower != null ? powerShare(power, opponentPower) : 1;
 
@@ -65,18 +68,6 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
     >
       <div className={styles.top}>
         <h2 className={styles.title}>팀 시트</h2>
-        {onAuto && !placementLocked && (
-          <button
-            type="button"
-            className={styles.auto}
-            data-testid="auto-fill-top"
-            disabled={autoDisabled}
-            title={autoHint}
-            onClick={onAuto}
-          >
-            AUTO
-          </button>
-        )}
         {/* 포메이션은 **배치 잠금과 다른 축**이다(#276) — 감독시간에도 바꾼다. `formationLocked` 는
             보낼 데가 없는 화면(스냅샷 없는 구 매치)에서만 true 다. */}
         {!formationLocked && (
@@ -138,11 +129,6 @@ export function TeamSheetBar(props: TeamSheetBarProps) {
           지시 {m.directives}/{m.directiveMax}
         </span>
       </div>
-      {autoHint && autoDisabled && (
-        <p className={styles.autoHint} data-testid="auto-hint-top">
-          {autoHint}
-        </p>
-      )}
     </header>
   );
 }

@@ -17,6 +17,9 @@ import { buildPlayerNames } from "../common/player-names";
 import { findPlayerSlot, removePlayer, setPrompt, type DeckDraft, type SlotRole } from "./deck-logic";
 import { MOUSE_ACTIVATION_PX, TOUCH_ACTIVATION_MS, TOUCH_TOLERANCE_PX } from "./drag-gesture";
 import { movePlayerToSlot, type EditorState } from "./tactics-logic";
+/* #455 A3 — [⚡ 자동 채우기]의 **노출** 판정. 활성 판정(`canFillEmptySlots`)은 후보 목록을
+   아는 호출부(`DeckPage`·`BriefingPanel`)가 하고, 그 결과가 `autoDisabled` 로 온다. */
+import { hasEmptySlotGap } from "./fill-empty";
 import { slotPosition } from "./sheet-metrics";
 import { playerOverall, teamPower } from "./team-power";
 import {
@@ -709,16 +712,16 @@ export function DeckEditor(props: DeckEditorProps) {
    * 탭 레이아웃(#455 A1)에는 **보드 하단 바가 없다.**
    *
    * 담고 있던 것은 전부 다른 자리로 갔다: [보유 선수]·[초기화] → **[후보] 탭**(testid 그대로) ·
-   * Auto → 시트 바(`auto-fill-top`) · 힌트("빈 자리 = 선수 고르기") → 탭 이름이 대신 말한다.
+   * 힌트("빈 자리 = 선수 고르기") → 탭 이름이 대신 말한다.
    *
    * ⚠️ **조건부 둘도 되살리면 안 된다 — 재 보고 알았다.** 한 번 되살렸더니 그 바가 48px 를 먹어
    * **빈 덱에서 팀 프롬프트 아래 16px 가 하단 탭바 밑으로 들어갔다**(390×844 실측 prompt bottom
    * 796 > navTop 780, `p244` AC1-b). 그런데 둘 다 이 화면에 **이미 동등한 자리가 있다**:
    * - `select-clear`(선택 해제) → 레일의 **×**(`rail-close`). `deck-teamsheet` R2 r1 주석이
    *   원래부터 *"독 안의 레일 × 와 동치"* 라고 적어 두었다.
-   * - `board-empty-auto`(Auto 배치로 시작) → **빈 상태 오버레이 안**으로 옮겼다(아래 `emptyOverlay`).
-   *   그 오버레이는 `position:absolute` 라 세로 예산이 **0** 이고, 안내문("아래 …를 누르세요")이
-   *   가리키던 버튼이 그 안내 **바로 옆**으로 온 것이라 오히려 직접적이다.
+   * - Auto 계열 셋(`auto-fill-top`·`board-empty-auto`·`auto-fill`) → **#455 A3 이 하나로 합쳐
+   *   경기장 우측 하단**(`TacticsBoard.autoFill`)으로 보냈다. 피치 안이라 세로 예산도 **0** 이고,
+   *   폭에 따라 자리가 옮겨 다니지 않으므로 안내 문구·코치마크·스펙 헬퍼의 분기가 같이 사라졌다.
    * 즉 없앤 것은 손잡이가 아니라 **중복**이다.
    */
 
@@ -734,9 +737,6 @@ export function DeckEditor(props: DeckEditorProps) {
           opponentName={opponentName}
           opponentApprox={opponentApprox}
           onOpponentInfo={onOpponentInfo}
-          autoDisabled={autoDisabled}
-          autoHint={autoHint}
-          onAuto={onAuto}
           placementLocked={placementLocked}
           /* 포메이션은 배치 잠금과 **다른 축**(#276) — 라인업 편집이 열린 화면에서는 보인다. */
           formationLocked={placementLocked && !lineupEditable}
@@ -807,17 +807,16 @@ export function DeckEditor(props: DeckEditorProps) {
 
                  ⚠️ 이 오버레이는 **완전히 비대화형**이다(텍스트만). R3b 1차 구현은 여기에 Auto CTA
                  버튼을 넣었다가 그 버튼이 선발 슬롯 2·3 을 가로챘다(실측, 실클릭 무반응).
-                 CTA 는 피치 밖 보드 하단 바에 있다 — 오버레이 안에 포커스 가능한 요소를 넣지 말 것. */
+                 CTA 는 이제 피치 **우측 하단 코너**에 있다(#455 A3, `autoFill`) — 슬롯이 앉지
+                 않는 자리라 같은 가림이 안 난다. 오버레이 **안**에는 여전히 넣지 말 것. */
               emptyOverlay={
                 <>
                   <b className={styles.emptyTitle}>선발이 비어 있습니다</b>
-                  {/* ⚠️ 안내가 가리키는 버튼이 레이아웃마다 다르다 — 탭 레이아웃엔 보드 하단 바가
-                      없고 Auto 는 **위 시트 바**(`auto-fill-top`)에 있다. 문구가 없는 버튼을
-                      가리키면 그게 곧 막다른 길이다(이 오버레이가 원래 겨누던 blocker 와 같은 부류). */}
+                  {/* #455 A3 — 손잡이가 하나가 되면서 **문구도 하나**가 됐다. 구 문구는 폭에 따라
+                      "위 [Auto]" / "아래 [Auto 배치로 시작]" 으로 갈렸고, 그 갈림 자체가 버튼이
+                      세 곳에 있다는 사실의 그림자였다. 이제 어느 폭에서나 같은 자리를 가리킨다. */}
                   <span className={styles.emptyHint} data-testid="board-empty-hint">
-                    {tabs
-                      ? "슬롯을 눌러 선수를 고르거나, 위 [Auto] 를 누르세요"
-                      : "슬롯을 눌러 선수를 고르거나, 아래 [Auto 배치로 시작]을 누르세요"}
+                    슬롯을 눌러 선수를 고르거나, 오른쪽 아래 [⚡ 자동 채우기]를 누르세요
                   </span>
                   {autoDisabled && autoHint && (
                     <span className={styles.emptyNote} data-testid="board-empty-note">
@@ -848,17 +847,6 @@ export function DeckEditor(props: DeckEditorProps) {
                       선택 해제
                     </button>
                   )}
-                  {!placementLocked && onAuto && starterSlots.length === 0 && (
-                    <button
-                      type="button"
-                      className={styles.emptyCta}
-                      data-testid="board-empty-auto"
-                      disabled={autoDisabled}
-                      onClick={onAuto}
-                    >
-                      Auto 배치로 시작
-                    </button>
-                  )}
                   {!placementLocked && (
                     <button
                       type="button"
@@ -882,22 +870,57 @@ export function DeckEditor(props: DeckEditorProps) {
                       초기화
                     </button>
                   )}
-                  {!placementLocked && onAuto && (
-                    <button
-                      type="button"
-                      className={styles.boardBtnPrimary}
-                      data-testid="auto-fill"
-                      disabled={autoDisabled}
-                      onClick={onAuto}
-                    >
-                      Auto 배치
-                    </button>
-                  )}
                 </>
               )}
+              /**
+               * #455 A3 — **자동 채우기는 이 하나뿐이다.**
+               *
+               * 구 동작은 같은 `onAuto` 를 세 곳이 그렸다: 시트 바 `auto-fill-top`(폰) ·
+               * 빈 상태 CTA `board-empty-auto` · 보드 하단 바 `auto-fill`(데스크탑). 폭에 따라
+               * 어느 것이 보이는지가 달라서 **스펙마다 "보이는 쪽을 누른다" 헬퍼가 세 벌** 있었고
+               * (`deck-teamsheet`·`p439`·`p286-w35`), 코치마크는 아예 버튼을 못 겨눠 보드를
+               * 겨눴다(`tutorial-steps.ts` `setup-auto`). 손잡이가 하나면 그 분기가 전부 사라진다.
+               *
+               * ⚠️ **노출 조건은 `hasEmptySlotGap`(draft) 이고 활성 조건은 `autoDisabled`(후보까지)다** —
+               * 두 축을 하나로 묶지 마라. 묶으면 둘 중 하나가 깨진다:
+               *   · 노출까지 후보로 묶으면 → 보유 0명 신규 유저에게 **아무 말도 없는 빈 보드**
+               *     (사유는 `autoHint` 가 말하고, 그 말을 띄우는 것이 아래 빈 상태 note 다)
+               *   · 활성까지 빈칸만 보면 → **눌러도 아무 일 없는 버튼**(#439 2R major-2 회귀)
+               */
+              autoFill={
+                !placementLocked && onAuto && hasEmptySlotGap(draft) ? (
+                  <button
+                    type="button"
+                    className={styles.autoFill}
+                    data-testid="auto-fill"
+                    disabled={autoDisabled}
+                    title={autoHint}
+                    onClick={onAuto}
+                  >
+                    {/* 문구는 조정 포인트(확정 계약 "포함되지 않은 것") — 목업 R5 그대로. */}
+                    ⚡ 자동 채우기
+                  </button>
+                ) : undefined
+              }
             />
-            {onAuto && autoHint && (
-              <span className={styles.autoHint} data-testid="auto-hint">
+            {/**
+              * 보조 설명 — **버튼이 있을 때만**(#455 A3 이전에는 버튼과 무관하게 떴는데, 이제
+              * 버튼이 사라지는 상태가 생겨 그대로 두면 없는 손잡이를 설명하는 줄이 남는다).
+              *
+              * ⚠️ **`data-when="disabled"` 는 폰에서 이 줄이 뜨는 유일한 조건이다.** 구조상
+              * 데스크탑 전용(`≤1023px` 에서 `display:none`)이고, 폰에서 사유를 말하던 것은
+              * 시트 바의 `auto-hint-top`(비활성일 때만) 이었다 — A3 이 그 바를 비우면서
+              * **폰에서 읽을 수 있는 사유가 버튼의 `title` 뿐**이 됐고, 터치에는 `title` 이
+              * 뜨지 않는다. 즉 "빈칸은 있는데 넣을 선수가 없다"가 폰에서 침묵하게 된다
+              * (예: 보유 6명을 다 쓴 뒤 선발 5칸이 남은 상태). 그래서 **비활성일 때만** 폰에도
+              * 편다 — 활성일 때까지 펴면 탭 레이아웃의 세로 예산을 상시로 먹는다(#244 AC1-b).
+              */}
+            {!placementLocked && onAuto && autoHint && hasEmptySlotGap(draft) && (
+              <span
+                className={styles.autoHint}
+                data-testid="auto-hint"
+                data-when={autoDisabled ? "disabled" : undefined}
+              >
                 {autoHint}
               </span>
             )}

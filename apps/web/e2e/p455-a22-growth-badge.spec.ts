@@ -261,3 +261,67 @@ test.describe("데스크탑 덱 — 같은 신호", () => {
     await expect(page.locator("[data-testid^='growup-token-']")).toHaveCount(READY.length);
   });
 });
+
+// ── ⑧ `.growBadge { z-index: 3 }` 는 **오늘 죽어 있다** — 그 전제를 박제한다 ─────────
+/**
+ * A2-2 독립 검증 **m-1** (#455, 코멘트 5201526746) → A3 웨이브에서 접어 넣음.
+ *
+ * 검증자가 `z-index: 3` 을 지운 캡처 3장이 대조군과 **md5 동일**임을 재현했다. 이유까지 실측:
+ * 뱃지가 위에 오는 것은 z-index 가 아니라 **DOM 소스 순서** 덕이고, 그 위에 겹치는 두 형제
+ * (`condRing` 컨디션 링 · `tokenFace` 얼굴)가 **`z-index: auto`** 라서다. 즉 그 선언은
+ * 루트 §2.5 분류로 **INERT** 다.
+ *
+ * ⚠️ 루트 §2.5 가 INERT 에 요구하는 것은 "지워라"가 아니라 **분류 등록 + 무효임의 박제**다.
+ * A2-2 는 **등록(주석)만 있고 박제가 없었다** — 형제 하나가 `z-index: 2` 를 받는 날 그 선언은
+ * 조용히 load-bearing 이 되고(#442 `.cellSwapTarget` 선례), 그러면 주석이 거짓말이 된다.
+ * 이 테스트가 그 **전제**(형제가 auto · 뱃지가 DOM 뒤)를 잰다:
+ *   · 형제가 `auto` 를 벗어나면 → red = "이제 z-index 가 일한다, 주석을 다시 써라"
+ *   · 뱃지가 형제보다 DOM 앞으로 가면 → red = "소스 순서가 더는 안 받쳐 준다"
+ * ⚠️ **`z-index: 3` 자체를 단언하지 않는다** — 그건 값 스냅샷일 뿐이고, 지워도 화면이 같다는
+ * 사실(= 무효)은 그것으로 안 잡힌다. 재는 것은 **그 무효를 성립시키는 조건**이다.
+ * ⚠️ 형제 목록을 하드코딩하지 않는다 — 새 형제가 z-index 를 들고 들어오면 그것도 걸려야 한다.
+ */
+test("⑧ m-1: 뱃지가 위에 오는 것은 z-index 가 아니라 **소스 순서**다 (INERT 전제 박제)", async ({ page }) => {
+  await openDeck(page, null, { growthReady: READY });
+  await expectBadgeReadable(page, "MF1"); // 앵커 — 뱃지가 실제로 그려진 상태에서 잰다
+
+  /**
+   * ⚠️ **겹치는 형제만 본다.** 디스크에는 `z-index: 2` 형제가 이미 둘 있다(`discNum` 좌하단 ·
+   * `sayDot` 우상단) — 그런데 그 둘은 뱃지(좌상단)와 **사각형이 안 겹쳐서** 쌓임 순서가
+   * 화면에 나타나지 않는다. 전수로 `auto` 를 요구하면 그 둘 때문에 계약이 처음부터 red 이고,
+   * 그러면 진짜 신호(겹치는 형제가 z-index 를 얻는 날)를 못 듣는다.
+   */
+  const probe = await page.evaluate(() => {
+    const badge = document.querySelector('[data-testid="growup-token-MF1"]')!;
+    const kids = [...badge.parentElement!.children];
+    const bi = kids.indexOf(badge);
+    const br = badge.getBoundingClientRect();
+    const overlaps = (r: DOMRect) =>
+      r.left < br.right && r.right > br.left && r.top < br.bottom && r.bottom > br.top;
+    return {
+      badgeIndex: bi,
+      lastIndex: kids.length - 1,
+      siblings: kids
+        .map((el, i) => ({
+          i,
+          cls: String(el.getAttribute("class") ?? "").split("_")[1] ?? "?",
+          z: getComputedStyle(el).zIndex,
+          hit: el === badge ? false : overlaps(el.getBoundingClientRect()),
+        }))
+        .filter((k) => k.hit),
+    };
+  });
+  console.log(`[a22-m1] ${JSON.stringify(probe)}`);
+
+  // ① 소스 순서가 결론을 정하려면 뱃지가 **마지막 자식**이어야 한다.
+  expect(probe.badgeIndex, "뱃지가 디스크의 마지막 자식이 아니다 — 소스 순서가 더는 안 받쳐 준다").toBe(probe.lastIndex);
+  // ② 그리고 **겹치는** 형제가 전부 `auto` 여야 그 순서가 실제로 결론이다.
+  expect(probe.siblings.length, "겹치는 형제가 하나도 없다 — 표본이 비었다(뱃지가 안 그려졌나?)").toBeGreaterThan(0);
+  for (const sib of probe.siblings) {
+    expect(
+      sib.z,
+      `겹치는 형제 [${sib.cls}] 가 z-index:${sib.z} 를 들고 있다 — 뱃지의 \`z-index: 3\` 은 이제 INERT 가 아니다. ` +
+        `그 선언의 분류(루트 §2.5)를 LIVE 로 다시 쓰고 이 계약도 다시 써라.`,
+    ).toBe("auto");
+  }
+});

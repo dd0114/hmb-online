@@ -43,27 +43,33 @@
 }
 
 .boardBtn,
-.boardBtnPrimary {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 7px 12px;
-  min-height: 36px;
-  font-size: 13px;
-  background: var(--bg-elevated);
-  color: var(--text-muted);
-  flex: none;
+/* ── #455 A3: [⚡ 자동 채우기] — 경기장 우측 하단 (hero 확정 목업 `.autoFill`) ────────
+   자리는 `TacticsBoard.module.css` 의 `.corner` 가 정하고, 여기서는 **모양만** 정한다.
+   ⚠️ 잔디 위에 뜨는 버튼이라 배경이 불투명해야 읽힌다(반투명이면 스트라이프가 글자를 씹는다).
+   ⚠️ 터치 표적 44px 규칙은 **여기서 지키지 않는다** — 코너에 44px 를 세우면 최전방/측면 슬롯의
+   드롭 여유를 먹는다. 대신 좌우 패딩을 넉넉히 줘 폭으로 표적을 만든다
+   (390×844 실측 **36 × 96.9px**, 히트테스트는 `p455-a3` AC3 가 잰다). */
+.autoFill {
+  padding: 8px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--accent);
+  background: rgba(12, 17, 27, 0.92);
+  color: #dbe7ff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
 }
-.boardBtnPrimary {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-weight: 600;
-}
-.boardBtnPrimary:disabled {
+.autoFill:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
+/* 보조 설명 — 기본은 데스크탑 전용.
+   ⚠️ 폰에서는 **비활성일 때만** 편다(`data-when="disabled"`). 터치에는 버튼 `title` 이 안 뜨므로
+   그 상태에서 안 펴면 "빈칸은 있는데 넣을 선수가 없다"가 폰에서 통째로 침묵한다(A3 이 시트 바의
+   `auto-hint-top` 을 비우며 생긴 자리). 활성일 때까지 펴면 탭 레이아웃 세로 예산을 상시로 먹는다. */
 .autoHint {
   display: block;
   margin-top: 6px;
@@ -71,11 +77,8 @@
   color: var(--text-muted);
 }
 
-/* 모바일에서는 AUTO 가 시트 바에 있다(목업) — 보드 하단 바의 Auto/힌트는 중복이라 감춘다.
-   초기화 + 조작 힌트는 남긴다(모바일에서도 필요). */
 @media (max-width: 1023px) {
-  .boardBtnPrimary,
-  .autoHint {
+  .autoHint:not([data-when="disabled"]) {
     display: none;
   }
 }
@@ -221,24 +224,9 @@
   color: var(--text-muted);
   line-height: 1.4;
 }
-/* 빈 상태 CTA — **보드 하단 바**(피치 밖)에 산다. `.boardBtnPrimary`(auto-fill)와 달리
-   모바일에서도 보인다: 첫 진입 = 정확히 이 CTA 가 필요한 화면. R3b blocker-1 참조. */
-.emptyCta {
-  min-height: 44px;
-  padding: 10px 16px;
-  flex: none;
-  white-space: nowrap;
-  border-radius: 10px;
-  border: 1px solid var(--accent);
-  background: var(--accent);
-  color: var(--accent-contrast);
-  font-size: 13px;
-  font-weight: 700;
-}
-.emptyCta:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
+/* ⚠️ 구 `.emptyCta`(빈 상태 전용 CTA, `board-empty-auto`)는 **#455 A3 이 없앴다** — 손잡이가
+   `.autoFill` 하나가 되면서 "첫 진입 전용 버튼"이라는 자리 자체가 사라졌다. 되살리려면 그때
+   왜 셋이 됐는지(폭마다 다른 자리)부터 다시 봐라. */
 .emptyNote {
   font-size: 11px;
   color: var(--text-muted);

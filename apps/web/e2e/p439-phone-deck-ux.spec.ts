@@ -309,10 +309,11 @@ test("③ 경기전에는 [초기화]가 없고 [auto]가 폰에서 보인다", 
   await openBriefing(page);
   await expect(page.getByTestId("board-reset"), "경기전 초기화는 복구 부담이 과대하다(hero)").toHaveCount(0);
 
-  const top = page.getByTestId("auto-fill-top");
-  const board = page.getByTestId("auto-fill");
-  const visible = (await top.isVisible()) ? top : board;
+  /* ⚠️ **#455 A3**: 구판은 `auto-fill-top`(폰) / `auto-fill`(데스크탑) 중 보이는 쪽을 골랐다.
+     이제 자리가 **경기장 우측 하단 하나**라 그 분기가 없다 — 분기를 되살리면 그것이 곧 회귀다. */
+  const visible = page.getByTestId("auto-fill");
   await expect(visible, "폰에서 실제로 보이는 auto 버튼이 있어야 한다").toBeVisible();
+  await expect(page.getByTestId("auto-fill-top"), "구 시트 바 AUTO 는 은퇴했다").toHaveCount(0);
   const box = (await visible.boundingBox())!;
   console.log(`[#439-R3] 경기전 auto 버튼 박스 = ${JSON.stringify(box)}`);
   expect(box.width).toBeGreaterThan(0);
@@ -327,9 +328,8 @@ test("③ 덱셋팅에는 [초기화]가 남아 있다(대조군 — 없앤 것�
 
 // ── ④ auto = 빈 자리만 채운다 + 프롬프트 보존 ────────────────────────────────
 async function clickAuto(page: Page) {
-  const top = page.getByTestId("auto-fill-top");
-  const board = page.getByTestId("auto-fill");
-  const target = (await top.isVisible()) ? top : board;
+  // #455 A3 — 손잡이는 하나(경기장 우측 하단). "보이는 쪽을 누른다" 관용구는 은퇴했다.
+  const target = page.getByTestId("auto-fill");
   await expect(target).toBeEnabled();
   await target.click();
 }

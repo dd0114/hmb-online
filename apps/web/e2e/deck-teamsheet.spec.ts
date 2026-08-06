@@ -625,20 +625,20 @@ async function scanStarterSlots(page: Page): Promise<Array<{ i: number; blockedB
 const SIX = PLAYERS.slice(0, 6);
 
 /**
- * 이 화면에서 **실제로 보이는** Auto 버튼.
+ * 이 화면의 Auto 버튼 — **하나뿐이다**(#455 A3, 경기장 우측 하단).
  *
- * ⚠️ 자리가 레이아웃마다 다르다: stack(데스크탑·경기전·감독시간)은 보드 하단 바
- * (`board-empty-auto` / `auto-fill`), #455 A1 탭(폰 덱셋팅)은 **하단 바 자체가 없어** 시트 바의
- * `auto-fill-top` 하나뿐이다. 하단 바를 되살리면 48px 를 먹어 빈 덱에서 팀 프롬프트가 하단
- * 탭바 밑으로 들어간다(실측 `p244` AC1-b) — 그래서 없앤 것은 손잡이가 아니라 **중복**이다.
- * #439 `clickAuto` 와 같은 관용구다: **보이는 쪽을 누른다.**
+ * ⚠️ 구판은 세 후보(`board-empty-auto`·`auto-fill-top`·`auto-fill`)를 훑어 "보이는 쪽"을 골랐다.
+ * 자리가 폭·레이아웃마다 달랐기 때문인데, A3 이 그 산재를 없애서 이 헬퍼도 분기를 잃었다.
+ * 헬퍼를 남겨 둔 이유는 호출부 문장이 "이 화면의 auto 를 누른다"라는 **의도**를 계속 말하게
+ * 하기 위해서다 — 은퇴한 두 id 는 여기서 **부재로 단언**해 되살아나면 걸리게 한다.
  */
 async function visibleAuto(page: Page) {
-  for (const id of ["board-empty-auto", "auto-fill-top", "auto-fill"]) {
-    const el = page.getByTestId(id);
-    if ((await el.count()) > 0 && (await el.isVisible())) return el;
+  for (const id of ["board-empty-auto", "auto-fill-top"]) {
+    await expect(page.getByTestId(id), `${id} 는 #455 A3 에서 은퇴했다`).toHaveCount(0);
   }
-  throw new Error("이 화면에 보이는 Auto 버튼이 하나도 없다");
+  const el = page.getByTestId("auto-fill");
+  await expect(el, "이 화면에 보이는 Auto 버튼이 하나도 없다").toBeVisible();
+  return el;
 }
 
 

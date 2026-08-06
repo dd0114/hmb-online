@@ -123,13 +123,21 @@ export async function bootstrap(
       const raw = p.attributes as unknown as Record<string, number>;
       const keys = Object.keys(raw);
       /**
-       * ⚠️ **caps 아래로 클램프한다**(독립검증 A2 m-1). 카탈로그 원값을 그대로 실으면
-       * `attributes` 84 > `caps` 73 = **서버가 절대 만들지 않는 조합**이 된다
-       * (`GrowthService`: `caps = min(growCeil + starCeilBonus, attrHardCap)` 이고 실효 능력치는
-       * 그 아래다). 오늘 계약은 이 값을 안 재서 무해하지만, 이 목 위에 막대·완성도 계약이 서는
-       * 순간 그 계약은 **자기가 만든 세계**를 검사하게 된다(#342 의 교훈).
+       * ⚠️ **두 엔드포인트가 같은 선수를 말해야 한다**(독립검증 A2-2 **m-5**, A3 웨이브에서 수습).
+       *
+       * 서버 불변식은 `attributes ≤ caps = min(growCeil + starCeilBonus, attrHardCap)` 다.
+       * A2 는 이 카드 목의 `attributes` 를 73 으로 **깎아** 그 식을 맞췄는데, 그러면 같은 선수가
+       * `/api/players` 에서는 84 · `/api/growth/card/MF1` 에서는 73 이 되어 **다른 모순**이
+       * 남는다(m-5 가 지목한 것). 서버는 그 두 응답을 같은 행에서 만든다.
+       *
+       * 그래서 **깎지 않고 천장을 올린다** — `caps` 를 그 선수가 실제로 들고 있는 값 위로
+       * 잡는다(LEGEND FW1 = 90 이면 `growCeil 89 + starCeilBonus 1`). 등급이 높을수록 `growCeil`
+       * 이 높은 것이 서버 규칙이라 **서버가 만들 수 있는 조합**이고, 카탈로그와도 일치한다.
+       * ⚠️ 반대 방향(카탈로그를 73 으로 깎기)은 택하지 않았다: 90/84/80/76… 의 ovr 산포가
+       * 통째로 뭉개져 **auto 배치 순서·전력 수치에 기대는 스펙**들이 자기 세계를 잃는다.
        */
-      const a = Object.fromEntries(keys.map((k) => [k, Math.min(raw[k]!, 73)]));
+      const a = raw;
+      const capBase = Math.max(73, ...keys.map((k) => raw[k]!));
       return r.fulfill(
         json({
           playerId: p.id,
@@ -138,13 +146,15 @@ export async function bootstrap(
           attributes: a,
           prePotential: a,
           base: a,
-          caps: Object.fromEntries(keys.map((k) => [k, 73])),
+          caps: Object.fromEntries(keys.map((k) => [k, capBase])),
           statAdd: {},
           cardLevel: 1,
           cardXp: 0,
           xpToNext: 200,
           maxLevel: 40,
-          growCeil: 72,
+          /* `caps = growCeil + starCeilBonus` 를 목 안에서도 성립시킨다 — 셋이 서로 모순이면
+             그 위에 서는 계약은 자기가 만든 세계를 검사한다(#342). */
+          growCeil: capBase - 1,
           starCeilBonus: 1,
           attrHardCap: 99,
           startLo: 50,
