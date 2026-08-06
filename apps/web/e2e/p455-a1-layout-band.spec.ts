@@ -20,7 +20,7 @@
  *    `CI=1 WEB_E2E_PORT=5599 npx playwright test e2e/p455-a1-layout-band.spec.ts`
  */
 import { expect, test, type Page } from "@playwright/test";
-import { hitAt, openDeck } from "./deck-mock";
+import { openDeck, wheelUntilHit } from "./deck-mock";
 
 /** 이 파일은 폭을 직접 정한다 — 뷰포트를 파일 단위로 고정하지 않는다. */
 test.use({ viewport: { width: 390, height: 844 } });
@@ -32,16 +32,17 @@ async function layoutOf(page: Page) {
 
 /**
  * **팀 프롬프트에 실제로 닿는가** — 이 화면에 온 이유(#244)가 어느 폭에서도 도달 가능한지.
- * 탭 레이아웃이면 첫 화면 안에 있고, stack 이면 스크롤해서라도 닿아야 한다.
- * 그래서 `scrollIntoView` **뒤에** 히트를 잰다 — "스크롤하면 닿는다"까지가 합격이다.
+ * 탭 레이아웃이면 첫 화면 안에 있고, stack 이면 굴려서라도 닿아야 한다.
+ *
+ * ⚠️ **초판은 `scrollIntoViewIfNeeded()` 였고 그게 이 계약을 통째로 공허하게 만들었다**
+ * (2R blocker-A). 그건 프로그램적 스크롤이라 `.app-container--fill` 의 `overflow: hidden` 을
+ * 뚫는다 — 즉 **유저가 못 하는 일**을 해 놓고 "닿는다"고 판정했다. BL-2 를 그대로 되살리는
+ * 변이(M-H = `fill` 항상 on)에서 프롬프트가 900px 창의 y915 에 갇히고 휠·End 로 꿈쩍도
+ * 안 하는데 **11/11 통과**했다. 지금은 `wheelUntilHit`(진짜 휠 이벤트)만 쓴다.
  */
 async function promptReachable(page: Page) {
-  const input = page.getByTestId("editor-team-prompt");
-  await input.scrollIntoViewIfNeeded();
-  const box = await input.boundingBox();
-  if (!box) return { hit: false, h: 0 };
-  const hit = await hitAt(page, box.x + box.width / 2, box.y + box.height / 2, "editor-team-prompt");
-  return { hit, h: Math.round(box.height) };
+  await expect(page.getByTestId("editor-team-prompt")).toHaveCount(1);
+  return wheelUntilHit(page, "editor-team-prompt");
 }
 
 // ── ⑧ 어느 폭에서도 프롬프트에 닿는다 (BL-2) ─────────────────────────────────
@@ -76,9 +77,12 @@ for (const c of BAND) {
     const layout = await layoutOf(page);
     expect(layout, "레이아웃 축이 화면에 선언돼 있어야 잴 수 있다").not.toBeNull();
 
-    const { hit, h } = await promptReachable(page);
+    const { hit, h, wheels, y } = await promptReachable(page);
     expect(h, `입력칸 높이 ${h}px (layout=${layout})`).toBeGreaterThanOrEqual(48);
-    expect(hit, `입력칸 한가운데가 화면에 있다 — ${c.w}×${c.h} layout=${layout}`).toBe(true);
+    expect(
+      hit,
+      `입력칸 한가운데가 **유저 스크롤로** 화면에 온다 — ${c.w}×${c.h} layout=${layout} · 휠 ${wheels}회 후 y=${y}`,
+    ).toBe(true);
 
     // 탭으로 섰다면 **탭 패널이 쓸 만한 크기**여야 한다. BL-2 는 정확히 여기서 0 이었다.
     if (layout === "tabs") {
@@ -97,21 +101,23 @@ for (const c of BAND) {
  *
  * ⚠️ **양쪽을 한 테스트에서 재라.** 한쪽만 재면 "옮겼다"와 "잃었다"가 구분되지 않는다 —
  *    이 결함의 모양이 정확히 그것이었다(폰에서는 있었고 데스크탑에서만 없었다).
- * ⚠️ 폰(tabs)에서는 [세부 전술] 탭 안이라 기본 상태에선 `hidden` 이다 — **존재**를 재고,
- *    탭을 연 뒤 **보이는지**까지 잰다(존재만 재면 아무 데나 숨겨 둔 것도 통과한다).
+ * ⚠️ 폰(tabs)에서는 [세부 전술] 탭 안이다 — **존재**를 재고, 탭을 연 뒤 **닿는지**까지 잰다.
+ *    존재만 재면 아무 데나 숨겨 둔 것도 통과한다.
+ * ⚠️ **초판은 그 마지막 단언이 `toBeVisible()` 이었고, 그래서 아무것도 못 잡았다**(2R blocker-B):
+ *    `{teamExtra}` 를 `left:-9999px` 로 감싸는 변이(M-G)가 **45/45 통과**했다. 이 파일 머리말이
+ *    금지해 둔 도구를 자기가 쓴 것이다. 지금은 ⓐ·ⓑ 가 **같은 자**(`elementFromPoint` 히트)를 쓴다.
+ * ⚠️ 그리고 실제로 이 위젯은 탭을 열어도 **첫 화면에 없다**(390×844 실측 y832 · navTop 788.5).
+ *    3순위 탭의 꼬리라 그것이 hero 확정 배치의 귀결이다 — 그래서 계약 문장도 "보인다"가 아니라
+ *    **"패널을 굴리면 닿는다"** 로 실제와 맞춘다. 첫 화면 노출이 요구가 되면 이 단언을 조이면 된다.
  */
 test("⑨ 팀 사기 위젯이 stack·tabs 두 갈래 모두에서 화면에 있다", async ({ page }) => {
   // ⓐ 데스크탑(stack) — 에디터 아래 형제 자리
   await page.setViewportSize({ width: 1280, height: 900 });
   await openDeck(page);
   expect(await layoutOf(page), "1280 은 stack 이다").toBe("stack");
-  const desktop = page.getByTestId("team-morale");
-  await expect(desktop, "데스크탑에서 팀 사기 위젯이 사라지면 안 된다").toHaveCount(1);
-  // ⚠️ 순서가 계약의 일부다 — 스크롤 **뒤에** 좌표를 잡는다(먼저 잡으면 낡은 좌표를 찍는다).
-  await desktop.scrollIntoViewIfNeeded();
-  const dbox = (await desktop.boundingBox())!;
-  const dhit = await hitAt(page, dbox.x + 8, dbox.y + dbox.height / 2, "team-morale");
-  expect(dhit, "데스크탑에서 실제로 화면에 있다").toBe(true);
+  await expect(page.getByTestId("team-morale"), "데스크탑에서 팀 사기 위젯이 사라지면 안 된다").toHaveCount(1);
+  const d = await wheelUntilHit(page, "team-morale");
+  expect(d.hit, `데스크탑에서 유저 스크롤로 닿는다 — 휠 ${d.wheels}회 후 y=${d.y}`).toBe(true);
 
   // ⓑ 폰(tabs) — [⚙ 세부 전술] 탭 꼬리
   await page.setViewportSize({ width: 390, height: 844 });
@@ -119,5 +125,7 @@ test("⑨ 팀 사기 위젯이 stack·tabs 두 갈래 모두에서 화면에 있
   expect(await layoutOf(page), "390 은 tabs 다").toBe("tabs");
   await expect(page.getByTestId("team-morale"), "폰에서도 존재한다").toHaveCount(1);
   await page.getByTestId("deck-tab-tune").click();
-  await expect(page.getByTestId("team-morale"), "[세부 전술] 탭을 열면 보인다").toBeVisible();
+  // 탭 패널이 이 화면의 스크롤러다 — 그 위에서 굴린다(문서는 `--fill` 이라 안 구른다).
+  const m = await wheelUntilHit(page, "team-morale", { over: "#deck-tabpanel-tune" });
+  expect(m.hit, `[세부 전술] 탭에서 굴리면 닿는다 — 휠 ${m.wheels}회 후 y=${m.y}`).toBe(true);
 });

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { mockAll } from "./p286-mocks";
 import { openTuneTab } from "./deck-tabs";
+import { wheelUntilHit } from "./deck-mock";
 
 /**
  * #286 W2 — 홈/내비 개편 **계약**. 구현 전에 먼저 박았다(E2E-TDD, 루트 §2-3).
@@ -257,7 +258,11 @@ test("팀 사기 위젯이 덱에 살아 있다 — 로비와 함께 사라지�
   await page.goto("/deck");
   await expect(page.getByTestId("team-morale")).toHaveCount(1);
   await openTuneTab(page);
-  await expect(page.getByTestId("team-morale")).toBeVisible();
+  // ⚠️ `toBeVisible()` 로 쓰지 마라 — 뷰포트 밖을 통과한다. 실제로 이 위젯은 탭을 연 직후
+  //    화면 밖이고(390×844 실측 y832 · navTop 788.5), 그 상태로 계약이 통과하고 있었다
+  //    (#455 2R blocker-B: `left:-9999px` 변이가 45/45 생존). **굴려서 닿는지**로 잰다.
+  const m = await wheelUntilHit(page, "team-morale", { over: "#deck-tabpanel-tune" });
+  expect(m.hit, `[세부 전술] 탭에서 굴리면 팀 사기에 닿는다 — 휠 ${m.wheels}회 후 y=${m.y}`).toBe(true);
 });
 
 test("보유 선수만 보는 뷰가 남아 있다 — 육성 탭이 사라져도", async ({ page }) => {

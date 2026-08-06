@@ -172,6 +172,7 @@ test("⑥ 경기장 아래 죽은 여백이 없다 (탭이 바닥까지)", async
       inside: Math.round(editor.getBoundingClientRect().bottom - panel.getBoundingClientRect().bottom),
       below: Math.round(floor - editor.getBoundingClientRect().bottom),
       panelH: Math.round(panel.getBoundingClientRect().height),
+      docOver: document.documentElement.scrollHeight - window.innerHeight,
     };
   });
   // ⓐ 에디터 **안**에 죽은 띠가 없다 — 목업에서 세 번 났던 flex 버그(29px 띠 · 보드가 눌림)의 자리다.
@@ -181,23 +182,18 @@ test("⑥ 경기장 아래 죽은 여백이 없다 (탭이 바닥까지)", async
   //    넘겨서는 안 된다 — "전체화면"의 뜻이 그것이고, 넘치면 그만큼이 탭에서 깎인 것이다.
   expect(m.below, `에디터 아래 안내 영역 ${m.below}px`).toBeGreaterThanOrEqual(0);
   /**
-   * ⚠️ **여기 있던 `docOver ≤ 0` 은 지웠다 — 반증 불가능한 단언이었다**(독립검증 MAJ-1).
-   * `.app-container--fill` 이 `overflow: hidden` 이라 **문서는 정의상 안 넘친다**: 피치를
-   * `68/140` 으로 부풀려 프롬프트를 1011~1113(뷰포트 844 밖)으로 밀어내도 `docOver` 는 0 이었다.
-   * 커밋 메시지의 "문서 넘침 172 → 0" 이 그 자를 헤드라인으로 썼는데, 넘침이 사라진 게 아니라
-   * **스크롤이** 사라진 것이고 그 대가가 정확히 BL-2(폭 900~1023 에서 패널 0px)였다.
+   * ⚠️ **이 단언을 한 번 지웠다가 되살렸다 — 지운 근거가 거짓이었다**(#455 2R major-A).
+   * 지울 때 적은 이유는 *"`overflow: hidden` 이라 문서는 **정의상** 안 넘친다"* 였는데, 그건
+   * **`fill` 이 켜져 있는 동안만** 참인 조건부 항진명제다. `Layout fill` 자체를 떼는 변이(M-F)를
+   * 먹이면 실측 390×844 **13** · 430×844 **53** · 480×820 **71** 로 이 단언이 죽는다 =
+   * **A1 이 만든 전체화면 스위치의 유일한 p455 소유 가드**다. 지웠을 때 "대신 지킨다"고 지목한
+   * 자들(④ 히트 · ⓐ `inside` · ⓒ `panelH`)은 M-F 를 **하나도 못 죽였다**(p455 18건 전량 통과).
    *
-   * ⚠️ **대체 자를 두 번 시도했고 둘 다 공허했다 — 그래서 바꾸지 않고 지운다.**
-   * ⓐ `에디터 바닥 ≤ 바닥선` : `Layout fill` 을 통째로 떼는 변이(M-F)에도 **7/7 통과**.
-   *   에디터는 flex 아이템이라 이 픽스처에서 어차피 자라지 않는다.
-   * ⓑ `.tabPanel{min-height:600px}` 강제(M-E)에도 통과 — 패널은 스크롤러라 그건 결함도 아니다.
-   * 즉 이 뷰포트·픽스처에서 "넘치지 않는다"는 **flex 가 구조적으로 보장**한다. 공허한 단언을
-   * 다른 공허한 단언으로 바꾸면 고친 것처럼 보이기만 한다(§"초록으로 거짓말하는 방식").
-   *
-   * ⇒ "전체화면"이 실제로 지켜지는지는 **닿는가**로 판정한다. 그 자들은 변이로 죽는 것을
-   *   확인했다: ④(프롬프트 히트) · ⓐ 아래 `inside`(패널이 바닥까지) · ⓒ `panelH ≥ 120` ·
-   *   그리고 폭 축은 `p455-a1-layout-band.spec.ts` ⑧(M-C 변이에서 2건 사망).
+   * ⚠️ 다만 이것이 **도달 가능성의 자는 아니다**(MAJ-1 의 원래 지적은 유효하다) — 피치를
+   *    `68/140` 으로 부풀려 프롬프트를 창 밖으로 밀어내도 0 이다. 도달 가능성은 ④ 와
+   *    `p455-a1-layout-band.spec.ts` ⑧(유저 휠 스크롤)이 잰다. **두 자는 축이 다르다.**
    */
+  expect(m.docOver, `문서가 화면을 ${m.docOver}px 넘친다 — 전체화면 셸이 꺼졌나`).toBeLessThanOrEqual(0);
   // ⓒ 그 결과 프롬프트 칸이 실제로 쓸 만한 크기다(19px 짜리 패널은 "탭이 채웠다"가 아니다).
   expect(m.panelH, `[전체 지시] 패널 ${m.panelH}px`).toBeGreaterThanOrEqual(120);
 });

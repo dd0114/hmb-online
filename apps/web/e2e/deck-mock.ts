@@ -76,6 +76,49 @@ export async function openDeck(page: Page, teamPrompt: string | null = null) {
   await expect(page.getByTestId("token-FW1")).toBeVisible();
 }
 
+/**
+ * **유저가 할 수 있는 스크롤만 써서** 그 요소에 닿는지 본다 — #455 A1 2R blocker-A/B 의 처방.
+ *
+ * ⚠️ `scrollIntoView`·`scrollIntoViewIfNeeded`·`toBeVisible()` 을 도달 판정에 쓰지 마라:
+ * - 앞의 둘은 **프로그램적 스크롤**이라 `overflow: hidden` 컨테이너도 그냥 굴린다. 덱셋팅의
+ *   전체화면 셸(`.app-container--fill`)이 정확히 그것이라, BL-2(문서 스크롤 0 이라 프롬프트가
+ *   창 밖 y915 에 갇힘)를 되살리는 변이(M-H)를 먹여도 계약이 **11/11 통과**했다.
+ * - `toBeVisible()` 은 뷰포트 **밖**도 통과한다. 팀 사기를 `left:-9999px` 로 숨기는 변이(M-G)가
+ *   45/45 통과했다(그 상태가 "아무 데나 숨겨 둔 것"의 정의다).
+ *
+ * 그래서 **휠 이벤트**를 굴리고 매번 `elementFromPoint` 로 잰다. 마우스 위치가 *어느 스크롤러가
+ * 휠을 받는지* 정하므로 기본 지점은 **화면 아래쪽 80%** 다 — 탭 레이아웃에서는 그 자리가
+ * 탭 패널(=이 화면의 스크롤러)이고, stack 에서는 문서다. 다른 스크롤러를 굴려야 하면 `over` 로
+ * 그 요소를 찍어라.
+ */
+export async function wheelUntilHit(
+  page: Page,
+  testId: string,
+  opts: { over?: string; maxWheels?: number; step?: number } = {},
+) {
+  const { over, maxWheels = 16, step = 240 } = opts;
+  const vp = page.viewportSize()!;
+  for (let i = 0; i <= maxWheels; i++) {
+    const box = await page.getByTestId(testId).first().boundingBox();
+    if (box) {
+      const cx = box.x + box.width / 2;
+      const cy = box.y + box.height / 2;
+      const inside = cx > 0 && cy > 0 && cx < vp.width && cy < vp.height;
+      if (inside && (await hitAt(page, cx, cy, testId))) {
+        return { hit: true, wheels: i, h: Math.round(box.height), y: Math.round(box.y) };
+      }
+    }
+    const point = over ? await page.locator(over).first().boundingBox() : null;
+    const px = point ? point.x + point.width / 2 : vp.width / 2;
+    const py = point ? point.y + point.height / 2 : vp.height * 0.8;
+    await page.mouse.move(px, Math.min(Math.max(py, 1), vp.height - 1));
+    await page.mouse.wheel(0, step);
+    await page.waitForTimeout(60);
+  }
+  const last = await page.getByTestId(testId).first().boundingBox();
+  return { hit: false, wheels: maxWheels, h: Math.round(last?.height ?? 0), y: Math.round(last?.y ?? -1) };
+}
+
 /** 이 지점이 **실제로 화면에 있나** — `toBeVisible()` 은 뷰포트 밖을 통과한다. */
 export async function hitAt(page: Page, x: number, y: number, testId: string) {
   return page.evaluate(
