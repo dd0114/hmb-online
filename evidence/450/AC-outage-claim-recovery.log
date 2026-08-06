@@ -67,3 +67,18 @@ $ tail -1 ~/.local/state/hmb/tunnel-heal.out
     ✓ 터널 정상 — https://swap-organizational-targeted-greg.trycloudflare.com (ok http=401)
   ※ 증상 제거일 뿐 — /tmp 가 다음에 청소되면 같은 방식으로 다시 조용히 죽는다.
     구조 수정(WorkingDirectory 영속화 + status.sh heartbeat)은 infra 트랙 = #454 에 요청.
+
+── 마무리. 워치독 정기실행 검증 + 테스트 잔재 정리 (2026-08-07) ──
+[워치독] kickstart(강제 1회)가 아니라 StartInterval 스케줄이 살아났는지 별도 확인:
+  01:16 runs=3369 → 01:53 runs=3405 (37분/36틱 = 60초 간격) · last exit code = 0
+  tunnel-heal.out 최신 줄 = ✓ 터널 정상 — swap-organizational-targeted-greg (현재 URL)
+
+[잔재 정리] QA 재현용 캠페인 2건 revoke (테스트 계정 전용):
+  01KZBTAET17XH3ZFMQWPB28N4P → 200 {"unclaimed":0}
+  01KZBX8HPWBRG2G7F0JC12W1CN → 200 {"unclaimed":0}
+  ※ unclaimed 0 = 막힌 것이 없다(둘 다 QA 계정이 이미 수령). 실유저 영향 0.
+
+[정리 후 실유저 우편 무결성 재확인]
+  실 은퇴보상: 33건 · target 220 · claimed 0 · revoked 0 · expiresAt None
+  QA 재현용 : 2건 · target 2 · claimed 2 · revoked 2 · expiresAt None
+  → 실유저 220통은 만료도 회수도 없이 그대로 수령 가능. hero 가 [받기] 를 누르면 지급된다.
