@@ -217,6 +217,14 @@ test.describe("폰 덱셋팅 — 선수 메뉴", () => {
     await expect(page.getByTestId("player-menu")).toHaveCount(0);
     await expect(page.getByTestId("rail-prompt-input"), "닫기가 선택을 만들면 안 된다").toHaveCount(0);
     await expect(page.getByTestId("assign-bar"), "닫기가 배치 대기를 만들면 안 된다").toHaveCount(0);
+    /**
+     * ⚠️ **이 줄이 빠져 있었다**(독립검증 major-1). 위 주석은 *"아무 것도 안 바뀐다"* 를 선언하는데
+     * 정작 **메뉴 자신의 네 번째 동작**(`onOpenGrowth`)만 안 재고 있었다 — `runPlayerMenu` 의
+     * `if (id === "info")` 를 `if (id === "info" || id === "close")` 로 바꾸는 변이(N-1)에서
+     * **화면을 통째로 덮는 강화 시트가 열리는데 9/9 초록**이었다. 갭은 ⑦ 한 곳뿐이었다
+     * (④·⑤ 는 같은 누수를 자기 계약으로 잡는다 — N-2 로 확인).
+     */
+    await expect(page.getByTestId("growth-detail"), "닫기가 강화 시트를 열면 안 된다").toHaveCount(0);
   });
 
   // ── ⑧ 엔트리 대기 중에는 메뉴가 끼어들지 않는다 ───────────────────────────

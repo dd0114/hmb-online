@@ -78,8 +78,16 @@ export async function bootstrap(page: Page, slots: unknown[], teamPrompt: string
     (r) => {
       const id = new URL(r.request().url()).pathname.split("/").pop()!;
       const p = PLAYERS.find((x) => x.id === id) ?? PLAYERS[0]!;
-      const a = p.attributes as unknown as Record<string, number>;
-      const keys = Object.keys(a);
+      const raw = p.attributes as unknown as Record<string, number>;
+      const keys = Object.keys(raw);
+      /**
+       * ⚠️ **caps 아래로 클램프한다**(독립검증 A2 m-1). 카탈로그 원값을 그대로 실으면
+       * `attributes` 84 > `caps` 73 = **서버가 절대 만들지 않는 조합**이 된다
+       * (`GrowthService`: `caps = min(growCeil + starCeilBonus, attrHardCap)` 이고 실효 능력치는
+       * 그 아래다). 오늘 계약은 이 값을 안 재서 무해하지만, 이 목 위에 막대·완성도 계약이 서는
+       * 순간 그 계약은 **자기가 만든 세계**를 검사하게 된다(#342 의 교훈).
+       */
+      const a = Object.fromEntries(keys.map((k) => [k, Math.min(raw[k]!, 73)]));
       return r.fulfill(
         json({
           playerId: p.id,
