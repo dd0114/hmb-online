@@ -72,6 +72,8 @@ interface Harness {
   choicesFirstEmpty: boolean;
   /** `/api/growth/choices` 가 몇 번 불렸나(위 축의 상태 + m3 발화 여부 관측). */
   choicesHits: number;
+  /** 권위 조회를 500 으로 떨어뜨린다 — **스냅샷 폴백** 갈래(m5). */
+  choicesFails: boolean;
   /** `/result` 를 500 으로 떨어뜨린다(보상 조회 실패 갈래). */
   resultFails: boolean;
   /** `/result` 응답을 늦춘다 — **도착 전에 카드 수를 세는** 경주를 재현하는 유일한 손잡이. */
@@ -211,6 +213,9 @@ async function mockApi(page: Page, h: Harness) {
       const first = h.choicesHits === 0;
       h.choicesHits += 1;
       if (h.choicesDelayMs > 0) await new Promise((r) => setTimeout(r, h.choicesDelayMs));
+      if (h.choicesFails) {
+        return route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ message: "boom" }) });
+      }
       if (first && h.choicesFirstEmpty) return route.fulfill(json({ choices: [] }));
       return route.fulfill(
         json({
@@ -267,6 +272,7 @@ async function openMatch(page: Page, over: Partial<Harness> = {}): Promise<Harne
     choicesDelayMs: 0,
     choicesFirstEmpty: false,
     choicesHits: 0,
+    choicesFails: false,
     resultFails: false,
     resultDelayMs: 0,
     acked: [],
@@ -722,6 +728,62 @@ test.describe("#456 B3 W2 — 선수별 순차 선택 (AC3)", () => {
     await expect(page.getByTestId("match-reward-pager")).toHaveText("1 / 3");
     await page.getByTestId("match-reward-next").click();
     await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P001");
+  });
+
+  test("n-4. 선택권 0 인 경기는 **권위 조회를 기다리지 않는다**", async ({ page }) => {
+    /*
+     * BL-1 게이트의 `!needChoices ||` 항(m3). 봉투에 선택권이 없으면 이 화면은 그 조회를 구독조차
+     * 하지 않으므로 **기다릴 이유도 없다**.
+     *
+     * ⚠️ **재현 조건은 "연습이면 언제나"가 아니다** — 비활성 관찰자도 **같은 전역 키의 캐시를
+     * 읽으므로**, 뒤의 `GrowthReportSection` 이 그 키를 이미 채웠으면 `isPending` 이 내려가 있어
+     * 항을 빼도 안 갇힌다(즉답 목에서 실측: 양쪽 다 로딩 0). 갈라지는 것은 **그 공유 키 요청이
+     * 아직 비행 중인 동안**(느린 망)이다 — 그래서 이 표본이 지연 30s 다.
+     * ⚠️ 그 항을 빼면(변이 MUT-BL1d) 여기서 로딩 1 · 카드 0 이 되고, 유저는 받을 것도 없는 조회를
+     * 기다리다 5초 뒤 탈출 버튼을 본다.
+     */
+    const h = await openMatch(page, {
+      mode: "practice",
+      daily: null,
+      choices: [],
+      choicesDelayMs: 30_000,
+    });
+    await finish(page, h);
+    await page.getByTestId("flow-bridge-next").click();
+
+    // 앵커 — **카드가 실제로 섰다**. 이게 없으면 "로딩이 없다"는 화면 전멸에서도 참이다(표 #6).
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-card", "currency");
+    await expect(page.getByTestId("match-reward-currency-POINT")).toHaveAttribute("data-amount", "1200");
+    await expect(page.getByTestId("match-reward-loading")).toHaveCount(0);
+  });
+
+  test("n-5. 권위 조회가 **실패**하면 봉투 스냅샷으로 굳는다 — 문서화된 절충이다", async ({ page }) => {
+    /*
+     * 🚨 **이건 버그가 아니라 박제된 절충이다 — 고치려다 폴백을 없애지 마라**(m5).
+     *
+     * `types.openChoicesOf` 는 `open` 이 `undefined` 면 봉투 스냅샷을 그대로 돌려준다. 전역 쿼리
+     * 클라이언트가 `retry:false` 라(`api/query-client.ts`) 500 은 즉시 확정되고, 그러면 이 화면이
+     * 쓸 수 있는 목록은 스냅샷뿐이다 — **이미 고른 선택권까지 카드가 된다**(누르면 서버가 409
+     * `CHOICE_ALREADY_MADE` 로 막고 `ChoiceCandidates` 가 목록을 새로 받는다).
+     *
+     * 왜 그게 최선인가: 대안은 ①선수 카드를 통째로 버린다(= 조회 한 번 실패했다고 이번 경기
+     * 레벨업 보상이 화면에서 사라진다) ②무한 로딩(= 막다른 화면, major-3 이 없앤 그 상태)이다.
+     * 셋 중 **보여 주고 서버가 막게 하는 쪽**을 골랐다.
+     * ⚠️ 이 계약이 재는 것은 "옳은 목록"이 아니라 **"실패해도 흐름이 살아 있다"** 이다.
+     */
+    await openWithChoices(page, { chosen: ["ch-P001"], choicesFails: true });
+
+    await expect(page.getByTestId("match-reward-pager")).toHaveText("1 / 3");
+    await page.getByTestId("match-reward-next").click();
+    // 스냅샷 그대로 = 이미 고른 P001 도 선다. 그 사실을 숨기지 않는다.
+    await expect(page.getByTestId("match-reward-card")).toHaveAttribute("data-player", "P001");
+    await expect(page.getByTestId("choice-candidates").locator("button")).toHaveCount(3);
+
+    // 그리고 **흐름은 끝까지 간다** — 실패가 결과 화면 도달을 막지 않는다(`g` 와 같은 규율).
+    await page.getByTestId("match-reward-choice-later").click();
+    await page.getByTestId("match-reward-choice-later").click();
+    await expect(page.getByTestId("flow-continuation")).toHaveCount(0);
+    await expect(page.getByTestId("result-page")).toBeVisible();
   });
 
   test("o. 선택권이 없으면 선수 카드가 서지 않는다(빈 장을 만들지 않는다)", async ({ page }) => {

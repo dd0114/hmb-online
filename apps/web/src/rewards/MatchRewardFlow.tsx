@@ -92,9 +92,16 @@ export function MatchRewardFlow({ handoff, onDone }: MatchRewardFlowProps) {
    * "지금 남은 것"의 권위 — 봉투의 `pendingChoices` 는 스냅샷이라 유저가 고른 뒤에도 그대로다
    * (`types.bundleChoicesOf` 주석). 이걸 안 교차하면 강화탭에서 먼저 고른 선수가 여기 또 선다.
    *
-   * ⚠️ **봉투에 선택권이 없으면 아예 안 부른다**(m3) — 연습·구 매치까지 매 종료마다 한 번 더 치던
-   * 왕복이 사라진다. 대신 `enabled:false` 인 쿼리는 `isPending` 이 **영원히 참**이라(v5 규약)
-   * 아래 게이트가 그 상태를 따로 통과시켜야 한다.
+   * ⚠️ **봉투에 선택권이 없으면 이 컴포넌트는 구독하지 않는다**(m3). 다만 **요청이 사라지지는
+   * 않는다** — 뒤의 `GrowthReportSection` 이 같은 전역 키를 구독한다. 줄어드는 것은 이 화면이
+   * 얹는 마운트 리페치 관찰자다.
+   *
+   * ⚠️ 그래서 아래 게이트에 `!needChoices ||` 항이 필요하다. **재현 조건을 넓게 적지 마라** —
+   * *"연습이면 로딩에 갇힌다"* 는 거짓이다(실측): 비활성 관찰자도 **같은 키의 캐시를 읽으므로**
+   * `GrowthReportSection` 이 그 키를 이미 채웠으면 `status:'success'` 라 `isPending` 이 내려가
+   * 항을 빼도 안 갇힌다(즉답 목에서 양쪽 다 카드 86ms · 로딩 0). 갈라지는 것은 **그 공유 키
+   * 요청이 아직 비행 중인 동안**(느린 망)이고, 그때만 항을 뺀 팔이 로딩 1 · 카드 0 이 된다.
+   * 계약 = `p456 n-4`(지연 30s 표본 + "카드가 실제로 섰다" 앵커).
    */
   const needChoices = resultSettled && snapshotChoices.length > 0;
   const choicesQuery = usePendingChoices(undefined, needChoices);
@@ -115,8 +122,13 @@ export function MatchRewardFlow({ handoff, onDone }: MatchRewardFlowProps) {
    *
    * ⚠️ **그래서 `staleTime` 을 올리지 마라.** 마운트 리페치(`staleTime:0` + `refetchOnMount`)가
    * 이 게이트의 **전제**다 — 올리면 낡은 캐시를 그대로 받아들이고 게이트가 무의미해진다.
-   * 조회가 실패하면(`retry:false`) `isPending`·`isFetching` 이 함께 내려가 스냅샷 폴백으로 굳는다 —
-   * 그때 쓸 수 있는 최선이고 `openChoicesOf` 가 원래 문서화한 동작이다.
+   * 이건 산문이 아니라 **집행된다**: `staleTime: 60_000` 변이가 `p456 n-3` 을 죽인다(2R 검증).
+   *
+   * ⚠️ 조회가 **실패**하면(`retry:false`) `isPending`·`isFetching` 이 함께 내려가 **스냅샷 폴백**으로
+   * 굳는다 — 이미 고른 선택권까지 카드가 되고, 누르면 서버가 409 로 막는다. 대안은 ①선수 카드를
+   * 통째로 버린다 ②무한 로딩(major-3 이 없앤 그 상태)뿐이라 **보여 주고 서버가 막게 하는 쪽**을
+   * 골랐다. `openChoicesOf` 가 원래 문서화한 동작이고, 계약 `p456 n-5` 가 그 절충을 박제한다 —
+   * "버그"로 읽고 폴백을 없애면 그 계약이 먼저 깨진다.
    */
   const choicesSettled = !needChoices || (!choicesQuery.isPending && !choicesQuery.isFetching);
   /** 이 열림에 대해 두 조회가 다 끝났나 — **박제 시점의 판정**이다(아래 `frozen` 이 래치를 만든다). */
