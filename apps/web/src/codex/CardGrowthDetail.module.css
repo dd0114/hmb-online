@@ -270,6 +270,48 @@
   margin-top: 10px;
 }
 
+/*
+ * **미룬 선택권으로 돌아가는 문** (#457 D, hero: *"빛이 들어왔다 나갔다하는 효과 버튼 활성화로
+ * 누르게해야돼"*). 색은 `GRADE_GLOW_COLORS`(= 카드 프레임에 맞춘 광원색, #250)를 인라인
+ * `--glow` 로 받는다 — 등급 라벨색(`GRADE_COLORS`)과 다른 축이라 여기서 다시 고르지 않는다.
+ *
+ * ⚠️ **모션 최소화는 끄는 게 아니라 축약이다**(#250 규율). 애니메이션만 지우면 "강화할 게 있다"가
+ * 화면에서 사라지므로, 그 경로는 **가장 밝은 상태로 고정**한다.
+ */
+.pendGlow {
+  margin-top: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--glow, var(--warn));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--glow, var(--warn)) 12%, transparent);
+  color: var(--glow, var(--warn));
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  animation: pendPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pendPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--glow, var(--warn)) 45%, transparent);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow: 0 0 14px 3px color-mix(in srgb, var(--glow, var(--warn)) 55%, transparent);
+    filter: brightness(1.25);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pendGlow {
+    animation: none;
+    box-shadow: 0 0 14px 3px color-mix(in srgb, var(--glow, var(--warn)) 55%, transparent);
+    filter: brightness(1.25);
+  }
+}
+
 /* 잠재능력 */
 .sectionTitle {
   margin: 0 0 6px;

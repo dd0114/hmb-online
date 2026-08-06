@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "../common/Modal";
 import { ErrorToast } from "../common/ErrorToast";
 import { CelebrationOverlay } from "../common/CelebrationOverlay";
-import { GRADE_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
+import { GRADE_COLORS, GRADE_GLOW_COLORS, GRADE_LABELS, type Grade } from "../common/grades";
 import { FullArtCard } from "../common/FullArtCard";
 import { ApiError } from "../api/client";
 import { useCardEffective, useDiceRoll, useStarUp } from "../api/growth-hooks";
@@ -351,19 +351,57 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
               접기가 기본이 아니다: 접힌 채 두면 뱃지만 보이고 할 일이 안 보인다.
             */}
             {shownChoice && (
-              <div className={styles.pendBanner} data-testid="growth-pending-banner">
+              <div
+                className={styles.pendBanner}
+                data-testid="growth-pending-banner"
+                data-open={pendOpen ? "true" : "false"}
+              >
                 <div className={styles.pendBannerTop}>
                   <span>{pendingChoices.length > 0 ? `선택 대기 ${pendingChoices.length}` : "성장 적용 완료"}</span>
-                  <button
-                    type="button"
-                    className={styles.pendToggle}
-                    data-testid="growth-pending-toggle"
-                    aria-expanded={pendOpen}
-                    onClick={() => setPendOpen((v) => !v)}
-                  >
-                    {pendOpen ? "접기" : "펼치기"}
-                  </button>
+                  {/*
+                   * **[나중에] → 글로우 버튼** (#457 D, hero 지시: *"유저가 누른다→강화 적용 /
+                   * 나중에→강화 가능하다는거 버튼 활성화된상태로 선수 정보"*).
+                   *
+                   * 미루는 손잡이는 보상 시트의 `reward-pick-later` 와 **같은 성질**이다 — 다만
+                   * 여기서는 화면을 닫지 않고 **선수 정보로 내려간다**. 접힌 뒤 남는 것이 회색
+                   * "펼치기" 면 hero 가 지적한 *"너무 정적이야 … 정보량이 많아서 안 보여"* 로
+                   * 되돌아가므로, 대기가 남아 있는 동안은 **빛나는 버튼**이 그 자리를 지킨다.
+                   */}
+                  {pendOpen && (
+                    <button
+                      type="button"
+                      className={styles.pendToggle}
+                      data-testid="growth-pending-toggle"
+                      aria-expanded={pendOpen}
+                      onClick={() => setPendOpen(false)}
+                    >
+                      {pendingChoices.length > 0 ? "나중에" : "접기"}
+                    </button>
+                  )}
                 </div>
+                {!pendOpen &&
+                  (pendingChoices.length > 0 ? (
+                    <button
+                      type="button"
+                      className={styles.pendGlow}
+                      style={{ ["--glow" as string]: GRADE_GLOW_COLORS[grade] }}
+                      data-testid="growth-pending-open"
+                      aria-expanded={false}
+                      onClick={() => setPendOpen(true)}
+                    >
+                      ✦ 강화 가능 — 선택지 보기
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.pendToggle}
+                      data-testid="growth-pending-toggle"
+                      aria-expanded={false}
+                      onClick={() => setPendOpen(true)}
+                    >
+                      펼치기
+                    </button>
+                  ))}
                 {pendOpen && (
                   <div className={styles.pendBannerBody}>
                     <ChoiceCandidates

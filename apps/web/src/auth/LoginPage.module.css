@@ -135,6 +135,8 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
+  /* #457 C2 — 층위 토큰. 로그인 화면엔 네비가 없지만 규칙을 화면마다 예외로 두지 않는다. */
+  z-index: var(--z-modal);
 }
 
 .modal {

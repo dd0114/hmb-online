@@ -1,5 +1,5 @@
 import type { CatalogPlayer } from "../api/hooks";
-import { GRADE_COLORS, GRADE_LABELS } from "../common/grades";
+import { GRADE_COLORS, GRADE_GLOW_COLORS, GRADE_LABELS } from "../common/grades";
 import { FullArtCard } from "../common/FullArtCard";
 import { PersonalityBadge } from "../common/RelationBits";
 import styles from "./PlayerCard.module.css";
@@ -20,6 +20,11 @@ interface PlayerCardProps {
   player: CatalogPlayer;
   expanded: boolean;
   onToggle: () => void;
+  /**
+   * 이 카드에 **미룬 강화 선택권**이 있나 (#457 D). 판정은 `CodexPage` 가 `usePendingChoices()`
+   * 로 한 번에 하고, 카드는 그리기만 한다 — 카드마다 조회를 걸면 목록 한 판에 172 왕복이다.
+   */
+  growthPending?: boolean;
 }
 
 /**
@@ -38,7 +43,7 @@ interface PlayerCardProps {
  * 공유한다. 전신 전환의 실효는 LEGEND·DIA 39명에 있고, 나머지는 **아트 발행**이 있어야 한다
  * (data/design 스코프 — `docs/plan-v5/home-nav.md` §3.5).
  */
-export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
+export function PlayerCard({ player, expanded, onToggle, growthPending = false }: PlayerCardProps) {
   const gradeColor = GRADE_COLORS[player.grade];
 
   return (
@@ -48,6 +53,7 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
         .join(" ")}
       data-testid={`codex-card-${player.id}`}
       data-owned={player.owned ? "true" : "false"}
+      data-growth-pending={growthPending ? "true" : "false"}
     >
       <button
         type="button"
@@ -58,6 +64,18 @@ export function PlayerCard({ player, expanded, onToggle }: PlayerCardProps) {
       >
         <span className={styles.topRow}>
           <span className={styles.pos}>{player.position}</span>
+          {/* **강화 가능 뱃지** (#457 D, hero: *"강화 가능 선수 표시"*) — 목록에서 "할 일이 있다"를
+              말하는 유일한 신호다. 빛은 `GRADE_GLOW_COLORS`(프레임 광원색, #250 축)를 쓴다. */}
+          {growthPending && (
+            <span
+              className={styles.growthPending}
+              style={{ ["--glow" as string]: GRADE_GLOW_COLORS[player.grade] }}
+              data-testid={`codex-growth-${player.id}`}
+              title="강화 선택 대기"
+            >
+              강화
+            </span>
+          )}
           <span className={styles.topRight}>
             {/* 비활성 표기(#207 U-D7) — hero 지시 그대로 **텍스트 "off"**, 베타 단계 최소형.
                 왜 필요한가: 표기가 없으면 도감에 보이는데 아무리 뽑아도 안 나오는 카드가

@@ -12,6 +12,8 @@ import { GachaReveal } from "./GachaReveal";
 import { TopupPanel } from "./TopupPanel";
 import { GemTopupPanel } from "./GemTopupPanel";
 import { gachaButtonState } from "./shop-logic";
+import { GACHA_PROMO, PROMO_GRADES, rateRows, tenPullNote } from "./gacha-promo";
+import { GRADE_COLORS, GRADE_GLOW_COLORS, GRADE_LABELS } from "../common/grades";
 import type { ShopTab } from "./topup-logic";
 import styles from "./ShopPage.module.css";
 
@@ -95,6 +97,9 @@ export function ShopPage({ embedded = false }: { embedded?: boolean } = {}) {
   });
   // 잔액을 모르는 재화면 "부족" 문구도 띄우지 않는다(우리가 판정할 근거가 없다).
   const short = knownBalance ? shortageMessage(payCurrency) : "";
+  // 홍보 구역 파생값 — 둘 다 **서버가 줄 때만** 내용이 생긴다(#457 C1 · #458).
+  const rates = rateRows(gachaCfg);
+  const tenNote = tenPullNote(gachaCfg);
   // 충전 탭은 서버 플래그를 따른다 — 비활성(#212 젬 수도꼭지 차단)인데 노출하면 누르는 족족 403 이다.
   const topupEnabled = config?.shop?.gemTopup?.enabled ?? false;
 
@@ -138,6 +143,57 @@ export function ShopPage({ embedded = false }: { embedded?: boolean } = {}) {
         </>
       ) : (
         <>
+      {/*
+        **홍보 구역** (#457 C1, hero: *"뽑기화면 너무 심심해 … 지금 레전드 선수를 뽑아보세요 같은
+        홍보페이지 만들어"*). 그전에는 이 화면이 **버튼 카드 2장**이 전부였다.
+        문구·확률표는 `gacha-promo.ts` 가 소유한다 — 화면은 그리기만 한다(문장을 여기 적으면
+        톤을 바꿀 때 두 곳이 갈린다). 확률표는 서버가 `rates` 를 줄 때만 뜬다(#458).
+      */}
+      <section className={styles.promo} data-testid="gacha-promo">
+        <p className={styles.promoKicker}>{GACHA_PROMO.kicker}</p>
+        <h2 className={styles.promoTitle}>{GACHA_PROMO.title}</h2>
+        <p className={styles.promoBody}>{GACHA_PROMO.body}</p>
+
+        <ul className={styles.gradeRow} data-testid="gacha-promo-grades">
+          {PROMO_GRADES.map((g) => (
+            <li
+              key={g}
+              className={styles.gradeChip}
+              style={{ ["--glow" as string]: GRADE_GLOW_COLORS[g], color: GRADE_COLORS[g] }}
+              data-grade={g}
+            >
+              {GRADE_LABELS[g]}
+            </li>
+          ))}
+        </ul>
+
+        <ul className={styles.promoPoints}>
+          {GACHA_PROMO.points.map((p) => (
+            <li key={p.text} className={styles.promoPoint}>
+              <span className={styles.promoIcon} aria-hidden="true">
+                {p.icon}
+              </span>
+              {p.text}
+            </li>
+          ))}
+        </ul>
+
+        {/* 확률은 **서버 값일 때만** 말한다 — 모르면 이 표가 통째로 없다(#232 규율). */}
+        {rates && (
+          <div className={styles.rates} data-testid="gacha-rates">
+            <span className={styles.ratesTitle}>등급별 확률</span>
+            <ul className={styles.ratesList}>
+              {rates.map((r) => (
+                <li key={r.grade} className={styles.rateRow} data-testid={`gacha-rate-${r.grade}`}>
+                  <span style={{ color: GRADE_COLORS[r.grade] }}>{r.label}</span>
+                  <b>{r.text}</b>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
+
       <div className={styles.pulls}>
         <div className={styles.pullCard}>
           <h2 className={styles.pullTitle}>단뽑</h2>
@@ -156,7 +212,13 @@ export function ShopPage({ embedded = false }: { embedded?: boolean } = {}) {
 
         <div className={styles.pullCard}>
           <h2 className={styles.pullTitle}>10연뽑</h2>
-          <p className={styles.pullDesc}>선수 11명 · 골드 이상 1명 보장</p>
+          {/*
+            ⚠️ 예전엔 여기 `"선수 11명 · 골드 이상 1명 보장"` 이 **손으로** 적혀 있었다(#457 C1 정리).
+            개수(`tenCount`)도 보장 등급(`tenPityMinGrade`)도 서버 economy 값이라, 운영이
+            무배포 override 로 바꾸면 화면만 옛말을 하게 된다 — #213 이 가격에서 만든 사고와 같은 형태다.
+            ⚠️ **보장 등급은 아직 서버가 안 준다**(#458) → 그동안은 개수만 말한다. 지어내지 않는다.
+          */}
+          {tenNote && <p className={styles.pullDesc}>{tenNote}</p>}
           <button
             type="button"
             className={styles.pullButton}
