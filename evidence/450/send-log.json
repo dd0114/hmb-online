@@ -1,0 +1,233 @@
+[
+  {
+    "seq": 1,
+    "status": 201,
+    "users": 188,
+    "key": "retire-reward-450-d63d00edb98fb3720b0ffee7",
+    "res": "{\"campaignId\":\"01KZA8258A9NBT8W72J2A6NVE7\",\"audience\":\"USERS\",\"targetCount\":188,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 2,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-b966e4a86e1308db399ac5e5",
+    "res": "{\"campaignId\":\"01KZA82599Z1Z3X98GWA1AD6M9\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 3,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-96e60be7943610536b45c3d5",
+    "res": "{\"campaignId\":\"01KZA8259GB28NFH2J2YVG99J2\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 4,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-181f2a2ddc0d64ce25381966",
+    "res": "{\"campaignId\":\"01KZA8259NN6TZJYRBEV7SJXNV\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 5,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-0934df2a6f8058eeba48e812",
+    "res": "{\"campaignId\":\"01KZA8259TCNB91XGMW7FCJWP8\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 6,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-863cd888aa87491e8268e1c2",
+    "res": "{\"campaignId\":\"01KZA8259YHZN39AM6713NT6NB\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 7,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-256d53edfe5309c86abcc683",
+    "res": "{\"campaignId\":\"01KZA825A3PT11V5Q941ZS68A6\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 8,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-091664be692d946556b8a961",
+    "res": "{\"campaignId\":\"01KZA825A8NE4EKPMPENDAW7NS\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 9,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-5577dec06cef8f86fb2d66ea",
+    "res": "{\"campaignId\":\"01KZA825ACH0VJVNX1E945FFMR\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 10,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-c5382e7a8347473332711935",
+    "res": "{\"campaignId\":\"01KZA825AHQ32K5CTGXN04VB5R\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 11,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-207ead504338a53a4d39254f",
+    "res": "{\"campaignId\":\"01KZA825AP1GAS5ZRB2ZRFTDSN\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 12,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-da37cd3042ec2114745458d4",
+    "res": "{\"campaignId\":\"01KZA825AVFYHWTSM8YBWW8WQN\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 13,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-faccc341368bd9be229c727b",
+    "res": "{\"campaignId\":\"01KZA825AZJ0HEHKSPDSBT1Q60\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 14,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-26ebee6598f09b5ae2d029cc",
+    "res": "{\"campaignId\":\"01KZA825B3NH2CWDXM1SDCJAR3\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 15,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-f95ef4e1032b4f8ef76a9fa4",
+    "res": "{\"campaignId\":\"01KZA825B7E5G79ACEZE3B1JXR\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 16,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-bf774d25141346526ef8112f",
+    "res": "{\"campaignId\":\"01KZA825BBP5TF5PTANHP5MZ2T\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 17,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-5a489a3cf610e34be1d09829",
+    "res": "{\"campaignId\":\"01KZA825BFK0EA8X1V9W36J90X\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 18,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-b1a5c88fa98f799efce5dfbe",
+    "res": "{\"campaignId\":\"01KZA825BK6NZMHTJPKTX2TXH8\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 19,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-38120fa0971b26c109c72c7b",
+    "res": "{\"campaignId\":\"01KZA825BQ6028CA5DN963GZHC\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 20,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-b116ee6aca89e6abc7dc0057",
+    "res": "{\"campaignId\":\"01KZA825BTNTVXG6SN64NQFQ32\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 21,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-481957110a0e5988533119c1",
+    "res": "{\"campaignId\":\"01KZA825BYB8NBZDREJBJVKGKZ\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 22,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-4c66cc2df982b02a3dcf494c",
+    "res": "{\"campaignId\":\"01KZA825C2Q5VQK4SSWMJX70CQ\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 23,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-356e2d5d805bf33de4e791f6",
+    "res": "{\"campaignId\":\"01KZA825C5HEXNV11KXWMRACY5\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 24,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-f46a6831a354d807bce768a5",
+    "res": "{\"campaignId\":\"01KZA825C9DRETQCKTDZMTPBV2\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 25,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-df6305dc546977c990445ae0",
+    "res": "{\"campaignId\":\"01KZA825CD7D8PY0Y9VSYDWYV9\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 26,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-51ca965209afdb11207af6ad",
+    "res": "{\"campaignId\":\"01KZA825CG91CQ08ZJ54T20DBD\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 27,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-5dd8cbbf47743fc97ecfd880",
+    "res": "{\"campaignId\":\"01KZA825CKK05V5S5KG5FWMSZY\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 28,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-da5f0d7a1220eb68ce59c343",
+    "res": "{\"campaignId\":\"01KZA825CQEYYN7SZWFM1MM7MP\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 29,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-21f812c0efa0cd3c25016b43",
+    "res": "{\"campaignId\":\"01KZA825CTYRTQAW8E8NX861W3\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 30,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-08e75f77c963682b36bbd99a",
+    "res": "{\"campaignId\":\"01KZA825CY5TQFFZAS9ZKWNJS0\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 31,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-ae691007478400d8f4667f05",
+    "res": "{\"campaignId\":\"01KZA825D1VWTWFPHX3477JV6W\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 32,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-84859ce23a1607a7a19da817",
+    "res": "{\"campaignId\":\"01KZA825D4S2W05BF0VZCXSMQV\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  },
+  {
+    "seq": 33,
+    "status": 201,
+    "users": 1,
+    "key": "retire-reward-450-9cd1dfe62ead2c056a0e904c",
+    "res": "{\"campaignId\":\"01KZA825D8MQZCKN30QAMWM8GV\",\"audience\":\"USERS\",\"targetCount\":1,\"expiresAt\":null,\"applied\":true}"
+  }
+]

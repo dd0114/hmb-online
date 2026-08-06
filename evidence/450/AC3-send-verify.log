@@ -1,0 +1,265 @@
+# AC3 — 은퇴 보상 우편 발송 + 라이브 검증 · **증빙 전문**
+
+생성(UTC)      : 2026-08-06T00:45:03Z
+호스트         : BH-L175.local
+git HEAD       : f657561e762d20ffc27466b57a88e104664ff4b9 (epic450-roster)
+java 컨테이너  : hmb/server-java:p3 started=2026-08-05T17:22:23.454521418Z
+                 ↑ 발송(00:37Z)·재실행·이 검증이 전부 이 기동 안에서 일어났다 = 같은 바이너리.
+
+═══ 0. 읽기 모드 함정과 그 처방 (스켑틱 3표가 전부 여기서 갈렸다) ═══
+
+SQLite 를 'file:…?immutable=1' 로 열면 **WAL 을 무시**한다 — 최근 쓰기가 통째로 안 보인다.
+1R 패널의 S2 는 그 모드로 세어 'campaigns=0, user_mails=5' 를 얻고 '202명이 못 받았다'고 반박했다.
+고친 방식: **사본을 뜬 뒤 WAL 을 접는다(wal_checkpoint TRUNCATE)** → 두 모드가 같은 답을 준다.
+그래서 아래 스냅샷은 어느 모드로 열어도 같은 수치가 나오고, 그 사실 자체를 먼저 증명한다.
+(같은 결함이 산출 스크립트에도 있었다 — infra/reward-450-retire.mjs 의 읽기를 mode=ro 로 바꾸고
+ 두 모드가 다르면 **멈추는** 가드 assertCheckpointed() 를 넣었다. §5 가 그 재산출 결과다.)
+
+$ docker run --rm -v hmb-p3-db:/src:ro -v /Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot:/dst alpine:3.20 sh -c cp /src/hmb.db* /dst/ && ls -l /dst
+total 670396
+-rw-r--r--    1 root     root     683491328 Aug  6 00:45 hmb.db
+-rw-r--r--    1 root     root         32768 Aug  6 00:45 hmb.db-shm
+-rw-r--r--    1 root     root       2060032 Aug  6 00:45 hmb.db-wal
+
+스냅샷 시각(UTC): 2026-08-06T00:45:05Z   경로: /Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db
+$ sqlite3 /Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db PRAGMA wal_checkpoint(TRUNCATE);
+0|0|0
+
+── 두 읽기 모드가 같은 답을 주는가(= 체크포인트 완료 증명) ──
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro'     "select count(*) from mail_campaigns;"
+38
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?immutable=1' "select count(*) from mail_campaigns;"
+38
+  ↑ 두 값이 같아야 한다. (체크포인트 전 원본에서는 mode=ro 38 vs immutable 5 로 갈렸다.)
+
+═══ 1. 발송 원문 — 33개 POST 전부 (Idempotency-Key · campaignId · HTTP) ═══
+$ node -e '<send-log.json 전량 출력>'
+seq | users | Idempotency-Key                     | campaignId                 | HTTP
+  1 |   188 | retire-reward-450-d63d00edb98fb3720b0ffee7 | 01KZA8258A9NBT8W72J2A6NVE7 | 201 applied=true
+  2 |     1 | retire-reward-450-b966e4a86e1308db399ac5e5 | 01KZA82599Z1Z3X98GWA1AD6M9 | 201 applied=true
+  3 |     1 | retire-reward-450-96e60be7943610536b45c3d5 | 01KZA8259GB28NFH2J2YVG99J2 | 201 applied=true
+  4 |     1 | retire-reward-450-181f2a2ddc0d64ce25381966 | 01KZA8259NN6TZJYRBEV7SJXNV | 201 applied=true
+  5 |     1 | retire-reward-450-0934df2a6f8058eeba48e812 | 01KZA8259TCNB91XGMW7FCJWP8 | 201 applied=true
+  6 |     1 | retire-reward-450-863cd888aa87491e8268e1c2 | 01KZA8259YHZN39AM6713NT6NB | 201 applied=true
+  7 |     1 | retire-reward-450-256d53edfe5309c86abcc683 | 01KZA825A3PT11V5Q941ZS68A6 | 201 applied=true
+  8 |     1 | retire-reward-450-091664be692d946556b8a961 | 01KZA825A8NE4EKPMPENDAW7NS | 201 applied=true
+  9 |     1 | retire-reward-450-5577dec06cef8f86fb2d66ea | 01KZA825ACH0VJVNX1E945FFMR | 201 applied=true
+ 10 |     1 | retire-reward-450-c5382e7a8347473332711935 | 01KZA825AHQ32K5CTGXN04VB5R | 201 applied=true
+ 11 |     1 | retire-reward-450-207ead504338a53a4d39254f | 01KZA825AP1GAS5ZRB2ZRFTDSN | 201 applied=true
+ 12 |     1 | retire-reward-450-da37cd3042ec2114745458d4 | 01KZA825AVFYHWTSM8YBWW8WQN | 201 applied=true
+ 13 |     1 | retire-reward-450-faccc341368bd9be229c727b | 01KZA825AZJ0HEHKSPDSBT1Q60 | 201 applied=true
+ 14 |     1 | retire-reward-450-26ebee6598f09b5ae2d029cc | 01KZA825B3NH2CWDXM1SDCJAR3 | 201 applied=true
+ 15 |     1 | retire-reward-450-f95ef4e1032b4f8ef76a9fa4 | 01KZA825B7E5G79ACEZE3B1JXR | 201 applied=true
+ 16 |     1 | retire-reward-450-bf774d25141346526ef8112f | 01KZA825BBP5TF5PTANHP5MZ2T | 201 applied=true
+ 17 |     1 | retire-reward-450-5a489a3cf610e34be1d09829 | 01KZA825BFK0EA8X1V9W36J90X | 201 applied=true
+ 18 |     1 | retire-reward-450-b1a5c88fa98f799efce5dfbe | 01KZA825BK6NZMHTJPKTX2TXH8 | 201 applied=true
+ 19 |     1 | retire-reward-450-38120fa0971b26c109c72c7b | 01KZA825BQ6028CA5DN963GZHC | 201 applied=true
+ 20 |     1 | retire-reward-450-b116ee6aca89e6abc7dc0057 | 01KZA825BTNTVXG6SN64NQFQ32 | 201 applied=true
+ 21 |     1 | retire-reward-450-481957110a0e5988533119c1 | 01KZA825BYB8NBZDREJBJVKGKZ | 201 applied=true
+ 22 |     1 | retire-reward-450-4c66cc2df982b02a3dcf494c | 01KZA825C2Q5VQK4SSWMJX70CQ | 201 applied=true
+ 23 |     1 | retire-reward-450-356e2d5d805bf33de4e791f6 | 01KZA825C5HEXNV11KXWMRACY5 | 201 applied=true
+ 24 |     1 | retire-reward-450-f46a6831a354d807bce768a5 | 01KZA825C9DRETQCKTDZMTPBV2 | 201 applied=true
+ 25 |     1 | retire-reward-450-df6305dc546977c990445ae0 | 01KZA825CD7D8PY0Y9VSYDWYV9 | 201 applied=true
+ 26 |     1 | retire-reward-450-51ca965209afdb11207af6ad | 01KZA825CG91CQ08ZJ54T20DBD | 201 applied=true
+ 27 |     1 | retire-reward-450-5dd8cbbf47743fc97ecfd880 | 01KZA825CKK05V5S5KG5FWMSZY | 201 applied=true
+ 28 |     1 | retire-reward-450-da5f0d7a1220eb68ce59c343 | 01KZA825CQEYYN7SZWFM1MM7MP | 201 applied=true
+ 29 |     1 | retire-reward-450-21f812c0efa0cd3c25016b43 | 01KZA825CTYRTQAW8E8NX861W3 | 201 applied=true
+ 30 |     1 | retire-reward-450-08e75f77c963682b36bbd99a | 01KZA825CY5TQFFZAS9ZKWNJS0 | 201 applied=true
+ 31 |     1 | retire-reward-450-ae691007478400d8f4667f05 | 01KZA825D1VWTWFPHX3477JV6W | 201 applied=true
+ 32 |     1 | retire-reward-450-84859ce23a1607a7a19da817 | 01KZA825D4S2W05BF0VZCXSMQV | 201 applied=true
+ 33 |     1 | retire-reward-450-9cd1dfe62ead2c056a0e904c | 01KZA825D8MQZCKN30QAMWM8GV | 201 applied=true
+
+201 건수 = 33 / 33
+
+═══ 2. 같은 Idempotency-Key 재실행 = 멱등 (추가 발송 0) ═══
+$ node -e '<send-log-2.json 전량 출력>'
+#  1 HTTP 200  188명 retire-reward-450-d63d00edb98fb3720b0ffee7 campaignId=01KZA8258A9NBT8W72J2A6NVE7 applied=false
+#  2 HTTP 200    1명 retire-reward-450-b966e4a86e1308db399ac5e5 campaignId=01KZA82599Z1Z3X98GWA1AD6M9 applied=false
+#  3 HTTP 200    1명 retire-reward-450-96e60be7943610536b45c3d5 campaignId=01KZA8259GB28NFH2J2YVG99J2 applied=false
+#  4 HTTP 200    1명 retire-reward-450-181f2a2ddc0d64ce25381966 campaignId=01KZA8259NN6TZJYRBEV7SJXNV applied=false
+#  5 HTTP 200    1명 retire-reward-450-0934df2a6f8058eeba48e812 campaignId=01KZA8259TCNB91XGMW7FCJWP8 applied=false
+#  6 HTTP 200    1명 retire-reward-450-863cd888aa87491e8268e1c2 campaignId=01KZA8259YHZN39AM6713NT6NB applied=false
+#  7 HTTP 200    1명 retire-reward-450-256d53edfe5309c86abcc683 campaignId=01KZA825A3PT11V5Q941ZS68A6 applied=false
+#  8 HTTP 200    1명 retire-reward-450-091664be692d946556b8a961 campaignId=01KZA825A8NE4EKPMPENDAW7NS applied=false
+#  9 HTTP 200    1명 retire-reward-450-5577dec06cef8f86fb2d66ea campaignId=01KZA825ACH0VJVNX1E945FFMR applied=false
+# 10 HTTP 200    1명 retire-reward-450-c5382e7a8347473332711935 campaignId=01KZA825AHQ32K5CTGXN04VB5R applied=false
+# 11 HTTP 200    1명 retire-reward-450-207ead504338a53a4d39254f campaignId=01KZA825AP1GAS5ZRB2ZRFTDSN applied=false
+# 12 HTTP 200    1명 retire-reward-450-da37cd3042ec2114745458d4 campaignId=01KZA825AVFYHWTSM8YBWW8WQN applied=false
+# 13 HTTP 200    1명 retire-reward-450-faccc341368bd9be229c727b campaignId=01KZA825AZJ0HEHKSPDSBT1Q60 applied=false
+# 14 HTTP 200    1명 retire-reward-450-26ebee6598f09b5ae2d029cc campaignId=01KZA825B3NH2CWDXM1SDCJAR3 applied=false
+# 15 HTTP 200    1명 retire-reward-450-f95ef4e1032b4f8ef76a9fa4 campaignId=01KZA825B7E5G79ACEZE3B1JXR applied=false
+# 16 HTTP 200    1명 retire-reward-450-bf774d25141346526ef8112f campaignId=01KZA825BBP5TF5PTANHP5MZ2T applied=false
+# 17 HTTP 200    1명 retire-reward-450-5a489a3cf610e34be1d09829 campaignId=01KZA825BFK0EA8X1V9W36J90X applied=false
+# 18 HTTP 200    1명 retire-reward-450-b1a5c88fa98f799efce5dfbe campaignId=01KZA825BK6NZMHTJPKTX2TXH8 applied=false
+# 19 HTTP 200    1명 retire-reward-450-38120fa0971b26c109c72c7b campaignId=01KZA825BQ6028CA5DN963GZHC applied=false
+# 20 HTTP 200    1명 retire-reward-450-b116ee6aca89e6abc7dc0057 campaignId=01KZA825BTNTVXG6SN64NQFQ32 applied=false
+# 21 HTTP 200    1명 retire-reward-450-481957110a0e5988533119c1 campaignId=01KZA825BYB8NBZDREJBJVKGKZ applied=false
+# 22 HTTP 200    1명 retire-reward-450-4c66cc2df982b02a3dcf494c campaignId=01KZA825C2Q5VQK4SSWMJX70CQ applied=false
+# 23 HTTP 200    1명 retire-reward-450-356e2d5d805bf33de4e791f6 campaignId=01KZA825C5HEXNV11KXWMRACY5 applied=false
+# 24 HTTP 200    1명 retire-reward-450-f46a6831a354d807bce768a5 campaignId=01KZA825C9DRETQCKTDZMTPBV2 applied=false
+# 25 HTTP 200    1명 retire-reward-450-df6305dc546977c990445ae0 campaignId=01KZA825CD7D8PY0Y9VSYDWYV9 applied=false
+# 26 HTTP 200    1명 retire-reward-450-51ca965209afdb11207af6ad campaignId=01KZA825CG91CQ08ZJ54T20DBD applied=false
+# 27 HTTP 200    1명 retire-reward-450-5dd8cbbf47743fc97ecfd880 campaignId=01KZA825CKK05V5S5KG5FWMSZY applied=false
+# 28 HTTP 200    1명 retire-reward-450-da5f0d7a1220eb68ce59c343 campaignId=01KZA825CQEYYN7SZWFM1MM7MP applied=false
+# 29 HTTP 200    1명 retire-reward-450-21f812c0efa0cd3c25016b43 campaignId=01KZA825CTYRTQAW8E8NX861W3 applied=false
+# 30 HTTP 200    1명 retire-reward-450-08e75f77c963682b36bbd99a campaignId=01KZA825CY5TQFFZAS9ZKWNJS0 applied=false
+# 31 HTTP 200    1명 retire-reward-450-ae691007478400d8f4667f05 campaignId=01KZA825D1VWTWFPHX3477JV6W applied=false
+# 32 HTTP 200    1명 retire-reward-450-84859ce23a1607a7a19da817 campaignId=01KZA825D4S2W05BF0VZCXSMQV applied=false
+# 33 HTTP 200    1명 retire-reward-450-9cd1dfe62ead2c056a0e904c campaignId=01KZA825D8MQZCKN30QAMWM8GV applied=false
+
+200 건수 = 33 / 33  · applied=true 건수 = 0
+
+═══ 3. 계획(plan.json) ↔ 발송 로그 ↔ 라이브 DB 3자 대조 ═══
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "select count(*) campaigns, sum(target_count) targets from mail_campaigns where reason like '%#450%';"
+33|220
+
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "select count(*) user_mails, count(distinct user_id) users from user_mails where campaign_id in (select id from mail_campaigns where reason like '%#450%');"
+220|206
+
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "select sum(expires_at is null) expires_null, sum(revoked_at is not null) revoked, count(*) n from mail_campaigns where reason like '%#450%';"
+33|0|33
+
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "select id, target_count, title, created_at from mail_campaigns where reason like '%#450%' order by created_at limit 6;"
+01KZA825D8MQZCKN30QAMWM8GV|1|로스터 개편 보상 (2/2)|2026-08-06T00:37:37Z
+01KZA825D4S2W05BF0VZCXSMQV|1|로스터 개편 보상 (1/2)|2026-08-06T00:37:37Z
+01KZA825D1VWTWFPHX3477JV6W|1|로스터 개편 보상 (2/2)|2026-08-06T00:37:37Z
+01KZA825CY5TQFFZAS9ZKWNJS0|1|로스터 개편 보상 (1/2)|2026-08-06T00:37:37Z
+01KZA825CTYRTQAW8E8NX861W3|1|로스터 개편 보상 (2/2)|2026-08-06T00:37:37Z
+01KZA825CQEYYN7SZWFM1MM7MP|1|로스터 개편 보상 (1/2)|2026-08-06T00:37:37Z
+
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "select action, result, count(*) from admin_ops_audit where reason like '%#450%' group by 1,2;"
+mail_send|ok|33
+notice_active|ok|2
+notice_create|ok|2
+
+── 라이브 campaignId 집합 == 발송 로그 id 집합 ──
+라이브 33 건 · 발송로그 33 건 · 집합 동일 = true
+
+── 첨부 카드 총량을 **라이브 payload_json 에서** 직접 재계산 ──
+라이브 payload 재계산 : 카드 2310 · 젬 0 · 한 통 최대 종류 10 (상한 10) · 항목 최대 장수 21 (상한 99)
+계획 totals          : 카드 2310 · 젬 0
+일치 = true
+
+═══ 4. 누락·오지급 검사 (S2 반박 대응 — 자격자 전원이 받았나) ═══
+── 은퇴(active=0) 카드를 가진 유저 수 vs 우편 수령 유저 수 ──
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "with elig as (select distinct up.user_id uid from user_players up join players p on p.id=up.player_id where p.active=0),
+      got  as (select distinct um.user_id uid from user_mails um where um.campaign_id in (select id from mail_campaigns where reason like '%#450%'))
+      select (select count(*) from elig) eligible, (select count(*) from got) received,
+             (select count(*) from elig where uid not in (select uid from got)) missing,
+             (select count(*) from got  where uid not in (select uid from elig)) extra;"
+206|206|0|0
+
+── 첨부 카드가 전부 카탈로그에 있고 active=1 인가 (은퇴 카드를 보상으로 주면 안 된다) ──
+첨부 카드 종류 35 · 카탈로그 부재 0 · 비활성(active=0) 0
+── 유저별 수령 합계 == 산식 결과 (분할 2통 유저 포함, 전수 대조) ──
+계획 수령자 206 · 라이브 수령자 206 · 유저별 합계 불일치 = 0
+라이브 우편에서 되합산한 카드 총량 = 2310
+
+═══ 5. 산출 결정론 — 고친 리더로 재산출해도 발송에 쓴 계획과 같은가 ═══
+(발송 전 스냅샷의 **체크포인트 사본**으로 다시 돌린다)
+$ node /Users/peter.park/spider9/hmb-online/infra/reward-450-retire.mjs --db /private/tmp/claude-1609956905/-Users-peter-park-spider9-hmb-online/28abc225-b6fd-4bab-bf51-ebd132d2838b/scratchpad/dbcopy/hmb-ckpt.db --out /private/tmp/claude-1609956905/-Users-peter-park-spider9-hmb-online/28abc225-b6fd-4bab-bf51-ebd132d2838b/scratchpad/plan-verify.json
+# #450 은퇴 보상 dry-run  (MULT=3)
+원천: /private/tmp/claude-1609956905/-Users-peter-park-spider9-hmb-online/28abc225-b6fd-4bab-bf51-ebd132d2838b/scratchpad/dbcopy/hmb-ckpt.db
+카탈로그: 182종 (활성 62 / 은퇴 120)
+라이브: 유저 206명 · 은퇴카드 보유 716행 / 770장
+지급: 카드 2310장 · 젬 0 · 수령자 206명 · 캠페인 33통
+1인 지급량: 중앙값 6 / 평균 11.2 / 최대 111
+1인 항목수: 중앙값 2 / 최대 20  (한 통 상한 10 → 넘치면 분할)
+분할 유저: 14명 (2통 수령)
+항목 최대 장수: 21  (상한 99)
+상한 위반: 0건
+
+상위 지급 카드:
+  P078    690장
+  P094    639장
+  P121     81장
+  P171     69장
+  P093     66장
+  P129     66장
+  P134     57장
+  P073     54장
+
+캠페인:
+  #  1  188명  (1/1)  gems 0  P078×3 P094×3
+  #  2    1명  (1/1)  gems 0  P078×3 P094×3 P171×3
+  #  3    1명  (1/2)  gems 0  P024×3 P033×3 P056×3 P065×3 P078×6 P093×3 P094×3 P121×3 P129×3 P134×6
+  #  4    1명  (2/2)  gems 0  P136×3 P161×3 P169×3
+  #  5    1명  (1/2)  gems 0  P031×3 P033×3 P073×6 P074×3 P078×12 P094×3 P108×3 P121×6 P129×3 P134×3
+  #  6    1명  (2/2)  gems 0  P136×3 P171×3
+  #  7    1명  (1/1)  gems 0  P055×3 P078×3 P079×3 P093×3 P094×3 P108×3 P120×3 P134×3 P148×3 P171×6
+  #  8    1명  (1/2)  gems 0  P033×3 P065×3 P073×3 P077×6 P078×6 P093×9 P094×6 P095×3 P121×12 P131×3
+  #  9    1명  (2/2)  gems 0  P134×6 P171×9
+  # 10    1명  (1/2)  gems 0  P024×3 P073×3 P078×6 P079×3 P094×3 P107×3 P120×3 P129×3 P131×6 P134×3
+  # 11    1명  (2/2)  gems 0  P171×3
+  # 12    1명  (1/2)  gems 0  P031×3 P050×3 P055×6 P065×3 P077×6 P078×15 P093×9 P094×3 P095×3 P096×3
+  … 외 21통
+
+plan → /private/tmp/claude-1609956905/-Users-peter-park-spider9-hmb-online/28abc225-b6fd-4bab-bf51-ebd132d2838b/scratchpad/plan-verify.json
+
+재산출 계획 == 실제 발송에 쓴 계획 : true
+
+═══ 6. 제3자 재현 절차 (위와 동일한 명령 4줄) ═══
+  D=$(mktemp -d)
+  docker run --rm -v hmb-p3-db:/src:ro -v "$D:/dst" alpine:3.20 sh -c 'cp /src/hmb.db* /dst/'
+  sqlite3 "$D/hmb.db" 'PRAGMA wal_checkpoint(TRUNCATE);'          # ← 이 줄이 없으면 낡은 값을 본다
+  sqlite3 "file:$D/hmb.db?mode=ro" "select count(*), sum(target_count) from mail_campaigns where reason like '%#450%';"
+  ⚠️ 유저가 우편을 수령(claim)하면 user_players 가 늘어난다 — §5 의 재산출은 그래서
+     라이브가 아니라 **발송 전 스냅샷**으로 돌린다. §3 의 수령 현황은 아래 그대로다:
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "select count(*) total, sum(claimed_at is not null) claimed, sum(read_at is not null) read from user_mails where campaign_id in (select id from mail_campaigns where reason like '%#450%');"
+220|0|0
+
+
+═══ 7. 패널 2R 소수의견(S3 증빙무결성) 수습 — 발송 무접촉 ═══
+
+S3-①  계획 JSON 이 증빙 디렉토리에 없다 → 이관 완료
+$ ls -la evidence/450/*.json && shasum -a 256 evidence/450/*.json
+  evidence/450/plan-sent.json         200353B  128ea7f566114392353833f0f05ad7081a0b70fbef03cfd8a6b9b612c94b38ad
+  evidence/450/plan-verify.json       200358B  b0a5b67e9527cca07659edd87bbf1e167bb0eef11bfdf1c06bf6bf95fc81dd55
+  evidence/450/send-log.json            8379B  3682d63fa7ff32eac4bfbc495c708577e91025827e6f7d70e97a152f2b2becd3
+  evidence/450/send-log-idempotent.json 8412B  c0c891165db52d70ab20fe5a1671b8e88fdb77d4728a79ae98fbcc7180c98e97
+  (plan-sent.json = 실제 발송에 쓴 계획 · plan-verify.json = 발송 후 체크포인트 사본에서 재산출한 계획)
+
+S3-②  "payload 합이 2,310 이 아니라 1,188 이다" → 두 값 다 맞다. 세는 단위가 다르다.
+$ node -e '
+> const p=JSON.parse(require("fs").readFileSync("evidence/450/plan-sent.json","utf8"));
+> const cs=p.campaigns||p;
+> let payloadOnly=0, weighted=0; const users=new Set();
+> for(const c of cs){
+>   const n=(c.attachments.players||[]).reduce((s,x)=>s+x.count,0);
+>   payloadOnly+=n; weighted+=n*c.userIds.length;
+>   c.userIds.forEach(u=>users.add(u));
+> }
+> console.log("campaigns:",cs.length);
+> console.log("Σ payload (target_count 미곱):",payloadOnly);
+> console.log("Σ payload × target_count :",weighted);
+> console.log("distinct users:",users.size);
+> const c1=cs[0];
+> console.log("campaign#1: cards/payload=",(c1.attachments.players||[]).reduce((s,x)=>s+x.count,0),"targets=",c1.userIds.length);
+> '
+campaigns: 33
+Σ payload (target_count 미곱): 1188
+Σ payload × target_count : 2310
+distinct users: 206
+campaign#1: cards/payload= 6 targets= 188
+
+  ⇒ 1,188 = 캠페인 payload 를 target_count 로 곱하지 않은 합이다.
+    한 캠페인 = 한 payload 를 N 명에게 보내는 구조이므로(AdminMailService), 유저가 받는 카드 총량은
+    Σ(payload × target_count) = 2,310 이다. 캠페인 #1 만 봐도 payload 6장 × 188명 = 1,128 장이고,
+    1,188 은 그 188 배를 통째로 빠뜨린 값이다(1,188 − 6 = 1,182 가 나머지 32통의 payload 합).
+    S1·S2 가 계획이 아니라 라이브 user_mails 에서 독립적으로 얻은 값도 2,310 으로 일치한다:
+    (⚠️ 첨부는 user_mails 가 아니라 mail_campaigns.payload_json 에 있다 — 팬아웃 행은 캠페인을 참조만
+       한다. 그래서 "유저가 실제로 받은 카드"는 두 테이블을 조인해 행마다 세야 한다.)
+$ sqlite3 'file:/Users/peter.park/spider9/hmb-online/evidence/450/live-snapshot/hmb.db?mode=ro' "select sum(json_extract(v.value,'\$.count')) cards_delivered, count(distinct um.user_id) users, count(*) rows_x_kinds from user_mails um join mail_campaigns c on c.id=um.campaign_id join json_each(json_extract(c.payload_json,'\$.players')) v where c.reason like '%#450%';"
+2310|206|627
+$ sqlite3 'file:…/live-snapshot/hmb.db?mode=ro' "select sum(json_extract(v.value,'\$.count')) from mail_campaigns c join json_each(json_extract(c.payload_json,'\$.players')) v where c.reason like '%#450%';"
+1188
+    ⇒ 같은 DB 에서 조인 유무만 바꾸면 2,310 ↔ 1,188 이 그대로 재현된다. 627 = 유저×카드종 행 수로,
+       S2 가 EC-5(첨부 카드 유효성)에서 독립적으로 센 627 항목과 일치한다.
+
+S3-③  재산출 블록에 실행 명령 행이 없다 → §5 의 명령을 여기에 명시(위 §7-② 와 같은 파일 기준)
+$ node infra/reward-450-retire.mjs --db evidence/450/live-snapshot/hmb.db --out evidence/450/plan-verify.json
+$ node -e 'const a=require("./evidence/450/plan-sent.json"),b=require("./evidence/450/plan-verify.json");
+>   console.log("재산출 계획 == 실제 발송에 쓴 계획 :", JSON.stringify(a.campaigns||a)===JSON.stringify(b.campaigns||b))'
+재산출 계획 == 실제 발송에 쓴 계획 : true
+  (⚠️ plan-verify.json 의 --db 는 라이브가 아니라 발송 전 상태의 체크포인트 사본이다. 유저가 수령하면
+     user_players 가 늘어 계획이 달라지므로, 재현자는 반드시 이 스냅샷 또는 발송 전 사본으로 돌려야 한다.)
