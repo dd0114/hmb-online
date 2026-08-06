@@ -48,3 +48,22 @@ https://swap-organizational-targeted-greg.trycloudflare.com
 GET /api/admin/mails?limit=60 → reason 에 '#450' 포함 34건(실 33 + QA 1)
   targetCount 221 / readCount 3 / claimedCount 1  ← claimed 1 은 QA 테스트 계정분
   실유저 220통은 아직 미수령 = 터널 사멸 구간과 정합(수령 시도 자체가 서버에 도달 못 했다).
+
+── 후속. 왜 터널이 이틀간 방치됐나 — 워치독 미실행 (2026-08-07 추가) ──
+$ launchctl print gui/501/online.hmb.tunnel-heal
+    state = not running / working directory = /tmp/hmb-wrangler-work
+    runs = 3367 / last exit code = 78: EX_CONFIG
+$ ls -ld /tmp/hmb-wrangler-work        → No such file or directory
+  → plist 의 WorkingDirectory 가 /tmp 라 macOS 청소에 사라졌고, 그러면 launchd 는
+    잡을 spawn 하지 않는다(78). 스크립트가 0줄 실행 = 로그도 DEGRADED 마커도 안 남는다.
+    status.sh 는 3일 전 HEAL_OK 를 읽어 '✓ 가동 중' 을 계속 출력했다(신선도 검사 없음).
+  마지막 워치독 출력 08-04 11:51 → 복구 시점까지 3일 공백. 그 사이 터널 사망 = 무대응.
+
+[운영 복구 — 코드 변경 0, 되돌릴 수 있음]
+$ mkdir -p /tmp/hmb-wrangler-work
+$ launchctl kickstart -k gui/501/online.hmb.tunnel-heal
+    → last exit code = 0 · runs 3367→3369
+$ tail -1 ~/.local/state/hmb/tunnel-heal.out
+    ✓ 터널 정상 — https://swap-organizational-targeted-greg.trycloudflare.com (ok http=401)
+  ※ 증상 제거일 뿐 — /tmp 가 다음에 청소되면 같은 방식으로 다시 조용히 죽는다.
+    구조 수정(WorkingDirectory 영속화 + status.sh heartbeat)은 infra 트랙 = #454 에 요청.
