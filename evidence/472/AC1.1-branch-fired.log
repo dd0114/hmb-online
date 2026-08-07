@@ -1,0 +1,7 @@
+== 분기 발화 확인 (같은 파일, OS 별 판정) ==
+mac    : HMB_SED_INPLACE=bsd os_kind=darwin
+linux  : HMB_SED_INPLACE=gnu os_kind=linux
+== 구코드 대조: BSD 문법을 GNU 에 그대로 넣으면? ==
+sed: can't read s|^WEB_ORIGINS=.*|WEB_ORIGINS=new|: No such file or directory
+exit=2
+WEB_ORIGINS=old

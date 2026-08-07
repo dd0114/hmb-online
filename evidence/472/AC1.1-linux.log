@@ -1,0 +1,34 @@
+=== AC1.1 portable.sh 계약 (OS=Linux) ===
+
+[T0] 공통 유틸 존재·로드
+  ✓ infra/lib/portable.sh 존재
+  ✓ source 성공
+
+[T1] sed_i 제자리 치환 + 백업 잔재 0
+  ✓ 치환됨: https://hmb-online.pages.dev,https://x-y-z.trycloudflare.com
+  ✓ 인접 줄 보존
+  ✓ 백업파일 잔재 0
+
+[T2] executor 체크아웃 경로 추출 (mac/linux 공통)
+  ✓ mac: /Users/peter.park/spider2/hmb-online
+  ✓ linux: /home/ubuntu/hmb/hmb-online
+  ✓ opt: /opt/hmb-online
+
+[T3] 소비처 배선 — 비이식 패턴 잔존 0 (이식 계층 제외)
+  ✓ BSD 전용 `sed -i ''` 0건
+  ✓ `/Users/` 하드코딩 0건
+
+[T3b] 이식 계층이 양 OS 분기를 실제로 보유 (제외의 대가 지불)
+  ✓ BSD 분기 존재
+  ✓ GNU 분기 존재
+  ✓ deploy-pages.sh: 유틸 로드
+  ✓ deploy-quicktunnel.sh: 유틸 로드
+  ✓ status.sh: 유틸 로드
+
+[T4] 소비처 스크립트 문법 (현 OS 의 bash 로 파싱)
+  ✓ deploy-pages.sh: syntax ok
+  ✓ deploy-quicktunnel.sh: syntax ok
+  ✓ status.sh: syntax ok
+  ✓ portable.sh: syntax ok
+
+=== 결과: PASS=19 FAIL=0 ===

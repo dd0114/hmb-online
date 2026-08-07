@@ -12,6 +12,7 @@
 
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+. infra/lib/portable.sh   # sed_i 등 OS 분기 (#472 AC1.1) — BSD/GNU sed 차이 흡수
 WEB_PORT="${WEB_PORT:-4321}"
 
 start_tunnel() { # $1=port $2=logfile $3=pidfile → echoes URL
@@ -53,7 +54,7 @@ WEB_URL=$(start_tunnel "$WEB_PORT" /tmp/hmb-web-tunnel.log /tmp/hmb-web-tunnel.p
 echo "[deploy-qt]    WEB_URL = $WEB_URL"
 
 echo "[deploy-qt] 5) CORS = WEB_URL, java 재시작 (⭕ DB 볼륨 유지 — down 아님)"
-cd infra && sed -i '' "s|^WEB_ORIGINS=.*|WEB_ORIGINS=${WEB_URL}|" .env
+cd infra && sed_i "s|^WEB_ORIGINS=.*|WEB_ORIGINS=${WEB_URL}|" .env
 docker compose up -d --force-recreate java >/dev/null   # --force-recreate: env 변경 확실히 반영
 until [ "$(docker inspect -f '{{.State.Health.Status}}' hmb-java 2>/dev/null)" = healthy ]; do sleep 3; done
 cd ..

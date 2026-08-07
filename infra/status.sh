@@ -7,6 +7,7 @@
 # 읽기 전용(아무것도 안 바꿈).
 
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+. infra/lib/portable.sh   # checkout_from_cmdline 등 OS 분기 (#472 AC1.1)
 PAGES="https://${PAGES_PROJECT:-hmb-online}.pages.dev"
 G='\033[32m'; R='\033[31m'; Y='\033[33m'; N='\033[0m'
 ok(){ printf "  ${G}✓${N} %s\n" "$1"; }
@@ -42,7 +43,8 @@ done
 # (macOS pgrep 에는 -c 가 없다 — 셌다가 조용히 0 이 된다. wc 로 센다.)
 n=$(ps -eo command | grep -c "[e]xecutor-main" | tr -d ' \n'); n=${n:-0}
 if [ "$n" -ge 1 ]; then
-  where=$(ps -eo command | grep "[e]xecutor-main" | grep -oE '/Users/[^ ]*/hmb-online' | head -1)
+  # 경로 추출은 홈 규약(/Users vs /home vs /opt)에 묶지 않는다 — 이사 후에도 같은 관측이 나와야 한다(#472).
+  where=$(ps -eo command | grep "[e]xecutor-main" | checkout_from_cmdline)
   ok "executor: 실행 중 ($n proc${where:+, $where})"
 else
   warn "executor: 없음 (AI 매치 안 돌아감 — 모드 A 재기동 필요)"
