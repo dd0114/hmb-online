@@ -1,0 +1,46 @@
+
+[1m== 전제 점검[0m
+[32m   ✓ node v20.19.6 (요구 20.19.6)[0m
+[32m   ✓ npm 10.8.2[0m
+[32m   ✓ JDK 21.0.8 (JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home)[0m
+[32m   ✓ claude CLI 있음 → 라이브 AI 로 시도(로그인 안 돼 있으면 자동으로 스텁 강등)[0m
+   포트: java 31080 · runner 31790 · web 31173  (HMB_LOCAL_*_PORT 로 변경)
+[32m   ✓ 로컬 빌드 전제 충족[0m
+
+[1m== 엔진 러너 :31790[0m
+[32m   ✓ 러너 준비[0m
+
+[1m== 권위 서버 빌드 + 기동 :31080[0m
+[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-vAL8/hmb.db)[0m
+
+[1m== AI 실행기 (희망 모드: stub)[0m
+[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-vAL8/executor.log)[0m
+
+[1m== 가입 → 덱 → 매치[0m
+[32m   ✓ 가입 local1786111640[0m
+[32m   ✓ 덱 저장 (선발 11 + 벤치 2)[0m
+[32m   ✓ 킥오프 01KZE8SH2ZZGM4XAKPHNXRVVGY[0m
+
+[1m== 관찰 (재생 창은 스킵 API 로 당긴다)[0m
+   t+000s  GEN1
+   t+002s  FIRST_HALF
+   ⏩ FIRST_HALF 재생 창 당김
+   t+002s  HALFTIME
+   t+005s  GEN2
+   t+005s  SECOND_HALF
+   ⏩ SECOND_HALF 재생 창 당김
+   t+006s  FINISHED
+[32m   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME GEN2 SECOND_HALF FINISHED[0m
+
+[32mPASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다[0m
+scripts/local-stack.sh: line 74: 93379 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 74: 93584 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$WEB_URL" ${clock[@]+"${clock[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 74: 93645 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-vAL8
+
+real	0m21.954s
+user	0m1.638s
+sys	0m0.958s
+EXIT=0
+=== 종료 후 잔여 리슨(비어야 정상) ===
+--- 끝 ---
