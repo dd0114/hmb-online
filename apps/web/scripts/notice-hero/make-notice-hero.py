@@ -11,8 +11,16 @@ ref1 시안의 "느낌"을 코드로 재현한다 — 어두운 남색 배경 ·
 
 사용:
   python3 make-notice-hero.py <캐릭터PNG> <출력경로> [--name 경니시우스] [--wordmark herewego.png]
+                              [--portrait]
 
-캐릭터 PNG 규격: 투명 배경 · 전신 · 세로형 권장(2:3 내외) · 512px 이상
+캐릭터 PNG 규격(기본 = 전신 모드): 투명 배경 · 전신 · 세로형 권장(2:3 내외) · 512px 이상
+
+**`--portrait` = 증명사진 모드** (#473, hero 지시 *"전신사진말고 증명사진으로 써"*).
+전신 모드는 **투명 배경 컷아웃**을 전제해 배경 위에 세우고 발밑 그림자를 깐다. 증명사진
+(`design/characters/**` 의 아이콘 축·아트 파이프라인 원본)은 **자기 배경이 구워진 불투명
+정사각**이라 같은 합성을 태우면 베이지 사각형이 남색 위에 그대로 얹힌다. 그래서 세우지 않고
+**금색 액자에 넣는다** — 원본을 정사각으로 크롭해 라운드 액자 + 금테 + 드롭섀도로 마운트한다.
+바닥 아크·발밑 그림자는 안 그린다(떠 있는 액자 밑의 지면은 거짓말이다).
 """
 import sys, os, math, argparse
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -82,27 +90,68 @@ def ground_arc(size, color):
     return layer.filter(ImageFilter.GaussianBlur(1.0))
 
 
-def build(char_path, out_path, name=None, wordmark=None, jpeg_quality=88):
+def square_crop(im):
+    """증명사진용 정사각 크롭 — 가로는 중앙, 세로는 **위쪽 기준**.
+
+    얼굴이 위에 있으므로 세로를 중앙에서 자르면 정수리가 날아간다. 이미 정사각이면 항등.
+    """
+    s = min(im.width, im.height)
+    x = (im.width - s) // 2
+    y = min((im.height - s) // 2, round(im.height * 0.06))
+    return im.crop((x, y, x + s, y + s))
+
+
+def framed_portrait(im, size, radius, border=7):
+    """증명사진을 금테 라운드 액자에 넣는다(그림자 포함 레이어를 돌려준다)."""
+    ph = square_crop(im.convert("RGBA")).resize((size, size), Image.LANCZOS)
+
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, size - 1, size - 1), radius, fill=255)
+
+    pad = round(size * 0.10)                       # 그림자가 잘리지 않을 만큼
+    layer = Image.new("RGBA", (size + pad * 2, size + pad * 2), (0, 0, 0, 0))
+
+    sh = Image.new("RGBA", layer.size, (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle(
+        (pad, pad + round(size * 0.02), pad + size, pad + size + round(size * 0.045)),
+        radius, fill=(0, 0, 0, 150))
+    layer.alpha_composite(sh.filter(ImageFilter.GaussianBlur(pad * 0.5)))
+
+    layer.paste(ph, (pad, pad), mask)
+
+    d = ImageDraw.Draw(layer)
+    for i, (w, a) in enumerate(((border, 235), (2, 90))):   # 금테 + 바깥 얇은 링
+        e = 0 if i == 0 else border + 5
+        d.rounded_rectangle(
+            (pad - e, pad - e, pad + size - 1 + e, pad + size - 1 + e),
+            radius + e, outline=GOLD + (a,), width=w)
+    return layer
+
+
+def build(char_path, out_path, name=None, wordmark=None, jpeg_quality=88, portrait=False):
     base = vertical_gradient((W, H), NAVY_TOP, NAVY_BOT).convert("RGBA")
 
     tint, mask = radial_glow((W, H), (W // 2, round(H * 0.46)), W * 0.46, BLUE_GLOW, 0.85)
     base = Image.composite(Image.alpha_composite(base, tint.convert("RGBA")), base, mask)
 
     base.alpha_composite(chevrons((W, H), GOLD))
-    base.alpha_composite(ground_arc((W, H), GOLD))
+    if not portrait:
+        base.alpha_composite(ground_arc((W, H), GOLD))
 
     ch = Image.open(char_path).convert("RGBA")
-    ch = ch.crop(ch.getbbox())
-    target_h = round(H * (0.615 if name else 0.70))
-    ch = ch.resize((round(ch.width * target_h / ch.height), target_h), Image.LANCZOS)
 
-    # 캐릭터 발밑 그림자 — 바닥에 붙어 보이게
-    sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(sh).ellipse(
-        (W / 2 - ch.width * 0.42, H * 0.878, W / 2 + ch.width * 0.42, H * 0.912),
-        fill=(0, 0, 0, 120))
-    base.alpha_composite(sh.filter(ImageFilter.GaussianBlur(9)))
-    base.alpha_composite(ch, ((W - ch.width) // 2, round(H * 0.895) - ch.height))
+    if not portrait:
+        ch = ch.crop(ch.getbbox())
+        target_h = round(H * (0.615 if name else 0.70))
+        ch = ch.resize((round(ch.width * target_h / ch.height), target_h), Image.LANCZOS)
+
+        # 캐릭터 발밑 그림자 — 바닥에 붙어 보이게
+        sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+        ImageDraw.Draw(sh).ellipse(
+            (W / 2 - ch.width * 0.42, H * 0.878, W / 2 + ch.width * 0.42, H * 0.912),
+            fill=(0, 0, 0, 120))
+        base.alpha_composite(sh.filter(ImageFilter.GaussianBlur(9)))
+        base.alpha_composite(ch, ((W - ch.width) // 2, round(H * 0.895) - ch.height))
 
     head_bottom = round(H * 0.035)
     if wordmark and os.path.exists(wordmark):
@@ -123,6 +172,15 @@ def build(char_path, out_path, name=None, wordmark=None, jpeg_quality=88):
         d.text((x, y), txt, font=f, fill=(240, 245, 255, 255))
         d.line((W * 0.32, y + f.size * 1.45, W * 0.68, y + f.size * 1.45),
                fill=GOLD + (150,), width=3)
+        head_bottom = round(y + f.size * 1.45)
+
+    if portrait:
+        # 액자는 **헤드라인 아래 남은 공간 안에서** 가능한 크게. 헤더가 없으면 그만큼 커진다.
+        top = head_bottom + round(H * 0.045)
+        avail = min(round(H * 0.955) - top, round(W * 0.66))
+        layer = framed_portrait(ch, avail, round(avail * 0.055))
+        base.alpha_composite(layer, ((W - layer.width) // 2,
+                                     top - round(avail * 0.10)))
 
     out = base.convert("RGB")                    # 카드 배경과 무관하게 자기 배경을 갖는다
     ext = os.path.splitext(out_path)[1].lower()
@@ -137,6 +195,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("char"); ap.add_argument("out")
     ap.add_argument("--name"); ap.add_argument("--wordmark")
+    ap.add_argument("--portrait", action="store_true",
+                    help="증명사진(불투명 정사각) 을 금테 액자로 마운트 — 전신 컷아웃 대신")
     a = ap.parse_args()
-    im = build(a.char, a.out, a.name, a.wordmark)
+    im = build(a.char, a.out, a.name, a.wordmark, portrait=a.portrait)
     print(f"생성: {a.out} {im.size} {round(os.path.getsize(a.out)/1024,1)}KB")

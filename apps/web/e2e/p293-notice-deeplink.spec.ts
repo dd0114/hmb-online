@@ -198,11 +198,11 @@ test.describe("#298 AC1 — 로그인 상태 딥링크", () => {
     await expect(page.getByTestId("notice-title")).toHaveText("N1 제목");
   });
 
-  test("딥링크 팝업에는 [24시간 안 보기]가 없다 — 억제 개념이 걸리지 않는다", async ({ page }) => {
+  test("딥링크 팝업에는 억제 안내가 없다 — 억제 개념이 걸리지 않는다 (#473)", async ({ page }) => {
     await mockApp(page, { byId: { N1: { payload: notice("N1"), status: 200 } } });
     await page.goto("/share/notice/N1");
     await expect(page.getByTestId("notice-popup")).toBeVisible();
-    await expect(page.getByTestId("notice-dismiss-24h")).toHaveCount(0);
+    await expect(page.getByTestId("notice-dismiss-hint")).toHaveCount(0);
     await expect(page.getByTestId("notice-close")).toBeVisible();
   });
 });

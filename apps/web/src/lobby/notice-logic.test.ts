@@ -13,7 +13,9 @@ import {
   NOTICE_DISMISS_WINDOW_MS,
   markNoticeClosed,
   markNoticeDismissed,
+  markNoticeSuppressed,
   noticeCenterView,
+  noticeDismissHint,
   noticeDismissLabel,
   noticeMetaText,
   noticeSuppressionKey,
@@ -130,10 +132,22 @@ describe("억제 창 길이와 버튼 문구 (#450)", () => {
     expect(noticeDismissLabel(3 * 24 * 60 * 60 * 1000)).toBe("3일 동안 안 보기");
     expect(noticeDismissLabel(2 * 60 * 60 * 1000)).toBe("2시간 동안 안 보기");
   });
+
+  /**
+   * #473 — 버튼이 하나가 되면서 "누르면 무슨 일이 일어나나"를 말하는 자리가 이 문구뿐이다.
+   * 기간을 손으로 적으면(하드코딩 "일주일") 창을 되돌리는 날 화면이 거짓말한다.
+   */
+  it("닫기 안내도 같은 창에서 파생된다 — 기간이 하드코딩이면 죽는다", () => {
+    expect(noticeDismissHint()).toContain("일주일");
+    expect(noticeDismissHint(3 * 24 * 60 * 60 * 1000)).toContain("3일");
+    expect(noticeDismissHint(3 * 24 * 60 * 60 * 1000)).not.toContain("일주일");
+    // 되돌아갈 곳을 같이 말한다 — 억제가 "영영 못 봄"이 아니라는 것이 이 설계의 전제다.
+    expect(noticeDismissHint()).toContain("공지");
+  });
 });
 
-describe("억제 — [닫기](세션) / [일주일](기기)", () => {
-  it("닫기는 sessionStorage 에만 남고 그 공지만 사라진다", () => {
+describe("억제 — [닫기](일주일·기기) / 목록 펼침(세션)", () => {
+  it("세션 기록(목록 펼침)은 sessionStorage 에만 남고 그 공지만 사라진다", () => {
     const data = { notices: [notice("A"), notice("B")] };
     markNoticeClosed(stores, noticeSuppressionKey({ id: "A", revision: 1 }));
 
@@ -146,7 +160,7 @@ describe("억제 — [닫기](세션) / [일주일](기기)", () => {
     expect(visibleNotices(data, NOW, fresh).map((n) => n.id)).toEqual(["A", "B"]);
   });
 
-  it("24시간 안 보기는 만료 시각을 기록하고, 지나면 다시 뜬다", () => {
+  it("억제는 만료 시각을 기록하고, 지나면 다시 뜬다", () => {
     const data = { notices: [notice("A")] };
     const expiresAt = markNoticeDismissed(stores, "A@1", NOW);
     expect(expiresAt).toBe(NOW + NOTICE_DISMISS_WINDOW_MS);
@@ -163,7 +177,7 @@ describe("억제 — [닫기](세션) / [일주일](기기)", () => {
     expect(Object.keys(readDismissedMap(stores.local, NOW))).toEqual(["NEW@1"]);
   });
 
-  it("두 버튼 모두 **그 장 하나에만** 적용된다 (회차 일괄 아님)", () => {
+  it("억제는 **그 장 하나에만** 적용된다 (회차 일괄 아님)", () => {
     const data = { notices: [notice("A"), notice("B"), notice("C")] };
     markNoticeDismissed(stores, "A@1", NOW);
     markNoticeClosed(stores, "B@1");
@@ -175,6 +189,34 @@ describe("억제 — [닫기](세션) / [일주일](기기)", () => {
     expect(visibleNotices({ notices: [notice("A"), notice("NEW")] }, NOW, stores).map((n) => n.id)).toEqual([
       "NEW",
     ]);
+  });
+
+  /**
+   * #473 (hero: *"공지들 다 일주일 안보기로 바꿔"*) — 팝업 [닫기]의 유일한 쓰기 경로.
+   *
+   * ⚠️ **`markNoticeClosed` 로 되돌리는 변이가 이 계약에서 죽어야 한다.** 구 동작은 세션 범위라
+   * 브라우저를 새로 열면 같은 공지가 그대로 다시 떴다 — 그게 hero 가 본 화면이다.
+   */
+  it("닫기는 일주일 억제를 기기에 기록한다 — 새 탭에서도 안 뜬다", () => {
+    const data = { notices: [notice("A"), notice("B")] };
+    const expiresAt = markNoticeSuppressed(stores, "A@1", NOW);
+    expect(expiresAt).toBe(NOW + NOTICE_DISMISS_WINDOW_MS);
+
+    // 세션을 통째로 갈아도(= 브라우저 새로 열기) 억제가 살아 있다.
+    const fresh: NoticeStores = { session: memStorage(), local: stores.local };
+    expect(visibleNotices(data, NOW, fresh).map((n) => n.id)).toEqual(["B"]);
+    expect(visibleNotices(data, expiresAt + 1, fresh).map((n) => n.id)).toEqual(["A", "B"]);
+  });
+
+  /**
+   * ⚠️ 백스톱 — `localStorage` 가 없는 브라우저(Safari 프라이빗·iframe 정책)에서 로컬만 쓰면
+   * **아무것도 기록되지 않아** 로비를 오갈 때마다 같은 팝업이 다시 뜬다(고치기 전보다 나쁘다).
+   * 세션 쓰기를 빼는 변이가 여기서 죽는다.
+   */
+  it("localStorage 가 없어도 그 탭 세션 동안은 조용하다 (백스톱)", () => {
+    const noLocal: NoticeStores = { session: memStorage(), local: null };
+    markNoticeSuppressed(noLocal, "A@1", NOW);
+    expect(visibleNotices({ notices: [notice("A")] }, NOW, noLocal)).toHaveLength(0);
   });
 
   it("revision 이 오르면(내용 수정) 억제를 뚫고 다시 뜬다 — 변이체 킬", () => {

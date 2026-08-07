@@ -147,35 +147,51 @@ test.describe("#248 공지 팝업 — 표시와 억제", () => {
     await expect(page.getByTestId("notice-dots")).toHaveCount(0);
   });
 
-  test("[닫기] = 이 탭 세션 동안만 — 재진입엔 안 뜨고, 세션이 바뀌면 다시 뜬다", async ({ page }) => {
+  /**
+   * #473 (hero: *"공지들 다 일주일 안보기로 바꿔"*) — **이 계약이 뒤집힌 자리다.**
+   *
+   * 구 계약은 *"[닫기] = 이 탭 세션 동안만 … 세션이 바뀌면 다시 뜬다"* 였고, 그게 곧 hero 가
+   * 본 화면이다(브라우저를 새로 열면 같은 공지가 그대로 다시 떴다). 지금은 닫기가 기기에
+   * 일주일 억제를 기록한다 — 세션을 갈아도 안 뜬다.
+   */
+  test("[닫기] = 기기에 일주일 기록 — 탭 세션을 갈아도 안 뜬다", async ({ page }) => {
     await mockLobby(page, { payload: { notices: [notice({ id: "N1" })] }, status: 200 });
     await gotoLobby(page);
 
     await page.getByTestId("notice-close").click();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
 
-    // sessionStorage 에만 남는다(24h 기록은 없다).
+    // 기기 기록(일주일) + 세션 백스톱, **둘 다** 남는다.
+    const dismissed = JSON.parse(
+      (await page.evaluate(() => window.localStorage.getItem("hmb.notice.dismissed.v1")))!,
+    ) as Record<string, number>;
+    expect(Object.keys(dismissed)).toEqual(["N1@1"]);
     expect(
       await page.evaluate(() => window.sessionStorage.getItem("hmb.notice.closed.v1")),
     ).toBe(JSON.stringify(["N1@1"]));
-    expect(await page.evaluate(() => window.localStorage.getItem("hmb.notice.dismissed.v1"))).toBeNull();
 
     // 같은 탭 세션에서 로비 재진입 → 안 뜬다.
     await gotoLobby(page);
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
 
-    // 탭 세션 리셋(새 탭과 동등) → 다시 뜬다.
+    // 탭 세션 리셋(새 탭과 동등) → **그래도 안 뜬다**(구 동작이면 여기서 다시 떴다).
     await page.evaluate(() => window.sessionStorage.clear());
+    await gotoLobby(page);
+    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
+
+    // 기기 기록까지 지우면(= 억제 만료와 동등) 다시 뜬다 — 영구 차단이 아니다.
+    await page.evaluate(() => window.localStorage.removeItem("hmb.notice.dismissed.v1"));
     await gotoLobby(page);
     await expect(page.getByTestId("notice-popup")).toBeVisible();
   });
 
-  test("[일주일 동안 안 보기] = 만료 시각을 기기에 기록하고, 지나면 다시 뜬다", async ({ page }) => {
+  // #473 — [닫기] 자체가 일주일 억제다(구 UI 의 [일주일 동안 안 보기] 버튼은 은퇴).
+  test("[닫기] = 만료 시각을 기기에 기록하고, 지나면 다시 뜬다", async ({ page }) => {
     await mockLobby(page, { payload: { notices: [notice({ id: "N1" })] }, status: 200 });
     await gotoLobby(page);
 
     const before = Date.now();
-    await page.getByTestId("notice-dismiss-24h").click();
+    await page.getByTestId("notice-close").click();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
 
     const stored = JSON.parse(
@@ -209,7 +225,7 @@ test.describe("#248 공지 팝업 — 표시와 억제", () => {
     const mock: NoticeMock = { payload: { notices: [notice({ id: "N1" })] }, status: 200 };
     await mockLobby(page, mock);
     await gotoLobby(page);
-    await page.getByTestId("notice-dismiss-24h").click();
+    await page.getByTestId("notice-close").click();
 
     mock.payload = { notices: [notice({ id: "N1" }), notice({ id: "N2", title: "신규 유닛" })] };
     await gotoLobby(page);
@@ -225,7 +241,7 @@ test.describe("#248 공지 팝업 — 표시와 억제", () => {
     };
     await mockLobby(page, mock);
     await gotoLobby(page);
-    await page.getByTestId("notice-dismiss-24h").click();
+    await page.getByTestId("notice-close").click();
     await gotoLobby(page);
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
 
@@ -310,28 +326,34 @@ test.describe("#248 공지 팝업 — 다건 중첩 스택 (hero Q1)", () => {
     expect(await overlapPx(page, 2)).toBeGreaterThan(await overlapPx(page, 1));
   });
 
-  test("[24시간 안 보기]는 **그 장만** 억제한다 — 나머지는 다음 진입에 다시 뜬다", async ({ page }) => {
+  // #473 — 한 번 누르면 **그 장만** 억제된다. 회차 일괄이면 첫 클릭에 3건이 기록되고,
+  // 아직 보지도 않은 B·C 가 일주일 동안 삼켜진다.
+  test("[닫기]는 **그 장만** 억제한다 — 회차 일괄이 아니다", async ({ page }) => {
     await mockLobby(page, { payload: three, status: 200 });
     await gotoLobby(page);
 
-    // 첫 장만 24h 억제하고 나머지 둘은 그냥 닫는다.
-    await page.getByTestId("notice-dismiss-24h").click();
+    // 첫 장만 닫는다(팝업은 B 로 넘어가 계속 열려 있다).
+    await page.getByTestId("notice-close").click();
     await expect(page.getByTestId("notice-title")).toHaveText("B 제목");
+
+    const afterFirst = JSON.parse(
+      (await page.evaluate(() => window.localStorage.getItem("hmb.notice.dismissed.v1")))!,
+    ) as Record<string, number>;
+    expect(Object.keys(afterFirst)).toEqual(["A@1"]);
+
+    // 나머지 둘을 닫으면 각자 기록된다 — 그때서야 3건이다.
     await page.getByTestId("notice-close").click();
     await page.getByTestId("notice-close").click();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
-
-    // 24h 기록은 A 하나뿐이다(회차 일괄 적용이면 여기서 3건이 된다).
-    const stored = JSON.parse(
+    const afterAll = JSON.parse(
       (await page.evaluate(() => window.localStorage.getItem("hmb.notice.dismissed.v1")))!,
     ) as Record<string, number>;
-    expect(Object.keys(stored)).toEqual(["A@1"]);
+    expect(Object.keys(afterAll).sort()).toEqual(["A@1", "B@1", "C@1"]);
 
-    // 새 탭 세션 = 닫기 억제는 풀리고 24h 억제만 남는다 → B·C 만 다시 뜬다.
+    // 새 탭 세션이어도(세션 백스톱이 풀려도) 일주일 억제는 살아 있다.
     await page.evaluate(() => window.sessionStorage.clear());
     await gotoLobby(page);
-    await expect(page.getByTestId("notice-pager")).toHaveText("1 / 2");
-    await expect(page.getByTestId("notice-title")).toHaveText("B 제목");
+    await expect(page.getByTestId("notice-popup")).toHaveCount(0);
   });
 });
 
@@ -510,7 +532,7 @@ test.describe("#248 공지 본문 — 서식은 되고 스크립트는 안 된�
     // 깨진 아이콘 대신 사라진다.
     await expect(page.getByTestId("notice-image")).toHaveCount(0);
     await expect(page.getByTestId("notice-close")).toBeVisible();
-    await expect(page.getByTestId("notice-dismiss-24h")).toBeVisible();
+    await expect(page.getByTestId("notice-dismiss-hint")).toBeVisible();
   });
 
   test("변이체 킬 — <script>·<img onerror>·javascript: 링크가 실행되지 않는다", async ({ page }) => {

@@ -238,14 +238,10 @@
   margin-top: 2px;
 }
 
-.primary,
-.ghost {
+.primary {
   width: 100%;
   border-radius: 9px;
   font-weight: 600;
-}
-
-.primary {
   padding: 11px;
   font-size: 14px;
   border: 1px solid var(--accent);
@@ -253,11 +249,18 @@
   color: var(--accent-contrast);
 }
 
-.ghost {
-  padding: 9px;
-  font-size: 13px;
-  font-weight: 500;
-  border: 1px solid var(--border);
-  background: none;
+/**
+ * 닫기 아래 안내 한 줄 (#473). 구 `[일주일 동안 안 보기]` 고스트 버튼 자리를 대신한다 —
+ * 버튼(약 45px)보다 낮아서 본문 스크롤 예산(#292·#386)은 오히려 늘어난다.
+ * ⚠️ `flex: none` — `.card` 가 세로 플렉스라 이걸 빼면 본문이 넘칠 때 이 줄이 눌려 잘린다.
+ */
+.hint {
+  flex: none;
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-align: center;
   color: var(--text-muted);
+  /* 한글은 기본값(break-all 유사)이면 "있어 / 요." 처럼 어절 중간에서 끊긴다. */
+  word-break: keep-all;
 }
