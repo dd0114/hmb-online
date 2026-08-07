@@ -1,35 +1,14 @@
-# #471 AC2 — README parity 계약 증빙 (2026-08-07 12:00:12)
-
-## base (green 이어야 함)
- Test Files  1 passed (1)
+=== HEAD: e3230c7 · Sat Aug  8 01:36:13 KST 2026 ===
+--- 기준(변이 없음) ---
       Tests  7 passed (7)
-   Start at  12:00:13
-   Duration  393ms (transform 41ms, setup 0ms, collect 45ms, tests 5ms, environment 0ms, prepare 75ms)
+   Start at  01:36:15
+   Duration  715ms (transform 43ms, setup 0ms, collect 70ms, tests 8ms, environment 0ms, prepare 126ms)
 
-
-## mutant: node-version (red 여야 함)
-AssertionError: .nvmrc(20.19.6) 와 어긋난다: expected '99.0.0' to be '20.19.6' // Object.is equality
- Test Files  1 failed (1)
-      Tests  1 failed | 6 passed (7)
-
-## mutant: jdk-version (red 여야 함)
-AssertionError: build.gradle.kts(21) 와 어긋난다: expected '17' to be '21' // Object.is equality
- Test Files  1 failed (1)
-      Tests  1 failed | 6 passed (7)
-
-## mutant: script-path (red 여야 함)
-AssertionError: README 가 scripts/local-stack.sh 를 가리키지 않는다: expected '# HMB 온라인\n\n> AI 프롬프트 기반 축구 시뮬레이션 게임…' to contain 'scripts/local-stack.sh'
-AssertionError: README 가 없는 파일을 가리킨다: scripts/local-stak.sh: expected [ 'scripts/local-stak.sh' ] to deeply equal []
-AssertionError: README 에 실행 예시가 없다: expected 0 to be greater than or equal to 2
- Test Files  1 failed (1)
-      Tests  3 failed | 4 passed (7)
-
-## mutant: subcommand (red 여야 함)
-AssertionError: 스크립트에 없는 서브커맨드를 광고한다: diagnose: expected [ 'diagnose' ] to deeply equal []
- Test Files  1 failed (1)
-      Tests  1 failed | 6 passed (7)
-
-## mutant: port (red 여야 함)
-AssertionError: 스크립트 기본값에 없는 포트를 안내한다: 39999: expected [ '39999' ] to deeply equal []
- Test Files  1 failed (1)
-      Tests  1 failed | 6 passed (7)
+--- 변이체 5팔 (전부 RED 여야 계약이 무는 것) ---
+node-version  RED   ← 좋음
+jdk-version  RED   ← 좋음
+script-path  RED   ← 좋음
+subcommand  RED   ← 좋음
+port  RED   ← 좋음
+--- 실행 후 워킹트리(더러워지면 안 된다) ---
+ M evidence/471/AC2-readme-parity.log
