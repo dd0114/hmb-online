@@ -100,6 +100,40 @@ test("로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안
   await expect(page.getByTestId("maintenance-contact")).toBeVisible();
 });
 
+/**
+ * **앱 에러는 점검이 아니다** (3R · 패널 S2 가 남긴 경계).
+ *
+ * 500 은 백엔드가 살아서 응답한 것이다(요청을 받고 처리하다 실패했다). 그걸 "점검 중"으로
+ * 덮으면 ①원인을 숨기고 ②멀쩡한 다른 화면까지 못 쓰게 만든다. 게이트웨이 5xx(502/503/504)와
+ * 애플리케이션 5xx(500)를 가르는 것이 이 기능의 판별선이고, 그 선을 여기에 박는다.
+ */
+test("앱 자체 에러(500)는 점검으로 오인하지 않는다", async ({ page }) => {
+  await page.route(
+    (url) => isApi(url),
+    (route) => route.fulfill(json({ code: "INTERNAL_ERROR", message: "boom" }, 500)),
+  );
+
+  await page.goto("/login");
+
+  await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(7_000); // 확인 프로브 창(≈4s)을 넘겨서도
+  await expect(page.getByTestId("maintenance-screen")).toHaveCount(0);
+});
+
+/** 401 은 인증 문제다 — 로그인으로 보내야지 점검 화면으로 덮을 일이 아니다. */
+test("인증 실패(401)는 점검으로 오인하지 않는다", async ({ page }) => {
+  await page.route(
+    (url) => isApi(url),
+    (route) => route.fulfill(json({ code: "UNAUTHORIZED", message: "no" }, 401)),
+  );
+
+  await page.goto("/login");
+
+  await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
+  await page.waitForTimeout(7_000);
+  await expect(page.getByTestId("maintenance-screen")).toHaveCount(0);
+});
+
 test("오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다", async ({ page }) => {
   await serveHealthy(page);
 
