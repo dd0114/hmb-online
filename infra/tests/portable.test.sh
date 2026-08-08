@@ -75,8 +75,13 @@ fi
 #    T3b 가 "양 분기가 실제로 있다"를 역으로 단언한다(BSD 경로가 조용히 사라지면 red).
 head_ T3 "소비처 배선 — 비이식 패턴 잔존 0 (이식 계층 제외)"
 EXCL='infra/tests/|infra/lib/portable.sh'
-n=$(grep -rn "sed -i ''" infra/ --include='*.sh' 2>/dev/null | grep -Ev "$EXCL" | wc -l | tr -d ' ')
-[ "$n" = "0" ] && ok "BSD 전용 \`sed -i ''\` 0건" || { bad "\`sed -i ''\` $n 건 잔존"; grep -rn "sed -i ''" infra/ --include='*.sh' | grep -Ev "$EXCL"; }
+# ⚠️ **주석은 제외한다 — 처방 형태만 문다.** 결함은 `sed -i ''` 를 *실행*하는 것이지 그 문자열을
+#    *언급*하는 것이 아니다. 오히려 "예전에 이래서 깨졌다" 는 이력 주석은 남아야 다음 사람이
+#    되돌리지 않는다(AC1.2 T2 · AC2.3 T3c 에서 같은 판단을 이미 내렸다).
+#    제외의 대가는 바로 아래 변이 확인이 치른다 — 실제 명령을 되살리면 여전히 red 다.
+scan_sed(){ grep -rn "sed -i ''" infra/ --include='*.sh' 2>/dev/null | grep -Ev "$EXCL" | grep -vE '^[^:]+:[0-9]+: *#'; }
+n=$(scan_sed | wc -l | tr -d ' ')
+[ "$n" = "0" ] && ok "BSD 전용 \`sed -i ''\` 처방 0건" || { bad "\`sed -i ''\` 처방 $n 건 잔존"; scan_sed; }
 
 n=$(grep -rn "/Users/" infra/ --include='*.sh' 2>/dev/null | grep -Ev "$EXCL" | wc -l | tr -d ' ')
 [ "$n" = "0" ] && ok "\`/Users/\` 하드코딩 0건" || { bad "\`/Users/\` $n 건 잔존"; grep -rn "/Users/" infra/ --include='*.sh' | grep -Ev "$EXCL"; }
