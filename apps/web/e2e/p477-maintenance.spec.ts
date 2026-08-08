@@ -105,7 +105,12 @@ test("오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다
 
   await page.goto("/login");
   await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
-  // 확인 프로브 창(2회 × 2s)보다 넉넉히 기다린 뒤에도 뜨면 안 된다.
+  // 확인 프로브 창(2회 × 2s ≈ 4s)보다 넉넉히 기다린 뒤에도 뜨면 안 된다.
+  //
+  // ⚠️ 이 대기는 **거짓 green 쪽으로 틀릴 수 없다**(패널 S1 지적에 대한 답). 점검 화면은
+  // 프로브가 실패해야만 뜨는데 이 테스트의 목은 전부 200 을 돌려준다 — 느린 머신이라고
+  // 200 이 실패로 바뀌지 않는다. 머신이 느리면 이 테스트는 **더 늦게 통과**할 뿐이고,
+  // 실제로 회귀(정상인데 뜬다)가 생기면 그 원인은 지연이 아니라 판정이라 7초 뒤에도 떠 있다.
   await page.waitForTimeout(7_000);
   await expect(page.getByTestId("maintenance-screen")).toHaveCount(0);
 });
