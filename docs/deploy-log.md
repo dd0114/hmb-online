@@ -6,6 +6,57 @@
 
 ---
 
+## 2026-08-08T16:14Z — **배포 v3.23 — web 단독** — 백엔드 다운 시 점검 안내 화면 (#477 / PR #478)
+
+- **git**: **`d0924dd`**(main, squash merge of #478). 범위(`ef11361`..`d0924dd`) = **28 files** =
+  `apps/web` **13** + evidence/docs/infra **15**. **`packages/**`·`server-java/**`·`data/**` 무접촉**(빈 diff)
+  — 발행물 핀·Flyway·이미지 전부 v3.22 그대로.
+- **탑재**: PR **#478**(#477). 백엔드에 못 닿을 때 앱 대신 뜨는 **점검 안내 화면**
+  (오탐 방지 확인 프로브 · [다시 시도] · 자동 재확인 15s · **카카오 오픈채팅 QR + 링크**).
+- **이미지**: java `sha256:ab9d3735…` · runner `sha256:97a82f3f…` — **둘 다 v3.21 이후 무변경**(web 단독).
+- **web 번들**: `index-C5uJx1QC.js`(직전 `index-zHMNRi65.js`). CDN 전파 = 배포 직후 3회 조회 중 2회 신규 —
+  index.html 이 `max-age=0, must-revalidate` 라 잔여 엣지 사본은 재검증으로 수렴(§0.8 판정법 그대로).
+- **터널**: `https://breaking-treasures-gold-mrna.trycloudflare.com` (pid 43660, **회전 없음** — 도착 시점에 살아 있었다).
+- **배포자**: hmb:maint 세션(#477 자율주행). hero 지시 = "머지하고 배포해봐".
+
+### 오픈채팅 = **실코드로 출하**(placeholder 아님)
+
+hero 가 QR 이미지를 줬고, 그 QR 을 디코드해 `https://open.kakao.com/o/gfI71WHi` 임을 확인한 뒤
+상수(`apps/web/src/common/support-contact.ts`)를 `hmbonline-temp` → **`gfI71WHi`** 로 교체했다.
+QR 이미지와 링크가 **서로 다른 방**을 가리키는 것이 이 기능의 가장 그럴듯한 사고라 둘을 같이 맞췄다.
+
+- QR 은 **웹 오리진 정적 에셋**(`/support/kakao-openchat-qr.jpg`). `/api/` 뒤에 두면 **백엔드가 죽은
+  바로 그 순간** QR 만 깨져 PC 유저의 유일한 연락 수단이 사라진다 → 계약 3건이 그 경로를 막는다.
+- 교체 절차는 그 파일 머리말이 SoT(코드 1줄 + 이미지 덮어쓰기 + 재배포).
+
+### 배포 전 프리즈 체크 (미오픈 캐릭터) — **통과**
+
+1. **이 열차의 에셋 delta = 0** — `git diff ef11361..HEAD -- apps/web/public/chars/ data/chars` **빈 diff**.
+2. **매핑된 캐릭터 전원이 오픈 상태** — 빌드 산출 `dist/chars/units/manifest.json` 의 `forPlayer` 9종
+   (P173·P174·P175·P176·P177·P179·P180·P181·P182)이 **라이브 DB 에서 9/9 `active = 1`**.
+   ⚠️ 이 축을 `GET /api/players` 로 재려다 **401 이 빈 배열로 정규화돼 "위반 0"** 이 나왔다 —
+   그건 통과가 아니라 **표본 0**이다(루트 계약함정 #6). 그래서 컨테이너 DB 사본을 직접 읽어
+   **9/9 행이 실제로 조회됨**을 같이 확인했다. 다음에도 행 수를 먼저 봐라.
+
+### 라이브 스모크 — **배포된 번들로 양방향 확인**
+
+목킹이 아니라 실제 `hmb-online.pages.dev` 에서 백엔드 오리진만 차단해 두 상태를 다 태웠다:
+
+| 상태 | 결과 |
+|---|---|
+| 백엔드 정상 | 점검 화면 **0개** (8초 대기 후) — 오탐 없음 ✓ |
+| 백엔드 차단 | 점검 화면 노출 · 링크 `https://open.kakao.com/o/gfI71WHi` · **QR `naturalWidth=800`**(실제로 그려짐) ✓ |
+
+`/support/kakao-openchat-qr.jpg` → HTTP 200 · image/jpeg · 83,962 B. 증빙 = `evidence/477/p477-LIVE-maintenance-390.png`.
+⚠️ QR 은 `toBeVisible()` 로 재지 않는다 — 깨진 이미지도 통과한다. 라이브에서도 `naturalWidth` 로 잰다.
+
+### 게이트 (콜드)
+
+`apps/web` 유닛 **2418 passed / 8 skipped** · e2e `p477-maintenance` **8 passed** · 캡처 **2 passed** ·
+`npm run build` ✅. 신설 계약 3건은 **변이로 사망 확인**(QR 경로를 `/api/` 로 옮기면 unit 2 + e2e 1 이 죽는다).
+
+---
+
 ## 2026-08-06T16:03Z — **배포 v3.22 — web 단독** — 메가 에픽 2 (#460 뽑기·선수 · #469 덱세팅 · #470 경기화면)
 
 - **git**: **`ef11361`**(main). 범위(`231f205`..`ef11361`) = `apps/web` **112 files** + docs/evidence/infra 12.
