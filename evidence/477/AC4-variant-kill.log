@@ -1,0 +1,15 @@
+# 변이체 킬 (계약이 비어 있지 않음을 증명) — 2026-08-08
+# MaintenanceGate.tsx 의 `if (health === "outage")` → `if (false as boolean)` 로 바꾸고
+# 같은 e2e 를 그대로 실행. (실행 후 git checkout 으로 원복 확인)
+
+$ CI=1 WEB_E2E_PORT=5479 npx playwright test p477-maintenance --config=playwright.config.ts
+  3 failed
+    p477-maintenance.spec.ts:37 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다
+    p477-maintenance.spec.ts:51 › 백엔드만 사망(502) → 같은 점검 안내가 뜬다
+    p477-maintenance.spec.ts:62 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다
+  1 passed (1.7m)
+    p477-maintenance.spec.ts:84 › 오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다
+
+# 판독: 기제를 끄면 "뜬다" 계약 3건이 전부 죽고, "안 뜬다" 계약(오탐 가드)만 산다 —
+# 즉 세 계약은 점검 화면의 실제 표시를 검사하고 있고, 오탐 가드는 그것과 독립이다.
+# (원복 확인: `grep -c 'health === "outage"' MaintenanceGate.tsx` → 2)
