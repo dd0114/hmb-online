@@ -181,8 +181,13 @@ fi
 head_ Q6 "리포 내부 출력 거부"
 rc=$(run_pack --out "$ROOT/move-oops.tar.gz")
 [ "$rc" != "0" ] && ok "리포 안 경로 거부(exit $rc)" || bad "리포 안에 시크릿 팩을 만들었다 — 실수 커밋 경로"
-[ -f "$ROOT/move-oops.tar.gz" ] && { bad "리포에 파일이 실제로 생성됨"; rm -f "$ROOT/move-oops.tar.gz"; } \
-  || ok "리포에 파일 미생성"
+# ⚠️ tar **와 매니페스트 둘 다** 본다. 매니페스트가 먼저 쓰이므로, tar 만 검사하면
+#    "매니페스트만 리포에 남는" 회귀를 놓친다 — 실제로 1R 실패 워크트리에 그 파일이 남아 있었다.
+left=""
+for f in "$ROOT/move-oops.tar.gz" "$ROOT/move-oops.tar.gz.manifest"; do
+  [ -e "$f" ] && { left="$left $(basename "$f")"; rm -f "$f"; }
+done
+[ -z "$left" ] && ok "리포에 파일 미생성" || bad "리포에 파일이 실제로 생성됨:$left"
 
 # ⚠️ Q6 은 **경로 별칭에서 우연히 통과**할 수 있다 — 독립 검증이 실제로 그걸 잡았다.
 #    워크트리를 macOS `/tmp` 에 두면 `git rev-parse` 는 `/private/tmp/…` 를, `pwd` 는 `/tmp/…` 를
@@ -194,8 +199,11 @@ if [ -d "$ALIAS" ]; then
   rc=$(run_pack --out "$ALIAS/move-alias.tar.gz")
   [ "$rc" != "0" ] && ok "별칭 경로로도 거부(exit $rc)" \
     || bad "별칭 경로로는 리포 안에 만들어진다 — 심링크 체크아웃에서 실수 커밋 경로가 열린다"
-  [ -f "$ROOT/move-alias.tar.gz" ] && { bad "별칭 경유로 리포에 파일 생성됨"; rm -f "$ROOT/move-alias.tar.gz"; } \
-    || ok "별칭 경유 파일 미생성"
+  left=""
+  for f in "$ROOT/move-alias.tar.gz" "$ROOT/move-alias.tar.gz.manifest"; do
+    [ -e "$f" ] && { left="$left $(basename "$f")"; rm -f "$f"; }
+  done
+  [ -z "$left" ] && ok "별칭 경유 파일 미생성" || bad "별칭 경유로 리포에 파일 생성됨:$left"
 fi
 
 # ── Q7: 라이브 볼륨은 read-only 로만 만진다 ────────────────────────────
