@@ -28,22 +28,26 @@ export async function loginGuestAndSettleStarter(page: Page, nickname: string): 
   const dialog = page.getByRole("dialog", { name: "스타터 팩 지급" });
   await expect(dialog).toBeVisible({ timeout: 30_000 });
 
-  // 카드가 있으면 공개가 먼저다(StarterReveal: `done = !player || revealed`). 없으면 곧바로 확인만 있다.
+  // 모달은 상태가 둘이고(공개 전 / 공개 후) 그 사이에 **연출 시간**이 있다. 그래서 "공개 클릭 → 확인 클릭"
+  // 같은 고정 순서로는 못 지난다 — 실측에서 같은 코드가 어떤 유저에겐 통과하고 어떤 유저에겐 30초를
+  // 기다리다 죽었다(카드 등급에 따라 연출 길이가 다르다).
   //
-  // ⚠️ `.first()` 가 없으면 안 된다 — 모달에는 "카드 공개" 이름의 버튼이 **둘**(카드 자체 + 버튼)이라
-  //    strict mode 위반이 나고, 그 예외를 `.catch(() => false)` 로 삼키면 **공개를 건너뛴 채 조용히
-  //    진행**한다(실측: 확인 버튼을 30초 기다리다 죽는데 스냅샷은 공개 전 상태 그대로였다).
-  const reveal = dialog.getByRole("button", { name: "카드 공개" }).first();
-  if (await reveal.count()) {
-    await reveal.click();
-  }
-
-  // 연출이 끝나야 확인이 **실제로** 먹는다. 눌렀는데 모달이 남아 있으면 그건 연출 중 클릭이었다는 뜻이라
-  // 다시 누른다(단언은 URL 로 한다 — 모달 내부 상태가 아니라 "로그인이 끝났는가"가 계약이다).
+  // 그래서 순서를 정하지 않고 **끝 상태로 수렴시킨다**: 확인이 있으면 누르고, 없으면 공개를 누르고,
+  // 될 때까지 반복한다. 계약은 모달 내부 상태가 아니라 **"로그인이 끝났는가"(URL)** 다.
+  //
+  // ⚠️ "카드 공개" 이름의 버튼이 **둘**(카드 자체 + 버튼)이라 strict mode 위반이 난다 — 그래서 인덱스로
+  //    집는다. 초판은 `isVisible()` 의 그 예외를 `.catch(() => false)` 로 삼켜 **공개를 건너뛴 채 조용히
+  //    진행**했다(그 다음 단언이 30초 뒤에 죽어서야 드러났다).
   const confirm = dialog.getByRole("button", { name: "확인" });
-  await expect(confirm).toBeVisible({ timeout: 30_000 });
+  const reveals = dialog.getByRole("button", { name: "카드 공개" });
+
   await expect(async () => {
-    if (await confirm.isVisible().catch(() => false)) await confirm.click({ timeout: 5_000 });
+    if (await confirm.count()) {
+      await confirm.click({ timeout: 5_000 });
+    } else {
+      const n = await reveals.count();
+      for (let i = 0; i < n; i++) await reveals.nth(i).click({ timeout: 5_000 }).catch(() => {});
+    }
     await expect(page).toHaveURL(/\/home$/, { timeout: 5_000 });
-  }).toPass({ timeout: 60_000 });
+  }).toPass({ timeout: 120_000, intervals: [1_000] });
 }

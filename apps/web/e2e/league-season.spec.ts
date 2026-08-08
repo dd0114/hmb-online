@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { loginGuestAndSettleStarter } from "./starter-login";
+import { passFlowBridge } from "./flow-bridge";
 
 /**
  * AC-F / W6 리그 시즌 브라우저 E2E — 리그 시작 → 순위표(10팀) → 다음 경기 → **풀 매치 완주**
@@ -99,6 +100,7 @@ test("AC-F: 리그 시작 → 순위표 → 다음 경기 완주 → 정산·순
   await completeMatch(page);
 
   // 5) 결과 → 로비 → 다시 리그: 유저 경기 +1 정산 + 유저 픽스처 스코어 확정
+  await passFlowBridge(page); // #424 브릿지가 로비 버튼을 덮는다
   await page.getByTestId("to-lobby").click();
   await expect(page).toHaveURL(/\/home$/);
 

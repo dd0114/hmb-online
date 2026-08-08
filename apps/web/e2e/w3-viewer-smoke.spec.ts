@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { loginGuestAndSettleStarter } from "./starter-login";
+import { passFlowBridge } from "./flow-bridge";
 import { mkdirSync } from "node:fs";
 
 /**
@@ -93,6 +94,9 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
 
   // === H1_BREAK: 전반 시각 재생 ===
   await expect(page.getByTestId("halftime-panel")).toBeVisible({ timeout: 300_000 });
+  // #284 이후 무대는 **`경기장면` 탭 안**이다(StageShell 정보 패널 tablist) — 감독시간 기본 탭은
+  // `감독` 이라 탭을 고르지 않으면 뷰어가 렌더되지 않는다. 서버 없으면 skip 되던 탓에 안 잡혔다(#471 AC4).
+  await page.getByTestId("stage-tab-stage").click();
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
   // 무대가 곧 시각 재생이다(#169 S1: 모드 탭 제거 — 폴백일 때만 텍스트 타임라인으로 바뀐다).
   await expect(page.getByTestId("viewer-visual-half1")).toBeVisible();
@@ -132,12 +136,15 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   await expect(page.getByTestId("sub-chip-0")).toBeVisible();
   await page.getByTestId("halftime-mode-say").click();
   await page.getByTestId("halftime-prompt-team").click().catch(() => {}); // 선수 선택 상태면 팀으로
-  await page.getByTestId("halftime-team-prompt").fill("후반은 점유율 위주로 안정적으로");
+  await page.getByTestId("editor-team-prompt").fill("후반은 점유율 위주로 안정적으로");
   await page.getByTestId("resume-button").click();
 
   // === FINISHED: 후반 시각 재생 ===
   await expect(page.getByTestId("result-page")).toBeVisible({ timeout: 300_000 });
-  await expect(page.getByTestId("match-viewer-half2")).toBeVisible();
+  // ⚠️ **종료 화면에는 재생 무대가 없다.** 탭이 `결과/통계/선수/로그` 뿐이고 `경기장면` 이 없으며
+  //    (`stage-state.test.ts:425`) `match-viewer-half*` 가 DOM 에 아예 안 뜬다(실측). 돌려보기 도구를
+  //    결과 화면에 켜지 않는다는 것이 현행 설계다(`MatchViewer.tsx:59`). 그래서 여기서는 결과 패널로
+  //    단언한다 — 없는 것을 있다고 적어 두면 다음 사람이 그 문장을 근거로 잘못 고친다.
   await expect(page.getByTestId("viewer-visual-half2")).toBeVisible();
   const h2 = await assertViewerRendered(page, 2);
   console.log(`[smoke] half2 viewer rendered — score ${h2.score}, tick ${h2.tick}`);

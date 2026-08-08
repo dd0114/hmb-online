@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { loginGuestAndSettleStarter } from "./starter-login";
+import { passFlowBridge } from "./flow-bridge";
 
 /**
  * AC-W1 / Phase 2 연습 플로우 — 신규 닉네임 로그인 → **덱 구성(UI)** → 연습 경기 완주 →
@@ -93,7 +94,12 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await expect(page.getByTestId("genwait-panel").or(page.getByTestId("halftime-panel"))).toBeVisible();
   await expect(page.getByTestId("halftime-panel")).toBeVisible({ timeout: 90_000 });
   await expect(page.getByTestId("h1-score")).toBeVisible();
+  // #284 이후 무대는 **`경기장면` 탭 안**이다(StageShell 정보 패널 tablist) — 감독시간 기본 탭은
+  // `감독` 이라 탭을 고르지 않으면 뷰어가 렌더되지 않는다. 서버 없으면 skip 되던 탓에 안 잡혔다(#471 AC4).
+  await page.getByTestId("stage-tab-stage").click();
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
+  // 확인했으면 감독 탭으로 돌아온다 — 교체·지시 UI 는 그쪽에 있다(탭을 옮긴 채로 두면 못 찾는다).
+  await page.getByTestId("stage-tab-halftime").click();
 
   // 7) 하프타임 — 교체 1건 + 추가 프롬프트 → 후반 시작
   // #244 T2: 교체는 select 가 아니라 **하단 탭 + 보드 모드**다. 보드에서 뺄 선수(비-GK 선발)를
@@ -122,8 +128,12 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await page.getByTestId(`token-${inId}`).click();
   await expect(page.getByTestId("sub-chip-0")).toBeVisible();
   await page.getByTestId("halftime-mode-say").click();
-  await page.getByTestId("halftime-prompt-team").click().catch(() => {}); // 선수 선택 상태면 팀으로
-  await page.getByTestId("halftime-team-prompt").fill("후반은 점유율 위주로 안정적으로");
+  // ⚠️ 대상 전환 버튼은 없을 수 있다(선수 선택 상태일 때만) → **짧은 타임아웃**을 준다.
+  //    `.click().catch()` 만 쓰면 actionTimeout 미설정이라 **테스트 타임아웃(300s)까지 매달린다**.
+  await page.getByTestId("halftime-prompt-team").click({ timeout: 3_000 }).catch(() => {});
+  // 감독시간 프롬프트 입력의 testid 는 `editor-team-prompt`(DirectiveRail) 다 — 구 `halftime-team-prompt`
+  // 는 앱 어디에도 없다(#471 AC4 에서 확인). 서버 없으면 skip 되던 탓에 드리프트가 안 잡혔다.
+  await page.getByTestId("editor-team-prompt").fill("후반은 점유율 위주로 안정적으로");
   await page.getByTestId("resume-button").click();
 
   // 8) GEN2 대기 → FINISHED (결과 화면)
@@ -131,9 +141,13 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   await expect(page.getByTestId("final-score")).toBeVisible();
   await expect(page.getByTestId("result-badge")).toBeVisible();
   await expect(page.getByTestId("team-stats")).toBeVisible();
-  await expect(page.getByTestId("match-viewer-half2")).toBeVisible();
+  // ⚠️ **종료 화면에는 재생 무대가 없다.** 탭이 `결과/통계/선수/로그` 뿐이고 `경기장면` 이 없으며
+  //    (`stage-state.test.ts:425`) `match-viewer-half*` 가 DOM 에 아예 안 뜬다(실측). 돌려보기 도구를
+  //    결과 화면에 켜지 않는다는 것이 현행 설계다(`MatchViewer.tsx:59`). 그래서 여기서는 결과 패널로
+  //    단언한다 — 없는 것을 있다고 적어 두면 다음 사람이 그 문장을 근거로 잘못 고친다.
 
   // 9) 로비로 → 전적 반영(승/무/패 합 +1)
+  await passFlowBridge(page); // #424 브릿지가 로비 버튼을 덮는다
   await page.getByTestId("to-lobby").click();
   await expect(page).toHaveURL(/\/home$/);
   const recordAfter = (await page.getByText(/\d+승 \d+무 \d+패/).textContent()) ?? "";
