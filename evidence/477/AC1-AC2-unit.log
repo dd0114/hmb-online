@@ -1,0 +1,16 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider20/hmb-online
+
+ ✓ apps/web/src/api/backend-health.test.ts (11 tests) 6ms
+ ✓ apps/web/src/common/MaintenanceScreen.test.ts (5 tests) 159ms
+stderr | apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > 정상(ok)이면 / 에서 점검 화면이 뜨지 않는다
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/common/MaintenanceGate.test.ts (30 tests) 439ms
+
+ Test Files  3 passed (3)
+      Tests  46 passed (46)
+   Start at  12:23:02
+   Duration  3.45s (transform 1.22s, setup 0ms, collect 2.26s, tests 605ms, environment 1.17s, prepare 220ms)
+

@@ -1,0 +1,109 @@
+/* 점검 안내 (#477). 앱 전체를 덮는 단독 화면이라 네비·레이아웃 토큰에 의존하지 않는다. */
+
+.wrap {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+  /* 라우터 트리를 대체하지만, 혹시 남아 있는 오버레이보다도 위에 있어야 한다. */
+  z-index: 200;
+}
+
+.card {
+  width: min(340px, 100%);
+  text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  padding: 28px 20px 22px;
+}
+
+.icon {
+  font-size: 34px;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+
+.title {
+  margin: 0 0 8px;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.retry {
+  margin-top: 18px;
+  width: 100%;
+  padding: 11px 0;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.retry:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.hint {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.contact {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--hairline);
+}
+
+.contactLabel {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+/* QR 은 카메라가 읽어야 하므로 **흰 여백째** 보여 준다 — 어두운 카드 위에 그대로 얹으면
+   조용한 배경(var(--surface))과 코드 대비가 떨어지는 스캐너가 있다. 그래서 흰 패드를 깐다. */
+.qr {
+  display: block;
+  width: 200px;
+  height: 200px;
+  margin: 0 auto 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+
+.contactLink {
+  display: inline-block;
+  padding: 9px 14px;
+  border-radius: 10px;
+  background: var(--warn);
+  color: #2b2000;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.contactCode {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+  word-break: break-all;
+}

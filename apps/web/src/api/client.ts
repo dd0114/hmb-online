@@ -7,6 +7,12 @@
  *   so the wrapper is still correct if used outside the React tree).
  */
 
+import {
+  reportBackendReachable,
+  reportBackendUnreachable,
+  setBackendProbe,
+} from "./backend-health";
+
 export const TOKEN_STORAGE_KEY = "hmb.auth.token";
 /**
  * 로그인에 쓴 provider(guest|mock:google|mock:apple)를 클라에 보관 — /api/me 는 provider 를
@@ -196,6 +202,41 @@ async function refreshRuntimeConfig(): Promise<boolean> {
   return true;
 }
 
+/* ─────────────────── 백엔드 도달 상태 프로브 (#477) ───────────────────
+ * 점검 안내(MaintenanceGate)가 쓰는 헬스 프로브를 여기서 등록한다 — 도달 판정에 필요한
+ * 지식(현재 base·런타임 config 재조회)이 전부 이 모듈에 있고, backend-health 는 fetch 를
+ * 몰라야 순환 import 가 안 생긴다.
+ *
+ * ⚠️ 프로브는 **먼저 `/config.json` 을 다시 읽는다**. 터널이 죽고 새 주소로 살아났을 때
+ * (quick tunnel 은 살아날 때마다 주소가 바뀐다 — #183) 옛 주소만 두드리면 복구를 영영 못 본다.
+ *
+ * 대상은 `/api/config` — 공개(세션 중립) 경로라 미로그인 상태에서도 안전하고, 401 이 와도
+ * 세션을 건드리지 않는다(SESSION_NEUTRAL_PATHS).
+ *
+ * ⚠️ **단일 카나리아인 것은 의도다.** "엔드포인트 하나가 죽었는데 카나리아가 살아 있으면 점검
+ * 화면이 안 뜬다"는 결함이 아니라 이 설계의 목적이다 — 부분 장애(그 화면만 에러)에 앱 전체를
+ * 덮으면 멀쩡한 기능까지 못 쓰게 만든다. 이 화면이 대신하는 것은 **전면 장애**뿐이고, 개별
+ * 요청 실패는 각 화면의 에러 처리가 계속 맡는다. 반대 방향(카나리아만 죽음)은 확인 프로브가
+ * 실패하므로 점검으로 뜨는데, 그건 부트스트랩 config 를 못 받는 상태 = 실제로 앱이 못 뜬다.
+ */
+const HEALTH_PROBE_TIMEOUT_MS = 5000;
+/** 이 상태코드는 "백엔드가 죽었다" 다 — 앱 버그가 아니라 게이트웨이가 오리진에 못 닿은 것. */
+const GATEWAY_DOWN_STATUS = new Set([502, 503, 504]);
+
+setBackendProbe(async () => {
+  await refreshRuntimeConfig(); // 주소가 바뀌었으면 새 주소로 두드린다
+  const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), HEALTH_PROBE_TIMEOUT_MS) : null;
+  try {
+    const res = await fetch(apiUrl("/api/config"), { cache: "no-store", signal: ctrl?.signal });
+    return !GATEWAY_DOWN_STATUS.has(res.status);
+  } catch {
+    return false;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+});
+
 /** 끝 슬래시를 제거한 API base. 런타임 config > 빌드타임 값 > "". */
 export function apiBase(): string {
   if (runtimeBase) return runtimeBase;
@@ -319,9 +360,27 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   } catch (err) {
     // 응답 자체가 안 온다 = 터널 사망/주소 스테일이 유력하다(playbook §4 의 "Failed to fetch").
     // 워치독이 이미 새 터널을 올려 config 를 갱신했을 수 있으니 재조회 → 바뀌었으면 1회만 재시도.
-    if (!(await refreshRuntimeConfig())) throw err;
+    if (!(await refreshRuntimeConfig())) {
+      // 여기가 "백엔드에 못 닿았다"의 유일한 종점이다(#477). 확정은 backend-health 가 프로브로
+      // 한 번 더 확인한 뒤에 한다 — 여기서 바로 점검 화면을 띄우면 순간 끊김이 장애가 된다.
+      reportBackendUnreachable();
+      throw err;
+    }
     url = apiUrl(path);
-    res = await fetch(url, init);
+    try {
+      res = await fetch(url, init);
+    } catch (retryErr) {
+      reportBackendUnreachable();
+      throw retryErr;
+    }
+  }
+
+  // 터널은 살아 있는데 오리진(도커)만 죽으면 fetch 는 성공하고 게이트웨이가 5xx 를 준다 —
+  // 유저에게는 같은 장애이고, 실제 운영에서 더 자주 보는 형태다.
+  if (GATEWAY_DOWN_STATUS.has(res.status)) {
+    reportBackendUnreachable();
+  } else {
+    reportBackendReachable();
   }
 
   if (res.status === 401) {
