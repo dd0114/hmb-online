@@ -20,6 +20,9 @@
   ✓ Type=oneshot
   ✓ ExecStart 가 --once 호출
   ✓ PATH 명시(최소환경에서 node/cloudflared 탐색)
+  ✓ WorkingDirectory 명시
+  ✓ HOME 명시
+  ✓ 로그 경로(out/err) 명시
 
 [P4] 리눅스 — 60초 주기
   ✓ OnUnitActiveSec=60
@@ -55,5 +58,13 @@
 [P11] 라이브 시스템 무접촉
   ✓ 샌드박스 HOME 밖 생성물 없음
 
-=== 결과: PASS=31 FAIL=0 ===
+[P12] rollback-309.sh — 이사 후 사문화 명시 종료
+  ✓ rollback-309.sh: syntax ok
+  ✓ 이미지 부재(=새 머신) → exit 2 (진짜 실패 1 과 구분)
+  ✓ '사문화' 를 명시
+  ✓ 대체 경로 안내(재빌드)
+  ✓ 이미지 정상이면 사문화 아님
+  ✓ 정상 경로 exit≠2 (얻은 값 0)
+
+=== 결과: PASS=40 FAIL=0 ===
 GREEN exit=0

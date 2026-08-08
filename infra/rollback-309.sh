@@ -21,12 +21,37 @@ V308_SHA=4782f54
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 
 say "1) 롤백 이미지 고정 확인"
+MISS=0; BAD=0
 for t in "hmb/server-java:prev-live $PREV_JAVA" "hmb/servants:prev-live $PREV_RUNNER"; do
   tag="${t%% *}"; want="${t##* }"
   got="$(docker image inspect "$tag" --format '{{.Id}}' 2>/dev/null || echo MISSING)"
   if [ "$got" = "sha256:$want" ]; then echo "   ✓ $tag = ${want:0:12}…"
-  else echo "   ✗ $tag = $got (기대 sha256:${want:0:12}…) — 롤백 불가, 중단"; exit 1; fi
+  elif [ "$got" = "MISSING" ]; then echo "   ✗ $tag 없음"; MISS=$((MISS+1))
+  else echo "   ✗ $tag = $got (기대 sha256:${want:0:12}…)"; BAD=$((BAD+1)); fi
 done
+
+# ⚠️ **이사(#472) 후 이 스크립트는 사문화된다 — 그 사실을 명시하고 끝낸다.**
+# PREV_JAVA/PREV_RUNNER 는 **구 머신의 로컬 도커에만** 있는 이미지 다이제스트다. 레지스트리에
+# push 된 적이 없으므로 새 머신에는 원리적으로 존재하지 않는다. 그런데 이전 판의 종료 문구는
+# "롤백 불가, 중단" 뿐이라, 새 머신 운영자가 **장애 중에** 이걸 보면 "롤백 자산이 깨졌다" 로
+# 읽고 복구를 시도하며 시간을 태운다. 실제 상태는 "이 스크립트가 그 머신에서 무의미하다" 이고,
+# 그때 필요한 것은 이 스크립트가 아니라 **다른 경로**(아래 안내)다.
+# 두 이미지가 **모두** 없으면 = 이사한 머신. 하나만 어긋나면 = 진짜 이상(구 머신에서 훼손).
+if [ "$MISS" = 2 ]; then
+  say "⛔ 이 머신에서 rollback-309.sh 는 **사문화**다 (이사 후 정상)"
+  cat <<'EOS'
+   이유: v3.08 롤백 이미지는 구 머신 로컬 도커에만 있던 다이제스트다(레지스트리 미push).
+         이사한 머신에는 존재할 수 없다 — 훼손이 아니라 **이 스크립트의 전제가 사라진 것**이다.
+   지금 롤백이 필요하다면 이 스크립트가 아니라:
+     1) docs/deploy-log.md 에서 되돌릴 대상 SHA 를 고르고
+     2) 그 SHA 로 이미지를 재빌드(cd infra && docker compose build java runner)
+     3) docker compose up -d java runner
+   ⚠️ 이 스크립트는 v3.09→v3.08 **한 지점 전용**이다. 이사 후에는 삭제하거나,
+      새 머신 기준으로 다이제스트를 다시 고정하고 나서 쓴다.
+EOS
+  exit 2   # 1(진짜 실패)과 구분되는 코드 — 자동화가 "사문화" 를 장애로 오독하지 않게.
+fi
+[ $((MISS + BAD)) -gt 0 ] && { echo "   → 롤백 불가, 중단"; exit 1; }
 
 say "2) 진행 중 매치 확인 (역방향 #241 — 되돌려도 하프 경계 매치는 끊긴다)"
 INPROG="$(docker run --rm -v hmb-p3-db:/data:ro alpine:3.20 sh -c \

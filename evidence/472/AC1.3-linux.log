@@ -1,4 +1,4 @@
-### 실제 리눅스(debian:stable-slim) 콜드 실행
+### 실제 리눅스(debian:stable-slim) 콜드 실행 — AC1.3 확장판(워치독 이식 + rollback 사문화 가드)
 os_kind(강제없음) = linux
 === AC1.3 워치독 OS 이식 ===
 
@@ -22,6 +22,9 @@ os_kind(강제없음) = linux
   ✓ Type=oneshot
   ✓ ExecStart 가 --once 호출
   ✓ PATH 명시(최소환경에서 node/cloudflared 탐색)
+  ✓ WorkingDirectory 명시
+  ✓ HOME 명시
+  ✓ 로그 경로(out/err) 명시
 
 [P4] 리눅스 — 60초 주기
   ✓ OnUnitActiveSec=60
@@ -57,9 +60,15 @@ os_kind(강제없음) = linux
 [P11] 라이브 시스템 무접촉
   ✓ 검사 대상 디렉토리 없음(무해)
 
-=== 결과: PASS=31 FAIL=0 ===
+[P12] rollback-309.sh — 이사 후 사문화 명시 종료
+  ✓ rollback-309.sh: syntax ok
+  ✓ 이미지 부재(=새 머신) → exit 2 (진짜 실패 1 과 구분)
+  ✓ '사문화' 를 명시
+  ✓ 대체 경로 안내(재빌드)
+  ✓ 이미지 정상이면 사문화 아님
+  ✓ 정상 경로 exit≠2 (얻은 값 0)
+
+=== 결과: PASS=40 FAIL=0 ===
 AC1.3 exit=0
 === 결과: PASS=19 FAIL=0 ===
-AC1.1 회귀 exit=0
 === 결과: PASS=20 FAIL=0 ===
-AC1.2 회귀 exit=0

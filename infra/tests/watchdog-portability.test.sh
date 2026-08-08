@@ -107,8 +107,19 @@ if [ -f "$SVC" ]; then
   grep -qE '^Environment=.*PATH=' "$SVC" \
     && ok "PATH 명시(최소환경에서 node/cloudflared 탐색)" \
     || bad "Environment PATH 없음 — plist EnvironmentVariables 의 등가물이 빠졌다"
+  # ── plist 5요소 ↔ systemd 5요소 매핑을 **전부** 건다(AC1.3 pass 조건) ────────
+  #   AbandonProcessGroup↔KillMode · StartInterval↔OnUnitActiveSec(P4) ·
+  #   WorkingDirectory↔WorkingDirectory · EnvironmentVariables↔Environment · 로그경로↔StandardOutput
+  grep -qE '^WorkingDirectory=' "$SVC" \
+    && ok "WorkingDirectory 명시" \
+    || bad "WorkingDirectory 없음 — 기본 cwd 에서 wrangler 가 .wrangler/tmp 를 못 만든다(#183 실측)"
+  grep -qE '^Environment=HOME=' "$SVC" \
+    && ok "HOME 명시" || bad "Environment HOME 없음 — 자격·상태 디렉토리를 못 찾는다"
+  grep -qE '^StandardOutput=.*tunnel-heal\.out' "$SVC" && grep -qE '^StandardError=.*tunnel-heal\.err' "$SVC" \
+    && ok "로그 경로(out/err) 명시" \
+    || bad "로그 경로 없음 — plist StandardOutPath/StandardErrorPath 등가물이 빠져 사후분석 불가"
 else
-  bad "service 유닛이 없어 P3 검정 불가"; bad "(동)"; bad "(동)"; bad "(동)"
+  for _ in 1 2 3 4 5 6 7; do bad "service 유닛이 없어 P3 검정 불가"; done
 fi
 
 # ── P4: 타이머 주기가 plist StartInterval 과 같다 ─────────────────────
@@ -203,6 +214,51 @@ if [ -d "$HOME/Library/LaunchAgents" ] || [ -d "$HOME/.config/systemd/user" ]; t
 else
   ok "검사 대상 디렉토리 없음(무해)"
 fi
+
+# ── P12: rollback-309.sh 사문화 가드 ──────────────────────────────────
+# 이사 후 이 스크립트는 **원리적으로 못 돈다** — v3.08 롤백 이미지는 구 머신 로컬 도커에만
+# 있던 다이제스트라(레지스트리 미push) 새 머신엔 존재할 수 없다. 문제는 그때 나오던 문구가
+# "롤백 불가, 중단" 뿐이라, 장애 중인 운영자가 **롤백 자산이 깨졌다**로 읽고 복구를 시도한다는
+# 것이다. 실제로 필요한 것은 다른 경로다. 그래서 "사문화" 를 명시하고 exit 2 로 구분한다.
+head_ P12 "rollback-309.sh — 이사 후 사문화 명시 종료"
+RB=infra/rollback-309.sh
+bash -n "$RB" 2>"$TD/syn" && ok "rollback-309.sh: syntax ok" || bad "rollback-309.sh: $(cat "$TD/syn")"
+
+# docker 스텁: 이미지 조회에 대해 원하는 답을 내게 한다(실 도커 무접촉).
+mk_docker(){ # <mode: missing|ok>
+  cat > "$STUB/docker" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "image" ] && [ "\$2" = "inspect" ]; then
+  [ "$1" = missing ] && exit 1
+  case "\$3" in
+    hmb/server-java:prev-live) echo "sha256:af3e0bcb247dd5dccb7c9cc881ffbad434f103bb3da1a444c6d33d8aa2280547";;
+    hmb/servants:prev-live)    echo "sha256:7f73d3154d1ffb2a8bb966afa7a36f641603b07010a54e30eaa30e80f03a0e28";;
+    *) exit 1;;
+  esac
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "$STUB/docker"
+}
+
+mk_docker missing
+PATH="$STUB:$PATH" bash "$RB" --check > "$TD/rb_miss.out" 2>&1; rc=$?
+[ "$rc" = "2" ] && ok "이미지 부재(=새 머신) → exit 2 (진짜 실패 1 과 구분)" \
+  || bad "exit $rc — 사문화를 일반 실패와 구분하지 않는다(자동화가 장애로 오독)"
+grep -q '사문화' "$TD/rb_miss.out" \
+  && ok "'사문화' 를 명시" || bad "사문화 명시 없음 — 운영자가 '롤백 자산 훼손' 으로 오독한다"
+grep -q 'docker compose build' "$TD/rb_miss.out" \
+  && ok "대체 경로 안내(재빌드)" || bad "대체 경로 안내 없음 — 막다른 길만 알려준다"
+
+# 반대 방향: 이미지가 정상이면 사문화로 오판하지 않는다(가드가 항상 참이면 무의미).
+mk_docker ok
+PATH="$STUB:$PATH" bash "$RB" --check > "$TD/rb_ok.out" 2>&1; rc=$?
+grep -q '사문화' "$TD/rb_ok.out" \
+  && bad "이미지가 정상인데 사문화로 판정 — 가드가 항상 참(구 머신에서 롤백 봉쇄)" \
+  || ok "이미지 정상이면 사문화 아님"
+[ "$rc" != "2" ] && ok "정상 경로 exit≠2 (얻은 값 $rc)" || bad "정상인데 exit 2"
+rm -f "$STUB/docker"
 
 printf '\n=== 결과: PASS=%d FAIL=%d ===\n' "$PASS" "$FAIL"
 [ "$FAIL" = "0" ]
