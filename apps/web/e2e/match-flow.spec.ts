@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { skipSplash } from "./splash-mock";
+import { loginGuestAndSettleStarter } from "./starter-login";
 
 /**
  * AC-W1 / Phase 2 연습 플로우 — 신규 닉네임 로그인 → **덱 구성(UI)** → 연습 경기 완주 →
@@ -58,13 +58,7 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   const nickname = `e2e_${Date.now().toString(36)}`;
 
   // 1) 신규 로그인(게스트 플로우) → 스타터 팩 모달
-  await skipSplash(page);
-  await page.goto("/login");
-  await page.getByTestId("provider-guest").click();
-  await page.getByPlaceholder("2~16자").fill(nickname);
-  await page.getByRole("button", { name: "계속" }).click();
-  await page.getByRole("button", { name: "확인" }).click(); // 스타터 팩 확인
-  await expect(page).toHaveURL(/\/home$/);
+  await loginGuestAndSettleStarter(page, nickname);
 
   // 2) 덱 시드(fetch, NOTE 참고) → 덱 화면 UI 로 구성 확인·저장
   expect(await seedDeck(page)).toBe(true);
@@ -86,7 +80,12 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
 
   // 5) BRIEFING — 상대 분석 + 프롬프트 입력 → 킥오프
   await expect(page.getByTestId("briefing-panel")).toBeVisible();
+  // #244 이후 상대 분석은 **팀시트의 [상대 정보 ↗] 로 여는 시트 안**에 있다(BriefingPanel: `oppOpen`).
+  // 브리핑 화면에 그대로 붙어 있다고 단언하던 구 코드는 실서버 콜드에서 `element(s) not found` 로
+  // 죽는다 — 이 스펙이 서버 없으면 조용히 skip 돼서 그 드리프트가 여태 안 잡혔다(#471 AC4).
+  await page.getByTestId("opp-sheet-open").click();
   await expect(page.getByTestId("opponent-analysis")).toBeVisible();
+  await page.getByTestId("opp-sheet-close").click();
   await page.getByTestId("editor-team-prompt").fill("초반부터 강하게 압박, 측면 활용");
   await page.getByTestId("kickoff-button").click();
 

@@ -267,7 +267,10 @@ show_ai_mode() {
 # ⚠️ 프록시 대상을 반드시 넘긴다 — vite dev 의 기본 `/api` 대상은 **데모 8080** 이다.
 #    안 넘기면 이 스택이 아니라 데모를 때린다(절대금지 규칙 위반이자 판정 무의미).
 run_web_e2e() {
+  # 기본 3스펙. 디버깅 때만 좁힌다(HMB_LOCAL_E2E_SPECS="a.spec.ts b.spec.ts") — 상시 게이트는 기본값이다.
   local specs=(match-flow.spec.ts league-season.spec.ts w3-viewer-smoke.spec.ts)
+  # shellcheck disable=SC2206
+  [ -n "${HMB_LOCAL_E2E_SPECS:-}" ] && specs=(${HMB_LOCAL_E2E_SPECS})
   say "web E2E — 실서버 ${#specs[@]}스펙 (목킹 0, 프록시 → $BASE)"
   local json="$TMP/e2e.json" rc=0
   ( cd "$ROOT/apps/web" \

@@ -1,5 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
-import { skipSplash } from "./splash-mock";
+import { loginGuestAndSettleStarter } from "./starter-login";
 
 /**
  * AC-F / W6 리그 시즌 브라우저 E2E — 리그 시작 → 순위표(10팀) → 다음 경기 → **풀 매치 완주**
@@ -74,13 +74,7 @@ test("AC-F: 리그 시작 → 순위표 → 다음 경기 완주 → 정산·순
   const nickname = `lg_${Date.now().toString(36)}`;
 
   // 1) 신규 게스트 로그인 + 덱 시드
-  await skipSplash(page);
-  await page.goto("/login");
-  await page.getByTestId("provider-guest").click();
-  await page.getByPlaceholder("2~16자").fill(nickname);
-  await page.getByRole("button", { name: "계속" }).click();
-  await page.getByRole("button", { name: "확인" }).click();
-  await expect(page).toHaveURL(/\/home$/);
+  await loginGuestAndSettleStarter(page, nickname);
   expect(await seedDeck(page)).toBe(true);
 
   // 2) 리그 진입 → 시작 CTA(신규 유저 = 시즌 없음)
