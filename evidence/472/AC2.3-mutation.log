@@ -1,0 +1,4 @@
+### 변이킬 — 가드가 실제로 무는가
+변이1 economy 를 tar 에서 제거 → exit 1 (백업 tar 누락)
+변이2 cd ~/spider10/hmb-online 복원 → exit 1 (spiderN 경로 처방 1건)
+복구 후 → exit 0

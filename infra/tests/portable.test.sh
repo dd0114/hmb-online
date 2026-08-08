@@ -81,6 +81,32 @@ n=$(grep -rn "sed -i ''" infra/ --include='*.sh' 2>/dev/null | grep -Ev "$EXCL" 
 n=$(grep -rn "/Users/" infra/ --include='*.sh' 2>/dev/null | grep -Ev "$EXCL" | wc -l | tr -d ' ')
 [ "$n" = "0" ] && ok "\`/Users/\` 하드코딩 0건" || { bad "\`/Users/\` $n 건 잔존"; grep -rn "/Users/" infra/ --include='*.sh' | grep -Ev "$EXCL"; }
 
+# ── T3c: 문서도 소비처다 (#472 AC2.3) ─────────────────────────────────
+# ⚠️ 운영자는 스크립트가 아니라 **플레이북을 복사해 붙여넣는다.** 그래서 스크립트만 이식하고
+#    문서에 비이식 명령이 남아 있으면 결함은 그대로 살아 있다 — 실제로 그랬다:
+#      · `deploy-playbook.md:301,313` → `cd ~/spider10/hmb-online` (새 머신엔 그 경로가 없다)
+#      · `:304,442` → `sed -i ''` (리눅스에서 첫 표현식을 삼킨다)
+#    **처방 형태**만 본다(코드블록의 명령). "예전엔 이랬다" 는 산문 주석은 남겨야 다음 사람이
+#    되돌리지 않는다 — AC1.2 T2 와 같은 판단이다.
+head_ T3c "문서(plan-v4) 의 비이식 처방 0"
+DOCS='docs/plan-v4/deploy-playbook.md'
+n=$(grep -nE '^[^#]*(cd|source|\.) +[~"$]*[^ ]*spider[0-9]+/hmb-online' $DOCS 2>/dev/null | wc -l | tr -d ' ')
+[ "$n" = "0" ] && ok "체크아웃 경로 하드코딩 0건" \
+  || { bad "spiderN 경로 처방 $n 건 — 새 머신에서 그대로 붙여넣으면 실패"; grep -nE 'spider[0-9]+/hmb-online' $DOCS; }
+n=$(grep -n "sed -i ''" $DOCS 2>/dev/null | grep -v '⚠️\|BSD 전용이라' | wc -l | tr -d ' ')
+[ "$n" = "0" ] && ok "BSD 전용 \`sed -i ''\` 처방 0건" \
+  || { bad "\`sed -i ''\` 처방 $n 건 잔존"; grep -n "sed -i ''" $DOCS; }
+
+# ── T3d: 자산 백업 tar 에 economy.override.json (#472 AC2.3) ───────────
+# 조사가 실제로 잡은 누락이다(`:620-621` 이 notice-assets char-bundles 만 잡았다).
+# 빠지면 initialGems 12000 운영조정이 소멸하고 구운 발행물로 돌아간다 — 화면은 멀쩡하고
+# 숫자만 틀리는 무음 장애라, 백업/복원 **양쪽 다** 걸어야 의미가 있다.
+head_ T3d "플레이북 자산 tar 에 economy.override.json (백업·복원 양쪽)"
+grep -q 'tar czf .*notice-assets char-bundles economy.override.json' $DOCS \
+  && ok "백업 tar 에 포함" || bad "백업 tar 누락 — initialGems 운영조정이 이사에서 소멸한다"
+grep -q 'chown -R 10001:999 .*economy.override.json' $DOCS \
+  && ok "복원 chown 에 포함" || bad "복원에서 economy 소유권 누락 — java(10001) 가 못 읽는다"
+
 head_ T3b "이식 계층이 양 OS 분기를 실제로 보유 (제외의 대가 지불)"
 grep -q "sed -i ''" infra/lib/portable.sh 2>/dev/null \
   && ok "BSD 분기 존재" || bad "BSD 분기 소실 — mac 에서 sed_i 가 깨진다"
