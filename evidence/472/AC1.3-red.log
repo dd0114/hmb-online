@@ -1,0 +1,59 @@
+=== AC1.3 워치독 OS 이식 ===
+
+[P0] 스크립트 문법
+  ✓ install-tunnel-heal.sh: syntax ok
+  ✓ portable.sh: syntax ok
+  ✓ tunnel-heal.sh: syntax ok
+
+[P1] os_kind 오버라이드(HMB_FORCE_OS)
+  ✗ linux 강제 실패 (얻은 값 'darwin')
+  ✓ HMB_FORCE_OS=darwin → darwin
+  ✓ 미지정 시 실제 uname 준수
+
+[P2] 리눅스 — systemd user unit 설치
+  ✓ 설치기 exit 0
+  ✗ service 유닛 없음 (/var/folders/hg/znyc08690h1_xmwg5zc5q241gzbzj9/T/tmp.MUbo3z2xtW/home/.config/systemd/user/hmb-tunnel-heal.service)
+  ✗ timer 유닛 없음 (/var/folders/hg/znyc08690h1_xmwg5zc5q241gzbzj9/T/tmp.MUbo3z2xtW/home/.config/systemd/user/hmb-tunnel-heal.timer)
+
+[P3] 리눅스 — 자식 프로세스 회수 방지(AbandonProcessGroup 등가)
+  ✗ service 유닛이 없어 P3 검정 불가
+  ✗ (동)
+  ✗ (동)
+  ✗ (동)
+
+[P4] 리눅스 — 60초 주기
+  ✗ timer 유닛이 없어 P4 검정 불가
+
+[P5] 리눅스 — launchctl 미호출 / systemctl 호출
+  ✗ 리눅스인데 launchctl 을 불렀다: launchctl bootout gui/1609956905/online.hmb.tunnel-heal
+  ✗ daemon-reload 미호출 — 유닛을 써 놓고 반영을 안 한다
+  ✗ timer enable 미호출 — 파일만 놓고 켜지 않았다
+
+[P6] 리눅스 — linger(로그인 없이 상시 가동)
+  ✗ linger 처리 없음 — 재부팅/로그아웃 후 워치독이 안 뜬다
+
+[P7] mac — plist 경로 무회귀
+  ✓ 설치기 exit 0
+  ✓ plist 생성
+  ✓ AbandonProcessGroup 유지(#183 회귀 방지)
+  ✓ StartInterval 60
+  ✓ systemctl 호출 0
+  ✓ launchctl bootstrap
+
+[P8] --status / --uninstall OS 분기
+  ✗ --status: 리눅스인데 launchctl 호출
+  ✗ --uninstall: 리눅스인데 launchctl 호출
+
+[P9] status.sh — 워치독 관측이 OS 중립
+  ✗ status.sh 가 launchctl 을 직접 호출 1 건 — 리눅스에서 거짓 경보
+  ✗ OS 중립 헬퍼(watchdog_installed) 미사용
+
+[P10] watchdog_installed 헬퍼 분기
+  ✗ linux 분기가 systemctl 을 안 쓴다
+  ✗ darwin 분기가 launchctl 을 안 쓴다
+
+[P11] 라이브 시스템 무접촉
+  ✓ 샌드박스 HOME 밖 생성물 없음
+
+=== 결과: PASS=13 FAIL=18 ===
+RED exit=1

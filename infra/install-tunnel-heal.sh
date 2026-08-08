@@ -5,33 +5,55 @@
 #   bash infra/install-tunnel-heal.sh --uninstall
 #   bash infra/install-tunnel-heal.sh --status
 #
-# 왜 복사인가: 이 머신엔 워크트리가 여러 개(spider9/10/14…)다. launchd 가 특정 체크아웃을
+# 왜 복사인가: 이 머신엔 워크트리가 여러 개(spider9/10/14…)다. 서비스 관리자가 특정 체크아웃을
 # 가리키면 그 워크트리가 사라지거나 브랜치가 바뀔 때 조용히 죽는다. 그래서 리포의 스크립트를
 # ~/.local/bin 으로 **복사**해 실행하고, 어느 커밋에서 복사했는지 헤더에 박아 둔다.
 # 스크립트를 고쳤으면 이 설치 스크립트를 다시 돌려야 반영된다.
+#
+# ── OS 이식 (#472 AC1.3) ──────────────────────────────────────────────────────
+# mac = launchd(plist) · linux = systemd user unit(service + timer). 등록 방식만 다르고
+# **성질은 같아야 한다** — 특히 워치독이 띄운 cloudflared 가 살아남는 것:
+#   launchd  : 잡 종료 시 프로세스 그룹을 회수한다   → AbandonProcessGroup=true 로 막는다
+#   systemd  : oneshot 종료 시 cgroup 잔여를 죽인다  → KillMode=process 로 막는다
+# 이게 빠지면 매 틱 새 터널을 만드는 **스래시 루프**가 된다(#183 mac 실측). 이름만 다른 같은 고장이다.
 
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+. infra/lib/portable.sh
 
-LABEL="online.hmb.tunnel-heal"
+OS=$(os_kind)
+LABEL="${HMB_HEAL_LABEL:-online.hmb.tunnel-heal}"   # launchd
+UNIT="${HMB_HEAL_UNIT:-hmb-tunnel-heal}"            # systemd
 BIN="$HOME/.local/bin"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+UNIT_DIR="$HOME/.config/systemd/user"
 STATE_DIR="${HMB_STATE_DIR:-$HOME/.local/state/hmb}"
 INTERVAL="${HMB_HEAL_INTERVAL:-60}"
 
 case "${1:-}" in
   --uninstall)
-    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
-    rm -f "$PLIST"
-    echo "[install] 해제 완료 (스크립트·로그는 남는다: $BIN, $STATE_DIR)"
+    if [ "$OS" = linux ]; then
+      systemctl --user disable --now "$UNIT.timer" 2>/dev/null || true
+      rm -f "$UNIT_DIR/$UNIT.timer" "$UNIT_DIR/$UNIT.service"
+      systemctl --user daemon-reload 2>/dev/null || true
+    else
+      launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || launchctl unload "$PLIST" 2>/dev/null || true
+      rm -f "$PLIST"
+    fi
+    echo "[install] 해제 완료 ($OS · 스크립트·로그는 남는다: $BIN, $STATE_DIR)"
     exit 0;;
   --status)
-    launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | sed -n '1,12p' || echo "[install] 미설치"
+    if [ "$OS" = linux ]; then
+      systemctl --user status "$UNIT.timer" --no-pager 2>/dev/null | sed -n '1,12p' || echo "[install] 미설치"
+    else
+      launchctl print "gui/$(id -u)/$LABEL" 2>/dev/null | sed -n '1,12p' || echo "[install] 미설치"
+    fi
     echo "--- 최근 이벤트 ---"; tail -5 "$STATE_DIR/tunnel-heal.log" 2>/dev/null || echo "(없음)"
     exit 0;;
 esac
 
-mkdir -p "$BIN" "$STATE_DIR" "$HOME/Library/LaunchAgents"
+mkdir -p "$BIN" "$STATE_DIR"
+if [ "$OS" = linux ]; then mkdir -p "$UNIT_DIR"; else mkdir -p "$HOME/Library/LaunchAgents"; fi
 
 SHA=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 install_one(){ # <src> <dest>
@@ -43,8 +65,14 @@ install_one(){ # <src> <dest>
 install_one infra/tunnel-heal.sh          "$BIN/hmb-tunnel-heal.sh"
 install_one infra/publish-backend-url.sh  "$BIN/hmb-publish-backend-url.sh"
 
-# launchd 는 최소 환경으로 뜬다 — node(nvm)·homebrew 경로를 명시하지 않으면 npx/cloudflared 를 못 찾는다.
+# launchd/systemd 둘 다 **최소 환경**으로 뜬다 — node(nvm)·패키지 경로를 명시하지 않으면
+# npx/cloudflared 를 못 찾는다. (mac 은 homebrew, 리눅스는 /usr/local·/usr/bin.)
 NODE_BIN=$(dirname "$(command -v node)")
+if [ "$OS" = linux ]; then
+  UNIT_PATH="$NODE_BIN:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+else
+  UNIT_PATH="$NODE_BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+fi
 WORKDIR="${HMB_WORK_DIR:-/tmp/hmb-wrangler-work}"
 mkdir -p "$WORKDIR"
 
@@ -54,7 +82,58 @@ if ! command -v wrangler >/dev/null 2>&1 && [ "${HMB_SKIP_WRANGLER_INSTALL:-0}" 
   echo "[install] wrangler 전역 설치 (자가복구 전파 속도용 — 건너뛰려면 HMB_SKIP_WRANGLER_INSTALL=1)"
   npm i -g wrangler >/dev/null 2>&1 || echo "[install] ⚠️ 전역 설치 실패 — npx 폴백으로 동작하나 느리다"
 fi
-cat > "$PLIST" <<EOF
+if [ "$OS" = linux ]; then
+  # ── systemd user unit ───────────────────────────────────────────────────────
+  cat > "$UNIT_DIR/$UNIT.service" <<EOF
+[Unit]
+Description=HMB 터널 자가복구 워치독 (#183)
+Documentation=https://github.com/dd0114/hmb-online/issues/183
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=$BIN/hmb-tunnel-heal.sh --once
+WorkingDirectory=$WORKDIR
+# ⚠️ oneshot 은 메인 프로세스가 끝나면 systemd 가 **cgroup 잔여 프로세스를 죽인다**(KillMode 기본
+#    control-group). 그러면 워치독이 방금 띄운 cloudflared 가 즉사하고, 다음 틱이 또 새 터널을
+#    만드는 스래시 루프가 된다 — launchd 의 AbandonProcessGroup 이 막던 바로 그 고장(#183 실측).
+KillMode=process
+Environment=PATH=$UNIT_PATH
+Environment=HOME=$HOME
+StandardOutput=append:$STATE_DIR/tunnel-heal.out
+StandardError=append:$STATE_DIR/tunnel-heal.err
+EOF
+  cat > "$UNIT_DIR/$UNIT.timer" <<EOF
+[Unit]
+Description=HMB 터널 자가복구 워치독 타이머 (매 ${INTERVAL}초 — plist StartInterval 등가)
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=$INTERVAL
+AccuracySec=5s
+Persistent=true
+Unit=$UNIT.service
+
+[Install]
+WantedBy=timers.target
+EOF
+  echo "[install] unit → $UNIT_DIR/$UNIT.{service,timer} (매 ${INTERVAL}초)"
+
+  systemctl --user daemon-reload
+  systemctl --user enable --now "$UNIT.timer"
+  echo "[install] systemd user timer 등록 완료"
+
+  # ⚠️ systemd **user** 유닛은 로그인 세션이 없으면 안 돈다. 서버(EC2)는 로그인 상태가 아니다 —
+  #    linger 없이는 재부팅/로그아웃 후 워치독이 조용히 사라진다(이사 후 첫 재부팅에 터진다).
+  if loginctl enable-linger "$(id -un)" 2>/dev/null; then
+    echo "[install] linger 활성 — 로그인 없이도 상시 가동"
+  else
+    echo "[install] ⚠️ linger 자동설정 실패 — 재부팅 후 워치독이 안 뜬다."
+    echo "[install]    수동: sudo loginctl enable-linger $(id -un)"
+  fi
+else
+  # ── launchd plist (mac) ─────────────────────────────────────────────────────
+  cat > "$PLIST" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -85,16 +164,19 @@ cat > "$PLIST" <<EOF
 </dict>
 </plist>
 EOF
-echo "[install] plist → $PLIST (매 ${INTERVAL}초)"
+  echo "[install] plist → $PLIST (매 ${INTERVAL}초)"
 
-launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-launchctl bootstrap "gui/$(id -u)" "$PLIST"
-echo "[install] launchd 등록 완료"
+  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$PLIST"
+  echo "[install] launchd 등록 완료"
+fi
 
 echo ""
-echo "── 사전점검 ──"
-"$BIN/hmb-tunnel-heal.sh" --selftest || echo "[install] ⚠️ selftest 에 ✗ 가 있다 — 위 항목을 먼저 해결할 것"
-echo ""
+if [ "${HMB_HEAL_SKIP_SELFTEST:-0}" != "1" ]; then
+  echo "── 사전점검 ──"
+  "$BIN/hmb-tunnel-heal.sh" --selftest || echo "[install] ⚠️ selftest 에 ✗ 가 있다 — 위 항목을 먼저 해결할 것"
+  echo ""
+fi
 echo "상태 보기 : bash infra/install-tunnel-heal.sh --status"
 echo "이벤트 로그: tail -f $STATE_DIR/tunnel-heal.log"
 echo "해제      : bash infra/install-tunnel-heal.sh --uninstall"

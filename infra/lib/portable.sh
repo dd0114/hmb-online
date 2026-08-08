@@ -15,7 +15,13 @@
 # 이 파일은 **source 전용**이다(실행 진입점 없음). set -e 를 켜지 않는다 — 호출자의 옵션을 존중.
 
 # ── os_kind: darwin | linux | other ───────────────────────────────────
+# ⚠️ `HMB_FORCE_OS` 오버라이드가 있는 이유: 이식 계약을 **한 머신에서 두 분기 다** 검정하기
+#    위해서다. 없으면 리눅스 분기는 리눅스에서만 검증되고 = 이사 당일까지 아무도 안 돌린다.
+#    (AC1.1 의 `HMB_SED_INPLACE` 와 같은 관용구.) 운영 경로는 이 변수를 세팅하지 않는다.
 os_kind() {
+  case "${HMB_FORCE_OS:-}" in
+    darwin|linux|other) echo "${HMB_FORCE_OS}"; return ;;
+  esac
   case "$(uname -s 2>/dev/null)" in
     Darwin) echo darwin ;;
     Linux)  echo linux ;;
@@ -61,4 +67,22 @@ sed_i() {
 #   출력: `/home/ubuntu/hmb/hmb-online`
 checkout_from_cmdline() {
   grep -oE '(/[^ ]*)?/hmb-online' 2>/dev/null | head -1
+}
+
+# ── 자가복구 워치독(#183) 의 OS 중립 관측 ─────────────────────────────
+# 서비스 관리자는 OS 마다 다르지만, 부르는 쪽(status.sh·install 스크립트)이 알아야 할 것은
+# **"워치독이 가동 중인가"** 하나뿐이다. 그 한 질문만 여기서 흡수한다.
+#   mac  : launchd  gui/<uid>/online.hmb.tunnel-heal
+#   linux: systemd user timer  hmb-tunnel-heal.timer
+# ⚠️ status.sh 가 launchctl 을 직접 부르면 리눅스에서 **거짓 경보**("미설치 — 사람이 가야 한다")를
+#    낸다. 워치독이 멀쩡히 도는데도. 운영자가 신호를 못 믿게 되는 것이 진짜 비용이다.
+HMB_HEAL_LABEL="${HMB_HEAL_LABEL:-online.hmb.tunnel-heal}"   # launchd 라벨
+HMB_HEAL_UNIT="${HMB_HEAL_UNIT:-hmb-tunnel-heal}"            # systemd 유닛 basename
+
+watchdog_installed() {
+  if is_linux; then
+    systemctl --user is-enabled "${HMB_HEAL_UNIT}.timer" >/dev/null 2>&1
+  else
+    launchctl print "gui/$(id -u)/${HMB_HEAL_LABEL}" >/dev/null 2>&1
+  fi
 }

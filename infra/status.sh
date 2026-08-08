@@ -111,7 +111,7 @@ if [ -n "${WURL:-}" ]; then EXPECT="$WURL"; else EXPECT="$PAGES"; fi
 [ "$cors" = "$EXPECT" ] && ok "CORS 결선: $cors" || warn "CORS: '$cors' (web 오리진 '$EXPECT' 와 다름 — 왕복 막힐 수 있음)"
 
 # 7) 자가복구 워치독 (#183) — 터널이 죽어도 사람이 안 가도 되는지
-if launchctl print "gui/$(id -u)/online.hmb.tunnel-heal" >/dev/null 2>&1; then
+if watchdog_installed; then
   LAST=$(tail -1 "${HMB_STATE_DIR:-$HOME/.local/state/hmb}/tunnel-heal.log" 2>/dev/null | cut -f2,3)
   ok "자가복구 워치독: 가동 중${LAST:+ (최근: $LAST)}"
 else

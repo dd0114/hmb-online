@@ -1,0 +1,59 @@
+=== AC1.3 워치독 OS 이식 ===
+
+[P0] 스크립트 문법
+  ✓ install-tunnel-heal.sh: syntax ok
+  ✓ portable.sh: syntax ok
+  ✓ tunnel-heal.sh: syntax ok
+
+[P1] os_kind 오버라이드(HMB_FORCE_OS)
+  ✓ HMB_FORCE_OS=linux → linux
+  ✓ HMB_FORCE_OS=darwin → darwin
+  ✓ 미지정 시 실제 uname 준수
+
+[P2] 리눅스 — systemd user unit 설치
+  ✓ 설치기 exit 0
+  ✓ service 유닛 생성
+  ✓ timer 유닛 생성
+
+[P3] 리눅스 — 자식 프로세스 회수 방지(AbandonProcessGroup 등가)
+  ✓ KillMode=process
+  ✓ Type=oneshot
+  ✓ ExecStart 가 --once 호출
+  ✓ PATH 명시(최소환경에서 node/cloudflared 탐색)
+
+[P4] 리눅스 — 60초 주기
+  ✓ OnUnitActiveSec=60
+
+[P5] 리눅스 — launchctl 미호출 / systemctl 호출
+  ✓ launchctl 호출 0
+  ✓ systemctl daemon-reload
+  ✓ timer enable
+
+[P6] 리눅스 — linger(로그인 없이 상시 가동)
+  ✓ loginctl enable-linger 호출
+
+[P7] mac — plist 경로 무회귀
+  ✓ 설치기 exit 0
+  ✓ plist 생성
+  ✓ AbandonProcessGroup 유지(#183 회귀 방지)
+  ✓ StartInterval 60
+  ✓ systemctl 호출 0
+  ✓ launchctl bootstrap
+
+[P8] --status / --uninstall OS 분기
+  ✓ --status: systemctl 로 분기
+  ✓ --uninstall: systemctl 로 분기
+
+[P9] status.sh — 워치독 관측이 OS 중립
+  ✓ status.sh 내 직접 launchctl 0건
+  ✓ portable.sh 의 watchdog_installed 사용
+
+[P10] watchdog_installed 헬퍼 분기
+  ✓ linux → systemctl 조회
+  ✓ darwin → launchctl 조회
+
+[P11] 라이브 시스템 무접촉
+  ✓ 샌드박스 HOME 밖 생성물 없음
+
+=== 결과: PASS=31 FAIL=0 ===
+GREEN exit=0
