@@ -24,6 +24,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 JAVA_PORT="${HMB_LOCAL_JAVA_PORT:-31080}"
 RUNNER_PORT="${HMB_LOCAL_RUNNER_PORT:-31790}"
 WEB_PORT="${HMB_LOCAL_WEB_PORT:-31173}"
+# e2e 가 띄우는 vite dev 포트. `up` 의 WEB_PORT 와 **분리**한다 — 플레이하며 e2e 를 돌릴 수 있어야 한다.
+E2E_WEB_PORT="${HMB_LOCAL_E2E_WEB_PORT:-31199}"
 SERVANT_TOKEN_VALUE="${HMB_LOCAL_SERVANT_TOKEN:-local-stack-token}"
 # AI 실행기 희망 모드. 기본은 서브커맨드가 정한다(플레이=claude-code / 판정=stub).
 # 실제로 무엇이 도는지는 실행기 **프리플라이트**가 정한다 — 로그인이 안 돼 있으면 stub 으로 강등된다.
@@ -43,6 +45,11 @@ STATE_DIR="${HMB_LOCAL_STATE_DIR:-}"
 
 BASE="http://localhost:${JAVA_PORT}"
 WEB_URL="http://localhost:${WEB_PORT}"
+E2E_WEB_URL="http://localhost:${E2E_WEB_PORT}"
+# ⚠️ **두 웹 오리진을 다 허용한다.** vite dev 프록시를 거쳐도 브라우저의 `Origin` 헤더는 그대로
+#    전달되므로 서버의 CORS 판정에 걸린다 — 실제로 `e2e` 첫 콜드 실행이 로그인 화면에서
+#    **`Forbidden`** 으로 3/3 죽었다(플레이 포트만 허용했었다). 프록시가 CORS 를 없애 주지 않는다.
+CORS_ORIGINS="${HMB_LOCAL_CORS_ORIGINS:-$WEB_URL,$E2E_WEB_URL}"
 
 if [ -n "$STATE_DIR" ]; then
   mkdir -p "$STATE_DIR"
@@ -197,6 +204,10 @@ start_java() {
   # 시계 압축은 값이 있을 때만 넘긴다(비면 서버 기본 = 운영과 같은 길이).
   local clock=()
   [ -n "$HALFTIME_MS" ] && clock+=("-Dhmb.match.clock.halftime-ms=$HALFTIME_MS")
+  # e2e 가 실는 추가 -D (공백 구분). 여기 말고 호출부가 뜻을 설명한다.
+  local extra=()
+  # shellcheck disable=SC2206
+  [ -n "${JAVA_EXTRA_OPTS:-}" ] && extra=($JAVA_EXTRA_OPTS)
   # cwd=server-java 가 필수다 — application.yml 의 데이터 경로가 `../data/...` 상대라
   # 리포 루트에서 띄우면 리포 밖을 본다.
   ( cd "$ROOT/server-java" && java \
@@ -204,8 +215,9 @@ start_java() {
       -Dhmb.db.path="$TMP/hmb.db" \
       -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" \
       -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" \
-      -Dhmb.cors.allowed-origins="$WEB_URL" \
+      -Dhmb.cors.allowed-origins="$CORS_ORIGINS" \
       ${clock[@]+"${clock[@]}"} \
+      ${extra[@]+"${extra[@]}"} \
       -jar "$jar" >"$TMP/java.log" 2>&1 ) &
   JAVA_PID=$!
   wait_http "$BASE/internal/health" 120 "X-Servant-Token: $SERVANT_TOKEN_VALUE" \
@@ -242,6 +254,55 @@ show_ai_mode() {
     *)    if [ "$strict" = "1" ]; then fail "실행기가 AI 모드를 신고하지 않았다(mode=${mode:-없음}) — $TMP/executor.log"
           else warn "실효 AI 모드 확인 중(mode=${mode:-없음})"; fi ;;
   esac
+}
+
+# ── 실서버 web E2E (#471 AC4) ────────────────────────────────────────────
+# hero 요구: *"앞으로도 E2E 테스트로 사용할거임."* 그 말이 성립하려면 **목킹 0** 이어야 한다 —
+# 목이 서버 대신 답하면 그 테스트는 로컬 빌드가 실제로 게임이 되는지를 더 이상 말해 주지 않는다.
+#
+# ⚠️ 이 세 스펙은 원래 서버가 없으면 **스스로 test.skip** 한다(graceful). 그래서 "green" 이 곧
+#    "돌았다"가 아니고, 조용히 0건 실행된 채 통과하는 것이 이 스위트의 실패 양상이다
+#    (리포 전례: 잘못된 config 로 0건 실행을 green 으로 오독). 그래서 **skip 0 을 계약으로 건다.**
+#
+# ⚠️ 프록시 대상을 반드시 넘긴다 — vite dev 의 기본 `/api` 대상은 **데모 8080** 이다.
+#    안 넘기면 이 스택이 아니라 데모를 때린다(절대금지 규칙 위반이자 판정 무의미).
+run_web_e2e() {
+  local specs=(match-flow.spec.ts league-season.spec.ts w3-viewer-smoke.spec.ts)
+  say "web E2E — 실서버 ${#specs[@]}스펙 (목킹 0, 프록시 → $BASE)"
+  local json="$TMP/e2e.json" rc=0
+  ( cd "$ROOT/apps/web" \
+      && WEB_E2E_PORT="$E2E_WEB_PORT" \
+         VITE_API_TARGET="$BASE" \
+         HMB_E2E_API_ORIGIN="$BASE" \
+         PLAYWRIGHT_JSON_OUTPUT_NAME="$json" \
+         npx playwright test "${specs[@]}" --reporter=list,json ) >"$TMP/e2e.log" 2>&1 || rc=$?
+  sed -n '$p;/✓\|✘\|passed\|failed\|skipped/p' "$TMP/e2e.log" | tail -12 | sed 's/^/   /'
+
+  [ -f "$json" ] || fail "playwright 결과 JSON 이 없다 — $TMP/e2e.log"
+  # 판정은 exit code 가 아니라 **집계**로 한다: skip 은 playwright 에서 실패가 아니라서
+  # exit 0 과 공존한다(그게 이 게이트가 존재하는 이유다).
+  local counts
+  counts="$(node -e '
+    const r = require(process.argv[1]);
+    let pass = 0, fail = 0, skip = 0;
+    const walk = (s) => {
+      for (const spec of s.specs ?? []) for (const t of spec.tests ?? []) {
+        const st = t.status === "expected" ? "pass" : t.status === "skipped" ? "skip" : "fail";
+        if (st === "pass") pass++; else if (st === "skip") skip++; else fail++;
+      }
+      for (const c of s.suites ?? []) walk(c);
+    };
+    for (const s of r.suites ?? []) walk(s);
+    console.log(`${pass} ${fail} ${skip}`);
+  ' "$json")" || fail "결과 JSON 파싱 실패 — $json"
+  local pass="${counts%% *}" rest="${counts#* }"
+  local nfail="${rest%% *}" nskip="${rest##* }"
+
+  info "실행 집계: pass=$pass fail=$nfail skip=$nskip (로그 $TMP/e2e.log · JSON $json)"
+  [ "$nfail" = "0" ] || fail "web E2E 실패 $nfail 건 — $TMP/e2e.log"
+  [ "$nskip" = "0" ] || fail "web E2E 가 $nskip 건 스킵됐다 — 실서버에 안 붙었다는 뜻이다(그 green 은 거짓이다)"
+  [ "$pass" -ge "${#specs[@]}" ] || fail "실행된 테스트가 스펙 수보다 적다(pass=$pass) — 0건 실행 green 방지"
+  ok "web E2E $pass건 통과 · 스킵 0 (실서버 $BASE)"
 }
 
 start_web() {
@@ -358,6 +419,26 @@ case "$CMD" in
     printf '\n\033[32mPASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다\033[0m\n'
     ;;
 
+  e2e)
+    # 상시 회귀용 — hero 요구 "앞으로도 E2E 테스트로 사용할거임"(#471 AC4).
+    # AI 는 stub 고정(결정론·오프라인). 라이브 AI 판정은 `up` 으로 사람이 본다.
+    doctor || true
+    AI_MODE_WANTED="${AI_MODE_WANTED:-stub}"
+    # ⚠️ **시계는 끈다**(`enabled=false` = 문서화된 롤백 스위치, application.yml:157).
+    #    이 세 스펙은 하프타임 패널을 **90초** 안에 기다리는데 재생 창은 실측 **221초**다(AC1) —
+    #    시계를 켠 채로는 스펙이 구조적으로 통과할 수 없다. 그리고 이 셋의 주제는 재생 페이싱이
+    #    아니라 **플로우**(로그인→덱→매치→결과→전적)다. 시계 자체는 `match-live-clock.spec.ts`
+    #    가 소유하고 그건 여기 셋에 없다.
+    JAVA_EXTRA_OPTS="${JAVA_EXTRA_OPTS:--Dhmb.match.clock.enabled=false}"
+    resolve_java || fail "JDK 21 이 필요하다 (doctor 참고)"
+    start_runner
+    start_java
+    start_executor "$AI_MODE_WANTED"
+    show_ai_mode 1
+    run_web_e2e
+    printf '\n\033[32mPASS — 실서버 web E2E (목킹 0 · 스킵 0)\033[0m\n'
+    ;;
+
   up)
     # 플레이 모드 — 라이브 AI 를 기본으로 시도한다(로그인 안 돼 있으면 실행기가 스텁으로 강등).
     doctor || true
@@ -377,11 +458,12 @@ case "$CMD" in
 
   *)
     cat >&2 <<EOF
-사용법: bash scripts/local-stack.sh [doctor|up|smoke]
+사용법: bash scripts/local-stack.sh [doctor|up|smoke|e2e]
 
   doctor   전제(node·JDK21·npm·claude)만 점검한다. 아무것도 띄우지 않는다.
   up       4프로세스를 띄우고 브라우저로 플레이한다(Ctrl-C 로 정리).
   smoke    띄우고 가입·덱·매치 완주까지 자동 판정한 뒤 정리한다.
+  e2e      띄우고 **실서버** web E2E 3스펙을 돌린다(목킹 0 · 스킵 0 이 계약).
 
 env: HMB_LOCAL_JAVA_PORT(${JAVA_PORT}) HMB_LOCAL_RUNNER_PORT(${RUNNER_PORT}) HMB_LOCAL_WEB_PORT(${WEB_PORT})
      HMB_LOCAL_AI(stub|claude-code) HMB_LOCAL_HALFTIME_MS HMB_LOCAL_STATE_DIR

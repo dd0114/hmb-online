@@ -40,6 +40,11 @@ JDK 는 설치만 돼 있으면 된다 — 스크립트가 `/usr/libexec/java_ho
 | `bash scripts/local-stack.sh doctor` | 전제(Node·JDK·claude CLI)와 포트만 점검하고 종료 |
 | `bash scripts/local-stack.sh smoke` | 스택 기동 → 가입·덱·경기 완주를 자동 판정 → 정리 (웹 없음) |
 | `bash scripts/local-stack.sh up` | 스택 + 웹 개발서버 기동, 브라우저 접속 대기 |
+| `bash scripts/local-stack.sh e2e` | 스택 기동 → **실서버** 브라우저 E2E 3스펙 → 정리 (목킹 0) |
+
+`e2e` 는 이 스택을 상시 회귀 테스트로 쓰는 자리다(목킹이 아니라 **실제 서버**를 때린다).
+판정은 통과 여부만이 아니라 **스킵 0** 이다 — 이 스펙들은 서버가 없으면 스스로 건너뛰므로,
+스킵을 세지 않으면 "아무것도 안 돌았다"가 green 으로 보인다.
 
 ### AI 모드 — 클로드에 로그인돼 있으면 라이브
 
@@ -66,6 +71,7 @@ HMB_LOCAL_JAVA_PORT=32080 HMB_LOCAL_WEB_PORT=32173 bash scripts/local-stack.sh u
 | `HMB_LOCAL_JAVA_PORT` | 31080 | 권위 서버 |
 | `HMB_LOCAL_RUNNER_PORT` | 31790 | 엔진 러너 |
 | `HMB_LOCAL_WEB_PORT` | 31173 | 웹(vite) |
+| `HMB_LOCAL_E2E_WEB_PORT` | 31199 | `e2e` 가 띄우는 vite(플레이 중에도 돌릴 수 있게 분리) |
 | `HMB_LOCAL_AI` | `up`=claude-code / `smoke`=stub | AI 실행기 모드 희망값(강등은 프리플라이트가 판단) |
 | `HMB_LOCAL_STATE_DIR` | 임시 디렉토리 | DB·로그 위치. 지정하면 재시작해도 진행이 남는다 |
 
