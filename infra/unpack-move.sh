@@ -97,11 +97,19 @@ fi
 # ── 3) 복원 ───────────────────────────────────────────────────────────
 echo ""
 echo "── 복원 ──"
+# ⚠️ `--force` 로 덮기 **전에** 기존 것을 치워 둔다. 새 머신에 이미 상태가 있는데 그게 더 새로울
+#    수 있고, 덮어쓰면 그 순간 소실이다. (개발 중 이 안전망이 없어서 라이브 `infra/.env` 를
+#    한 번 날렸다 — 가동 중 컨테이너 env 에서 복원했지만, 컨테이너가 내려가 있었으면 못 살렸다.)
+BK="${HMB_STATE_DIR:-$HOME/.local/state/hmb}/move/pre-unpack"
 n=0
 while IFS='|' read -r slug label; do
   [ -n "${slug:-}" ] || continue
   d=$(dest_of "$label")
   mkdir -p "$(dirname "$d")"
+  if [ -e "$d" ]; then
+    mkdir -p "$BK"
+    cp -Rp "$d" "$BK/$slug" 2>/dev/null && note "기존 것을 백업: $BK/$slug"
+  fi
   rm -rf "$d"
   cp -Rp "$STAGE/host/$slug" "$d" || { bad "복원 실패: $d"; exit 1; }
   ok "$label → $d"

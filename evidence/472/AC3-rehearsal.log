@@ -1,0 +1,60 @@
+
+0) 격리 기준선
+   hmb-java a21f68a831a306a47503811d2ebf5b8ef230703b91d7a886e8d979788bfb8c63 2026-08-06T16:03:32.070996548Z running
+   hmb-runner 8c5ccafef73538599711d70bb6829518e996fa0db8d12aac3d0c6f1837cbf533 2026-08-04T20:37:41.636390839Z running
+   hmb-growth-java 6411315f3ef90bb516c9f421411bef4daeb8617b1e0542273015c21c28be8b72 2026-08-04T20:26:01.625705334Z running
+   hmb-growth-runner 12c9c4579eba13a1e8803e82d9def9e19ae1705bf765677bc043a97e88684645 2026-08-04T20:26:01.598322709Z running
+   hmb-growth-executor 8dc9c3a8da19250881ca38f787594b08dd236a7faf91dc02d6be8a9f269c5845 2026-08-04T20:26:01.523672376Z running
+   hmb-p3-db 2026-07-21T08:51:57Z
+  ✓ 6 항목 기록
+  ✓ 리허설 포트 28080 비어 있음
+  ✓ 리허설 포트 28790 비어 있음
+  ✓ 볼륨 분리(hmb-rehearsal-db ≠ hmb-p3-db)
+
+1) 라이브 DB 백업 (:ro — 런북 P2-12)
+  ✓ 백업 생성 (673MB)
+
+2) 자산 + economy tar (런북 P2-13)
+(일부 자산 없음)
+  ✓ 자산 tar
+
+3) 백업 검증 (런북 P2-14)
+  ✓ integrity_check = ok
+  ✓ flyway 최대 버전 = 9
+  ✓ 표본 행수(users/matches) = 210/123/
+
+4) 리허설 볼륨 적재 (런북 P2-16 — chown 디렉토리까지)
+  ✓ 적재 + chown -R 10001:999 /data
+
+5) 리허설 스택 기동 (런북 P3-17, 포트 28080/28790)
+ Network hmb-rehearsal_default  Creating
+ Network hmb-rehearsal_default  Created
+time="2026-08-09T03:03:52+09:00" level=warning msg="volume \"hmb-rehearsal-db\" already exists but was not created by Docker Compose. Use `external: true` to use an existing volume"
+ Container hmb-rehearsal-java  Creating
+ Container hmb-rehearsal-runner  Creating
+ Container hmb-rehearsal-java  Created
+ Container hmb-rehearsal-runner  Created
+ Container hmb-rehearsal-runner  Starting
+ Container hmb-rehearsal-java  Starting
+ Container hmb-rehearsal-runner  Started
+ Container hmb-rehearsal-java  Started
+  ✓ hmb-rehearsal-java healthy
+
+6) 기동 검증 (런북 P3-18/19/21)
+  ✓ AdminBootstrap admins=1
+  ✓ /internal/health 토큰없이 401(경로 생존)
+  ✓ runner /health 200
+
+6b) 스모크 — 로그인 → /api/me (런북 P5-28)
+  ✓ 로그인 성공 (토큰 발급 · isNew=false)
+  ✓ /api/me 200 (닉네임=deploy-smoke)
+
+7) 이사 전후 DB 대조 (런북 P5 상당)
+  ✓ 행수 일치: 210/123/
+  ✓ economy.override.json 이송됨 (38562B)
+
+격리 재확인
+  ✓ 라이브·growth 컨테이너 ID·기동시각 **완전 동일** · 라이브 볼륨 무변경
+
+결과
+OK  런북 P2~P3 가 같은 머신에서 재현됐다. 정리: bash infra/rehearse-move.sh --clean

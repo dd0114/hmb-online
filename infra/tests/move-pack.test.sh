@@ -42,6 +42,17 @@ CANARY='c4n4ry-m0ve-do-not-print-7q6w5e'
 TD=$(mktemp -d); trap 'rm -rf "$TD"' EXIT
 STUB="$TD/bin"; mkdir -p "$STUB"
 
+# ⚠️ **전역으로 못 박는다.** `unpack-move.sh` 의 `HMB_ENV_FILE` 기본값은 `infra/.env` = **라이브
+#    시크릿 파일**이다. 개별 호출에서 이 변수를 빠뜨리면 테스트가 그것을 합성값으로 덮어쓴다 —
+#    2026-08-09 에 실제로 그렇게 됐다(Q10 의 `--force` 호출이 이 변수 없이 돌았고, 라이브 .env 의
+#    11키가 3키 합성값으로 날아갔다. 가동 중 컨테이너 env 에서 복원). 호출마다 기억하는 대신
+#    **여기서 한 번** 강제하고, 샌드박스 밖을 가리키면 시작조차 하지 않는다.
+export HMB_ENV_FILE="$TD/dotenv"
+case "$HMB_ENV_FILE" in
+  "$TD"/*) : ;;
+  *) printf 'FATAL: HMB_ENV_FILE 이 샌드박스 밖을 가리킨다 (%s)\n' "$HMB_ENV_FILE" >&2; exit 1 ;;
+esac
+
 # ── docker 스텁 ────────────────────────────────────────────────────────
 # 실 볼륨(hmb-p3-db, 659MB 라이브 DB)을 절대 건드리지 않는다. `docker run` 호출을 기록하고,
 # economy.override.json 을 요구하면 $TD/volume 에서 꺼내 준다(있을 때만 — 부재 변이를 위해).

@@ -346,6 +346,25 @@ bash infra/version-manifest.sh
 
 ---
 
+## 실이사 전에 — 모의 이사 리허설 (#472 W3)
+
+정지 창을 쓰기 **전에** 같은 머신에서 P2~P3 을 실제로 집행해 본다. 라이브는 건드리지 않는다
+(별도 포트 28080/28790 · 별도 볼륨 `hmb-rehearsal-db` · 라이브 볼륨은 `:ro` 로만).
+
+```bash
+bash infra/rehearse-move.sh --check    # 격리 기준선(아무것도 안 바꿈)
+bash infra/rehearse-move.sh --go       # P2~P3 집행 + 스모크 + DB 대조
+bash infra/rehearse-move.sh --clean    # 리허설 잔재만 제거
+```
+- **기대**: 마지막 줄 `OK`. `integrity_check=ok` · flyway 버전 · **행수 src=dst** ·
+  `AdminBootstrap admins=1` · 로그인 `isNew=false`(= DB 가 정말 넘어왔다는 증거) ·
+  `economy.override.json` 이송 · **라이브 컨테이너 ID·기동시각 완전 동일**.
+- **실패 시**: 그 항목이 실이사에서도 실패한다. 정지 창을 잡기 전에 여기서 고친다.
+- ⚠️ 라우터 스왑(P4)은 리허설하지 않는다 — 테스터가 보는 URL 을 실제로 바꾸는 일이라
+  같은 머신에서 흉내낼 수 없다(흉내내면 그게 라이브를 건드리는 것이다).
+
+---
+
 ## 롤백
 
 | 시점 | 되돌리는 법 | 대가 |
@@ -365,3 +384,5 @@ bash infra/version-manifest.sh
 | `infra/status.sh` | 배포 상태 한 눈에(OS 중립 워치독 관측) | #183 / AC1.3 |
 | `infra/publish-backend-url.sh` | 라우터 스왑(빌드 없이 config.json 만) | #299 계열 |
 | `infra/version-manifest.sh` | 모듈별 버전·이미지 digest | #164→#171 |
+| `infra/rehearse-move.sh` | 모의 이사 리허설(별도 포트·볼륨) + 격리 가드 | #472 W3 |
+| `infra/check-runbook-sync.sh` | 이 런북 ↔ 스크립트 싱크 | #472 AC2.4 |
