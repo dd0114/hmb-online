@@ -184,6 +184,20 @@ rc=$(run_pack --out "$ROOT/move-oops.tar.gz")
 [ -f "$ROOT/move-oops.tar.gz" ] && { bad "리포에 파일이 실제로 생성됨"; rm -f "$ROOT/move-oops.tar.gz"; } \
   || ok "리포에 파일 미생성"
 
+# ⚠️ Q6 은 **경로 별칭에서 우연히 통과**할 수 있다 — 독립 검증이 실제로 그걸 잡았다.
+#    워크트리를 macOS `/tmp` 에 두면 `git rev-parse` 는 `/private/tmp/…` 를, `pwd` 는 `/tmp/…` 를
+#    주므로 문자열 비교가 빗나가 **거부가 통째로 무력해진다**(심링크된 체크아웃도 같다).
+#    그래서 같은 리포를 **별칭 경로로 가리켜** 다시 태운다. 이게 없으면 Q6 은 자기 머신에서만 참이다.
+ALIAS="$TD/repo-alias"
+ln -sfn "$ROOT" "$ALIAS" 2>/dev/null
+if [ -d "$ALIAS" ]; then
+  rc=$(run_pack --out "$ALIAS/move-alias.tar.gz")
+  [ "$rc" != "0" ] && ok "별칭 경로로도 거부(exit $rc)" \
+    || bad "별칭 경로로는 리포 안에 만들어진다 — 심링크 체크아웃에서 실수 커밋 경로가 열린다"
+  [ -f "$ROOT/move-alias.tar.gz" ] && { bad "별칭 경유로 리포에 파일 생성됨"; rm -f "$ROOT/move-alias.tar.gz"; } \
+    || ok "별칭 경유 파일 미생성"
+fi
+
 # ── Q7: 라이브 볼륨은 read-only 로만 만진다 ────────────────────────────
 head_ Q7 "DB 볼륨 read-only 접근"
 if [ -s "$TD/docker.pack.log" ]; then

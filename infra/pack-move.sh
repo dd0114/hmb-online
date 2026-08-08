@@ -18,7 +18,11 @@
 #      · 이사가 끝나면 **양쪽에서 지운다**(unpack 이 그렇게 안내한다)
 set -uo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
-ROOT=$(pwd)
+# ⚠️ **물리 경로**로 잡는다(`pwd -P`). 논리 경로로 비교하면 별칭 하나에 아래 리포-내부 거부가
+#    통째로 무력해진다 — macOS 의 `/tmp` → `/private/tmp` 가 그 예이고(워크트리를 /tmp 에 두면
+#    git 은 /private/tmp 를, pwd 는 /tmp 를 준다), 심링크된 체크아웃도 같다.
+#    이 결함은 실제로 독립 검증이 잡았고, 내 리포에서는 두 값이 같아 **우연히 통과**하고 있었다.
+ROOT=$(pwd -P)
 
 DRY=0; OUT=""; NO_CLAUDE=0; WITH_BACKUPS=0
 while [ $# -gt 0 ]; do
@@ -50,10 +54,12 @@ echo "════════ 이송 팩 (#472) ════════"
 # ── 출력 경로 안전장치 ────────────────────────────────────────────────
 # 리포 안에 만들면 언젠가 커밋된다. gitignore 를 믿지 않는다 — 규칙은 바뀌고 실수는 남는다.
 if [ -n "$OUT" ]; then
-  OUTDIR=$(cd "$(dirname "$OUT")" 2>/dev/null && pwd || echo "")
+  OUTDIR=$(cd "$(dirname "$OUT")" 2>/dev/null && pwd -P || echo "")
   [ -z "$OUTDIR" ] && { echo "출력 디렉토리가 없다: $(dirname "$OUT")"; exit 64; }
-  case "$OUTDIR/" in
-    "$ROOT"/*) printf "${R}✗ 출력 경로가 리포 안이다: %s${N}\n" "$OUT"
+  # 리포 루트 **자신**과 그 **하위** 둘 다 막는다(`case` 의 `*` 는 빈 문자열도 먹지만,
+  # 의도를 코드에 남긴다 — 이 한 줄이 실수 커밋을 막는 전부다).
+  case "$OUTDIR" in
+    "$ROOT"|"$ROOT"/*) printf "${R}✗ 출력 경로가 리포 안이다: %s${N}\n" "$OUT"
                echo "  이 팩은 시크릿 덩어리다 — 리포 안에 두면 실수로 커밋된다."
                echo "  리포 밖으로: bash infra/pack-move.sh --out ~/hmb-move.tar.gz"
                exit 3 ;;
@@ -100,10 +106,10 @@ COPIED=0; TOTAL_KB=0
 for row in "${ITEMS[@]}"; do
   IFS='|' read -r label src _req desc <<< "$row"
   if [ -e "$src" ]; then
-    sz=$(du -sk "$src" 2>/dev/null | awk '{print $1}')
+    sz=$(du -skL "$src" 2>/dev/null | awk '{print $1}')
     # state/hmb 는 제외분을 빼고 센다 — 안 그러면 "13GB 를 옮긴다" 로 보인다.
     if [ "$WITH_BACKUPS" = 0 ] && [ -d "$src/db-backups" ]; then
-      bk=$(du -sk "$src/db-backups" 2>/dev/null | awk '{print $1}')
+      bk=$(du -skL "$src/db-backups" 2>/dev/null | awk '{print $1}')
       sz=$(( ${sz:-0} - ${bk:-0} ))
       note "$label 의 db-backups/ $(( ${bk:-0} / 1048576 ))GB 는 **제외**한다(구 머신에 남는다. 포함: --with-db-backups)"
     fi

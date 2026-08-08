@@ -1,0 +1,28 @@
+### AC2.1/2.2/2.4 — 런북 싱크 검사기
+════════ 런북 ↔ 스크립트 싱크 ════════
+런북: docs/plan-v4/migration-runbook.md
+
+── 참조 경로 ──
+  ✓ 참조 경로 전부 실재
+  ! 런타임 산출물(gitignore, 체크아웃엔 없음): infra/deploy-manifest.json
+
+── 플래그 ──
+  ✓ 플래그 미스 0
+
+── 함정 4종 ──
+  ✓ ① 구 머신 워치독 정지
+  ✓ ② economy.override.json 이송
+  ✓ ③ chown 이 디렉토리까지
+  ✓ ④ 스왑 후 롤백 = 쓰기 유실
+
+── 안전장치 ──
+  ✓ `down -v` 금지 명시
+  ✓ pkill -f 금지 명시
+═══════════════════════════════════
+OK  런북과 스크립트가 일치한다
+exit=0
+
+### 변이킬
+가짜 경로(infra/no-such-script.sh) 주입 → exit 1 (경로 지목)
+함정③ chown -R /data → chown /data/hmb.db 로 축소 → exit 1 (함정 누락 지목)
+복구 후 → exit 0
