@@ -1,0 +1,924 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider20/hmb-online
+
+stderr | apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 / 에서도 라우터 트리 대신 점검 화면만 렌더된다
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ❯ apps/web/src/common/MaintenanceGate.test.ts (30 tests | 15 failed) 139ms
+   × MaintenanceGate — 라우트 전수 > outage 면 / 에서도 라우터 트리 대신 점검 화면만 렌더된다 35ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /login 에서도 라우터 트리 대신 점검 화면만 렌더된다 6ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /home 에서도 라우터 트리 대신 점검 화면만 렌더된다 6ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /game 에서도 라우터 트리 대신 점검 화면만 렌더된다 5ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /away 에서도 라우터 트리 대신 점검 화면만 렌더된다 4ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /deck 에서도 라우터 트리 대신 점검 화면만 렌더된다 5ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /players 에서도 라우터 트리 대신 점검 화면만 렌더된다 5ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /recruit 에서도 라우터 트리 대신 점검 화면만 렌더된다 4ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /me 에서도 라우터 트리 대신 점검 화면만 렌더된다 5ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /league 에서도 라우터 트리 대신 점검 화면만 렌더된다 4ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /match/m-1 에서도 라우터 트리 대신 점검 화면만 렌더된다 5ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /share/notice/n-1 에서도 라우터 트리 대신 점검 화면만 렌더된다 5ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /admin 에서도 라우터 트리 대신 점검 화면만 렌더된다 3ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /lobby 에서도 라우터 트리 대신 점검 화면만 렌더된다 4ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+   × MaintenanceGate — 라우트 전수 > outage 면 /nonexistent-route 에서도 라우터 트리 대신 점검 화면만 렌더된다 3ms
+     → Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 15 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 / 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /login 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /home 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /game 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /away 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /deck 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /players 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /recruit 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /me 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /league 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /match/m-1 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /share/notice/n-1 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /admin 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /lobby 에서도 라우터 트리 대신 점검 화면만 렌더된다
+ FAIL  apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > outage 면 /nonexistent-route 에서도 라우터 트리 대신 점검 화면만 렌더된다
+TestingLibraryElementError: Unable to find an element by: [data-testid="maintenance-screen"]
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"_page_efd031"[39m
+    [36m>[39m
+      [36m<h1[39m
+        [33mclass[39m=[32m"_title_efd031"[39m
+      [36m>[39m
+        [0mHMB 온라인[0m
+      [36m</h1>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"_providerList_efd031"[39m
+        [33mdata-testid[39m=[32m"provider-choose"[39m
+      [36m>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:google"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m구글로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-mock:apple"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m애플로 계속[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-local"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m아이디로 로그인[0m
+        [36m</button>[39m
+        [36m<button[39m
+          [33mclass[39m=[32m"_providerButton_efd031 _guestButton_efd031"[39m
+          [33mdata-testid[39m=[32m"provider-guest"[39m
+          [33mtype[39m=[32m"button"[39m
+        [36m>[39m
+          [0m게스트로 시작[0m
+        [36m</button>[39m
+        [36m<p[39m
+          [33mclass[39m=[32m"_disclaimer_efd031"[39m
+        [36m>[39m
+          [0m목업 로그인입니다 — 실제 구글/애플 계정과 무관합니다.[0m
+        [36m</p>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ apps/web/src/common/MaintenanceGate.test.ts:75:19
+     73|     render(h(App));
+     74| 
+     75|     expect(screen.getByTestId("maintenance-screen")).toBeTruthy();
+       |                   ^
+     76|     // 라우터가 통째로 안 그려졌다는 것 — 어떤 화면의 조각도 남지 않는…
+     77|     expect(screen.queryByTestId("app-nav")).toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/15]⎯
+
+ Test Files  1 failed (1)
+      Tests  15 failed | 15 passed (30)
+   Start at  12:22:14
+   Duration  3.19s (transform 1.26s, setup 0ms, collect 2.12s, tests 139ms, environment 542ms, prepare 60ms)
+

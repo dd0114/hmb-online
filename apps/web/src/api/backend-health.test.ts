@@ -87,6 +87,25 @@ describe("backend-health — outage 확정", () => {
     expect(getBackendHealth()).toBe("ok");
   });
 
+  /**
+   * 부분 장애를 outage 로 확정하지 않는 것은 **의도된 설계**다(패널 S2 가 두 번 지적했다).
+   *
+   * 엔드포인트 하나가 죽었는데 카나리아(`/api/config`)가 살아 있으면 점검 화면은 뜨지 않는다.
+   * 앱 전체를 덮으면 멀쩡한 기능까지 못 쓰게 되고, 그 화면의 에러 처리는 그 화면이 맡는다.
+   * 우연히 그렇게 동작하는 것과 그렇게 하기로 정한 것은 다르므로 여기에 못을 박는다 —
+   * 바꾸려는 사람은 이 테스트를 지우면서 바꿔야 한다.
+   */
+  it("부분 장애(카나리아는 살아 있음)는 outage 로 확정하지 않는다 — 의도된 설계", async () => {
+    const canaryAlive = vi.fn().mockResolvedValue(true);
+    setBackendProbe(canaryAlive);
+
+    // 어떤 화면의 요청 하나가 502 로 죽어 실패를 보고했다.
+    reportBackendUnreachable();
+    await settle();
+
+    expect(getBackendHealth()).toBe("ok"); // 앱 전체를 덮지 않는다
+  });
+
   it("확인이 진행 중이면 실패 보고가 새 확인을 중복 기동하지 않는다", async () => {
     const probe = vi.fn().mockResolvedValue(false);
     setBackendProbe(probe);
