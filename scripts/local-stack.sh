@@ -122,12 +122,28 @@ node_ok() {
 }
 
 # claude 로그인 dry-probe. 여기서의 판정은 **안내용**이다 — 실제 강등은 AI 실행기 프리플라이트가
-# 하고(그게 유효 모드의 SoT), 그 결과는 `GET /api/config` 로 나간다.
+# 하고(그게 유효 모드의 SoT `packages/server/src/executor/ai-mode.ts`), 그 결과는 `GET /api/config` 로 나간다.
+# 사유 어휘(cli-missing·logged-in·logged-out·probe-timeout·probe-failed)를 **그쪽 표와 맞춘다** —
+# doctor 가 말한 사유와 실행기가 말한 사유가 다르면 그 자체가 디버깅을 방해한다.
 claude_state() {
   local bin="${HMB_LOCAL_CLAUDE_BIN:-claude}"
-  command -v "$bin" >/dev/null 2>&1 || { echo "missing"; return; }
+  command -v "$bin" >/dev/null 2>&1 || { echo "cli-missing"; return; }
   if [ -n "${ANTHROPIC_API_KEY:-}" ]; then echo "apikey"; return; fi
-  echo "present"
+
+  # ⚠️ 무한 대기 금지 — 프로브가 매달리면 doctor 가 매달린다. PID 로만 죽인다(패턴 kill 금지).
+  local out="$TMP/claude-auth-probe.json"
+  : > "$out"
+  ( "$bin" auth status --json >"$out" 2>/dev/null ) & local pid=$!
+  local i=0
+  while kill -0 "$pid" 2>/dev/null && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i + 1)); done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill -9 "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true
+    echo "probe-timeout"; return
+  fi
+  wait "$pid" 2>/dev/null || true
+  grep -q '"loggedIn"[[:space:]]*:[[:space:]]*true' "$out" && { echo "logged-in"; return; }
+  grep -q '"loggedIn"[[:space:]]*:[[:space:]]*false' "$out" && { echo "logged-out"; return; }
+  echo "probe-failed"
 }
 
 doctor() {
@@ -142,9 +158,12 @@ doctor() {
     2) warn "java 가 21 미만이다 — JDK 21 필요"; bad=1 ;;
   esac
   case "$(claude_state)" in
-    present) ok "claude CLI 있음 → 라이브 AI 로 시도(로그인 안 돼 있으면 자동으로 스텁 강등)" ;;
-    apikey)  warn "ANTHROPIC_API_KEY 가 설정돼 있다 — 정액제가 아니라 종량 과금으로 샌다. unset 권장" ;;
-    missing) warn "claude CLI 없음 → 스텁 엔진으로 플레이(경기는 정상 진행, AI 전술 생성만 결정론 대체)" ;;
+    logged-in)     ok "claude 로그인됨 (logged-in) → 라이브 AI" ;;
+    apikey)        warn "ANTHROPIC_API_KEY 가 설정돼 있다 — 정액제가 아니라 종량 과금으로 샌다. unset 권장" ;;
+    logged-out)    warn "claude 로그인 안 됨 (logged-out) → 스텁 엔진으로 강등. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체된다" ;;
+    cli-missing)   warn "claude CLI 없음 (cli-missing) → 스텁 엔진으로 강등. 경기는 정상 진행된다" ;;
+    probe-timeout) warn "claude 로그인 확인이 10초 안에 안 끝났다 (probe-timeout) → 스텁 엔진으로 강등" ;;
+    *)             warn "claude 로그인 상태를 못 읽었다 (probe-failed) → 스텁 엔진으로 강등" ;;
   esac
   info "포트: java ${JAVA_PORT} · runner ${RUNNER_PORT} · web ${WEB_PORT}  (HMB_LOCAL_*_PORT 로 변경)"
   # 선점 검출 — 이전 실행의 잔재나 다른 세션의 스택이 물고 있으면 여기서 말한다.
@@ -204,6 +223,25 @@ start_executor() {
   EXEC_PID=$!
   sleep 2
   ok "실행기 기동 (로그 $TMP/executor.log)"
+}
+
+# 실효 AI 모드 확인 (#471 AC3). 실행기가 기동 프리플라이트 결과를 `/internal/ai-mode` 로 자기신고하고
+# 서버가 `/api/config` 의 `ai` 로 내려 주면, 웹은 그 값 하나로 안내를 켠다. 여기서 보는 것은
+# **그 배선이 실제로 도는가**다 — 신고가 영영 안 오면 화면은 조용히 "확인 중"에 머문다(무증상 결함).
+show_ai_mode() {
+  local strict="${1:-0}" i=0 mode="" reason=""
+  while [ "$i" -lt 30 ]; do
+    mode="$(curl -s "$BASE/api/config" | sed -n 's/.*"ai":{"mode":"\([^"]*\)".*/\1/p')"
+    [ -n "$mode" ] && [ "$mode" != "unknown" ] && break
+    sleep 0.5; i=$((i + 1))
+  done
+  reason="$(curl -s "$BASE/api/config" | sed -n 's/.*"ai":{"mode":"[^"]*","reason":"\([^"]*\)".*/\1/p')"
+  case "$mode" in
+    live) ok "실효 AI 모드: live ($reason) — 선수 프롬프트가 경기에 반영된다" ;;
+    stub) warn "실효 AI 모드: stub ($reason) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체" ;;
+    *)    if [ "$strict" = "1" ]; then fail "실행기가 AI 모드를 신고하지 않았다(mode=${mode:-없음}) — $TMP/executor.log"
+          else warn "실효 AI 모드 확인 중(mode=${mode:-없음})"; fi ;;
+  esac
 }
 
 start_web() {
@@ -315,6 +353,7 @@ case "$CMD" in
     start_runner
     start_java
     start_executor "$AI_MODE_WANTED"
+    show_ai_mode 1
     play_once
     printf '\n\033[32mPASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다\033[0m\n'
     ;;
@@ -327,6 +366,7 @@ case "$CMD" in
     start_runner
     start_java
     start_executor "$AI_MODE_WANTED"
+    show_ai_mode 0
     start_web
     say "준비 완료"
     printf '   \033[1m브라우저로 %s 를 열어라\033[0m\n' "$WEB_URL"

@@ -39,6 +39,16 @@ export interface AppConfig {
   } | null;
   /** 가입 지급액. 클라 상수(3,000)가 이미 틀려 있었고 유상재화 지급은 표기조차 없었다(#232). */
   grants: { initialPoints: number; initialGems: number } | null;
+  /**
+   * 실효 AI 모드 (#471 AC3). **옵셔널이다** — 이 필드를 모르는 구 서버에 붙으면 `undefined` 이고,
+   * 그때는 아무것도 안내하지 않는다(모르는 것을 스텁이라고 단정하지 않는다).
+   *
+   * - `live` — 로컬 `claude` 로그인이 확인됐다. 안내 없음.
+   * - `stub` — 로그인/CLI 가 없어 **스태틱(스텁) 엔진**으로 강등됐다. 시작 화면에 안내를 띄운다.
+   * - `unknown` — 아직 실행기 신고 전이거나 신고가 만료됐다. **안내하지 않는다** — 서버 부팅 직후
+   *   창에서 스텁 배너가 번쩍이면 로그인한 사용자에게 거짓말이 된다.
+   */
+  ai?: { mode: "live" | "stub" | "unknown"; reason: string | null } | null;
 }
 
 export const CONFIG_QUERY_KEY = ["config"] as const;

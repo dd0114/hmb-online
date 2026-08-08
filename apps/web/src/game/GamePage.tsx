@@ -9,7 +9,8 @@ import { AwayReportModal } from "../lobby/AwayReportModal";
 import { shouldShowAwayPopup } from "../lobby/away-report-logic";
 import { useDecklessGuard } from "../common/useDecklessGuard";
 import { matchInProgressIdOf, shouldForceResume } from "../common/match-lock";
-import { leagueModeHint, practiceError } from "./game-logic";
+import { useAppConfigValue } from "../common/AppConfigContext";
+import { aiModeNotice, leagueModeHint, practiceError } from "./game-logic";
 import styles from "./GamePage.module.css";
 
 /**
@@ -41,6 +42,9 @@ export function GamePage() {
   // 매치로 튕기는 사이 팝업이 뜨면 읽지도 못한 채 ack 이 소진되고, 이 앱엔 지난 리포트를 볼
   // 화면이 없으므로 **영구 소실**이다. 로딩 중(`activeLoading`)도 보류다 — 모르는 동안은 묻지
   // 않는다(#245 3R blocker 가 그 창을 잡았다). 이관하면서 한 번 잃었다(독립검증 MAJ-1).
+  // #471 AC3 — 라이브 AI 가 아니면 여기서 한 번 알려 준다(막지 않는다, 안내만).
+  const aiNotice = aiModeNotice(useAppConfigValue()?.ai);
+
   const { data: active, isLoading: activeLoading } = useActiveMatch();
   const forcedToMatch = activeLoading || shouldForceResume(active);
   const { data: awayReports } = useAwayReports("unseen", !forcedToMatch);
@@ -100,6 +104,11 @@ export function GamePage() {
   return (
     <Layout header={header} nav>
       <div className={styles.page} data-testid="game-page">
+        {aiNotice && (
+          <p className={styles.aiNotice} data-testid="ai-mode-notice" role="status">
+            {aiNotice}
+          </p>
+        )}
         <button
           type="button"
           className={`${styles.mode} ${styles.league}`}

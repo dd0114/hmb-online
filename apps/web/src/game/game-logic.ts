@@ -6,6 +6,7 @@
  */
 import { ApiError } from "../api/client";
 import type { LeagueResponse } from "../api/v2";
+import type { AppConfig } from "../api/config";
 
 export interface LeagueHint {
   /** 디비전 이름(서버 값) 또는 규칙 문구 폴백. */
@@ -51,4 +52,20 @@ export function practiceError(err: ApiError | Error): string {
     return `덱이 유효하지 않습니다 — ${err.message}`;
   }
   return err instanceof Error ? err.message : "매치 생성에 실패했습니다";
+}
+
+/**
+ * AI 모드 안내 (#471 AC3).
+ *
+ * hero 요구는 <b>"클로드 로그인 안되어있으면 게임시작할때 안내말만하고 스태틱 엔진으로 써있어야함"</b> 이다.
+ * 여기서 지키는 규칙은 하나 — <b>모르면 아무 말도 하지 않는다</b>. 서버가 `ai` 를 안 주거나(구 서버)
+ * `unknown`(실행기 신고 전·신고 만료)이면 null 이다. 그 창에서 배너를 띄우면 로그인해 둔 사용자에게
+ * "스태틱 엔진입니다"라고 거짓말하게 된다 — 없는 문제를 있다고 말하는 쪽이 반대보다 나쁘다.
+ *
+ * 안내는 **막지 않는다**. 스텁 엔진으로도 경기는 끝까지 돌아가고(그게 로컬 빌드·E2E 의 기본 경로다),
+ * 이 문구는 "왜 전술 프롬프트가 반영이 안 되지?" 를 설명해 주는 자리다.
+ */
+export function aiModeNotice(ai: AppConfig["ai"]): string | null {
+  if (!ai || ai.mode !== "stub") return null;
+  return "지금은 스태틱(스텁) 엔진으로 경기합니다 — 선수 프롬프트가 경기에 반영되지 않습니다. 라이브 AI 를 쓰려면 이 서버를 돌리는 머신에서 `claude` 로그인 후 다시 기동하세요.";
 }

@@ -1,0 +1,88 @@
+### 팔 A — claude 로그인된 상태 · 희망 claude-code (기대: live/logged-in)
+$ HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
+
+== 전제 점검
+   ✓ node v20.19.6 (요구 20.19.6)
+   ✓ npm 10.8.2
+   ✓ JDK 21.0.8 (JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home)
+   ✓ claude 로그인됨 (logged-in) → 라이브 AI
+   포트: java 31080 · runner 31790 · web 31173  (HMB_LOCAL_*_PORT 로 변경)
+   ✓ 로컬 빌드 전제 충족
+
+== 엔진 러너 :31790
+   ✓ 러너 준비
+
+== 권위 서버 빌드 + 기동 :31080
+   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-7Z7Z/hmb.db)
+
+== AI 실행기 (희망 모드: claude-code)
+   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-7Z7Z/executor.log)
+   ✓ 실효 AI 모드: live (logged-in) — 선수 프롬프트가 경기에 반영된다
+
+== 가입 → 덱 → 매치
+   ✓ 가입 local1786207015
+   ✓ 덱 저장 (선발 11 + 벤치 2)
+   ✓ 킥오프 01KZH3R4PDCSRETDDPP03468EF
+
+== 관찰 (재생 창은 스킵 API 로 당긴다)
+   t+000s  GEN1
+   t+056s  FIRST_HALF
+   ⏩ FIRST_HALF 재생 창 당김
+   t+056s  HALFTIME
+   t+060s  GEN2
+   t+060s  SECOND_HALF
+   ⏩ SECOND_HALF 재생 창 당김
+   t+061s  FINISHED
+   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME GEN2 SECOND_HALF FINISHED
+
+PASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다
+scripts/local-stack.sh: line 74: 76112 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 74: 76186 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$WEB_URL" ${clock[@]+"${clock[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 74: 76256 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-7Z7Z
+EXIT=0
+
+════════════════════════════════════════
+
+### 팔 B — claude CLI 를 못 찾는 상태 · 희망 claude-code (기대: stub/cli-missing 강등, 경기는 완주)
+$ CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
+
+== 전제 점검
+   ✓ node v20.19.6 (요구 20.19.6)
+   ✓ npm 10.8.2
+   ✓ JDK 21.0.8 (JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home)
+   ! claude CLI 없음 (cli-missing) → 스텁 엔진으로 강등. 경기는 정상 진행된다
+   포트: java 31080 · runner 31790 · web 31173  (HMB_LOCAL_*_PORT 로 변경)
+   ✓ 로컬 빌드 전제 충족
+
+== 엔진 러너 :31790
+   ✓ 러너 준비
+
+== 권위 서버 빌드 + 기동 :31080
+   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-Iz0c/hmb.db)
+
+== AI 실행기 (희망 모드: claude-code)
+   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-Iz0c/executor.log)
+   ! 실효 AI 모드: stub (cli-missing) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체
+
+== 가입 → 덱 → 매치
+   ✓ 가입 local1786207101
+   ✓ 덱 저장 (선발 11 + 벤치 2)
+   ✓ 킥오프 01KZH3TRT62WGJ03BM9BK93XPH
+
+== 관찰 (재생 창은 스킵 API 로 당긴다)
+   t+000s  GEN1
+   t+002s  FIRST_HALF
+   ⏩ FIRST_HALF 재생 창 당김
+   t+002s  HALFTIME
+   t+005s  SECOND_HALF
+   ⏩ SECOND_HALF 재생 창 당김
+   t+006s  FINISHED
+   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME SECOND_HALF FINISHED
+
+PASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다
+scripts/local-stack.sh: line 74: 79947 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 74: 80086 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$WEB_URL" ${clock[@]+"${clock[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 74: 80149 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-Iz0c
+EXIT=0
