@@ -20,6 +20,8 @@ import { StarterReveal } from "./StarterReveal";
 import { markTutorialPending } from "../common/tutorial-storage";
 import { ErrorToast } from "../common/ErrorToast";
 import { Modal } from "../common/Modal";
+import { SplashScreen } from "../splash/SplashScreen";
+import { markSplashSeen, readSplashSeen, shouldShowSplash } from "../splash/splash-gate";
 import styles from "./LoginPage.module.css";
 
 type LoginResponse = components["schemas"]["LoginResponse"];
@@ -54,6 +56,17 @@ export function LoginPage() {
    * 유저의 딥링크만 조용히 로비로 새 나간다.
    */
   const returnTo = resolveReturnTo(searchParams.get(RETURN_TO_PARAM));
+  /**
+   * 첫 진입 스플래시(#479). 비로그인 첫 화면은 항상 이 라우트이므로(App.tsx 의 `/`·`*` 가
+   * 여기로 보낸다) 게이트도 여기 한 곳이면 된다.
+   *
+   * ⚠️ 초기값을 **한 번만** 계산한다(lazy initializer) — 매 렌더에서 `readSplashSeen()` 을
+   * 다시 읽으면 `markSplashSeen()` 직후 리렌더에서 조건이 뒤집혀 스플래시가 두 번 사라지거나
+   * (더 나쁘게) 로그인 중 리렌더에 다시 뜬다. 판정 규칙 자체는 `splash-gate.ts` 가 소유한다.
+   */
+  const [splashOpen, setSplashOpen] = useState(() =>
+    shouldShowSplash({ seen: readSplashSeen(), returnTo: searchParams.get(RETURN_TO_PARAM) }),
+  );
 
   // 게스트: 기존 플로우 그대로(동의 모달 없이 바로 닉네임 입력).
   function chooseGuest() {
@@ -140,6 +153,23 @@ export function LoginPage() {
     // 거기서 온보딩이 시작된다(#286: 코치마크 대상이 홈 타일이다). #248 의 "미룸"은
     // **저절로 뜨는 팝업**에만 걸린다.
     navigate(returnTo, { replace: true });
+  }
+
+  /**
+   * ⚠️ 스플래시는 로그인 폼을 **가리는 오버레이가 아니라 대체 화면**이다(#479). 겹쳐 두면
+   * 폼이 뒤에 살아 있어 스크린리더·탭 순서가 두 화면을 동시에 읽고, 아래 버튼들이 오버레이
+   * 뒤에서 눌리는 자리가 생긴다. `[게임 시작]` 이 이 상태를 끝내면 **현행 폼이 그대로** 나온다
+   * (아래 JSX 는 손대지 않았다 = 로그인 후 동선 무변경).
+   */
+  if (splashOpen) {
+    return (
+      <SplashScreen
+        onStart={() => {
+          markSplashSeen();
+          setSplashOpen(false);
+        }}
+      />
+    );
   }
 
   return (

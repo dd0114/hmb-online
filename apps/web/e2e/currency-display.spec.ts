@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { mockAppConfig } from "./app-config-mock";
+import { skipSplash } from "./splash-mock";
 
 /**
  * 재화 표기 계약 (#232) — **서버 주도인가**를 강제한다.
@@ -228,6 +229,7 @@ test("가입 연출이 지급액·재화를 서버에서 받아 그린다 — �
   );
 
   await page.setViewportSize({ width: 390, height: 900 });
+  await skipSplash(page);
   await page.goto("/login");
   await page.getByTestId("provider-guest").click();
   await page.locator("#nickname").fill("테스터");
@@ -290,6 +292,7 @@ test("로그아웃 상태로 부팅해 로그인해도 표기가 살아 있다",
   });
 
   await page.setViewportSize({ width: 390, height: 900 });
+  await skipSplash(page);
   await page.goto("/login");
   await page.getByTestId("provider-guest").click();
   await page.locator("#nickname").fill("테스터");

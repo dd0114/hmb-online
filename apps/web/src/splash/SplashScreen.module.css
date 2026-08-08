@@ -1,0 +1,103 @@
+/* #479 — 첫 진입 스플래시. 무대(9:16)를 화면에 꽉 맞추고 아래에 [게임 시작] 을 띄운다. */
+
+.screen {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  background: #05070a;
+  /* 무대가 화면을 덮으므로 그 밖 여백도 같은 검정 — 이음매가 보이지 않게. */
+  overflow: hidden;
+}
+
+/*
+ * 무대 호스트. 플레이어가 `.hmb-stage` 의 width/height 를 **인라인으로** 정하므로
+ * (`Show.resize`) 여기서 크기를 주지 않는다 — 주면 두 곳이 싸운다.
+ */
+.host {
+  position: relative;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+
+/*
+ * ⚠️ CTA 는 무대 **위에 겹친다**(무대 아래 흐름이 아니다). 9:16 무대를 화면 높이에 맞추면
+ * 세로가 남지 않아서, 흐름에 두면 무대를 그만큼 줄여야 하고 그러면 폰에서 연출이 작아진다.
+ * 겹치는 대신 아래쪽에 어두운 그라디언트를 깔아 글자 가독성을 확보한다.
+ */
+.cta {
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* 홈 인디케이터 + 접히는 브라우저 UI 몫 — 공지 팝업(#386)과 같은 관용구.
+     데스크탑은 lvh == svh 라 0 이다. */
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px) + (100lvh - 100svh));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  pointer-events: none;
+}
+
+.cta > * {
+  pointer-events: auto;
+}
+
+.scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 34%;
+  pointer-events: none;
+  background: linear-gradient(rgb(5 7 10 / 0%), rgb(5 7 10 / 72%) 62%, rgb(5 7 10 / 92%));
+}
+
+.start {
+  width: 100%;
+  max-width: 340px;
+  padding: 16px 24px;
+  border: 0;
+  border-radius: 999px;
+  background: #2b5cff;
+  color: #fff;
+  font-size: 1.0625rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  box-shadow: 0 14px 38px rgb(43 92 255 / 45%);
+}
+
+.start:hover {
+  background: #3f6dff;
+}
+
+.start:active {
+  transform: translateY(1px);
+}
+
+.start:focus-visible {
+  outline: 2px solid #cfe0ff;
+  outline-offset: 3px;
+}
+
+/* 로딩 진행 — 재생이 시작되기 전에만 뜬다. 버튼을 막지 않는다(#479 D4). */
+.progress {
+  min-height: 1.05rem;
+  color: #7b8ba3;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* 연출을 지우지는 않는다 — 그러면 스플래시가 검은 화면이 된다. 재생 자체는
+     호스트가 정지시키고(첫 프레임 유지) 여기서는 버튼 미세동작만 없앤다. */
+  .start:active {
+    transform: none;
+  }
+}

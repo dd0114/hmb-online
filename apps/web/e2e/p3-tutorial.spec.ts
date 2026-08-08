@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { skipSplash } from "./splash-mock";
 
 /**
  * 신규 유저 온보딩 튜토리얼 E2E — PRD-v4 §B (AC-B1, AC-B2), P3-D6.
@@ -148,12 +149,14 @@ async function fillLogin(page: Page) {
 
 /** 신규 가입 → 스타터팩 확인 → 로비. isNew=true 라 튜토리얼이 자동 시작된다. */
 async function registerNewUser(page: Page) {
+  await skipSplash(page);
   await page.goto("/login");
   await fillRegister(page);
 }
 
 /** 기존 유저 로그인(isNew=false) — 재로그인 미노출 검증용. */
 async function loginExistingUser(page: Page) {
+  await skipSplash(page);
   await page.goto("/login");
   await fillLogin(page);
 }

@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { skipSplash } from "./splash-mock";
 
 /**
  * 자체 로그인(id/비번) 브라우저 E2E — PRD-v4 §A (AC-A1, AC-A2), P3-D2.
@@ -69,6 +70,7 @@ async function mockApi(page: Page, mocks: AuthMocks = {}) {
 }
 
 async function openLocalPanel(page: Page) {
+  await skipSplash(page);
   await page.goto("/login");
   await expect(page.getByTestId("provider-choose")).toBeVisible();
   await page.getByTestId("provider-local").click();
@@ -99,6 +101,7 @@ async function storageDump(page: Page): Promise<string> {
 test.describe("AC-A1 — 자체 로그인 진입점 (기존 플로우 무회귀)", () => {
   test("provider 화면에 기존 3버튼 + 아이디 진입점이 공존한다", async ({ page }) => {
     await mockApi(page);
+    await skipSplash(page);
     await page.goto("/login");
     await expect(page.getByTestId("provider-mock:google")).toBeVisible();
     await expect(page.getByTestId("provider-mock:apple")).toBeVisible();
@@ -108,6 +111,7 @@ test.describe("AC-A1 — 자체 로그인 진입점 (기존 플로우 무회귀)
 
   test("기존 게스트 플로우가 그대로 동작한다 (무회귀)", async ({ page }) => {
     const requests = await mockApi(page);
+    await skipSplash(page);
     await page.goto("/login");
     await page.getByTestId("provider-guest").click();
     await page.getByPlaceholder("2~16자").fill("게스트1");

@@ -19,15 +19,23 @@ vi.mock("../api/client", async () => {
 
 import { LoginPage } from "./LoginPage";
 import { TokenProvider } from "./TokenContext";
+import { SPLASH_SEEN_KEY } from "../splash/splash-gate";
 
-function renderLogin() {
-  return render(h(MemoryRouter, { initialEntries: ["/login"] }, h(TokenProvider, null, h(LoginPage))));
+function renderLogin(entry = "/login") {
+  return render(h(MemoryRouter, { initialEntries: [entry] }, h(TokenProvider, null, h(LoginPage))));
 }
 
 beforeEach(() => {
   apiFetch.mockReset();
   apiFetch.mockResolvedValue({ token: "tok_1", user: { id: "u1", nickname: "테스터" }, isNew: false });
   window.localStorage.clear();
+  window.sessionStorage.clear();
+  /**
+   * ⚠️ #479 부터 **첫 진입은 스플래시**다 — 이 블록의 스펙들은 그 뒤의 provider 플로우를
+   * 보는 것이라 "이미 봤다"에서 출발시킨다. 스플래시 자체의 동선은 아래 `#479` describe 와
+   * `e2e/p479-splash.spec.ts` 가 실경로로 검증한다(여기서 겸하면 두 관심사가 엉킨다).
+   */
+  window.sessionStorage.setItem(SPLASH_SEEN_KEY, "1");
 });
 
 afterEach(() => cleanup());
@@ -91,5 +99,52 @@ describe("LoginPage OAuth mock flow (AC-A1)", () => {
     fireEvent.change(screen.getByPlaceholderText("2~16자"), { target: { value: "a" } });
     fireEvent.click(screen.getByRole("button", { name: "계속" }));
     expect(apiFetch).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * #479 — 첫 진입 스플래시가 로그인 폼 **앞에** 선다.
+ *
+ * ⚠️ 위 블록이 `SPLASH_SEEN_KEY` 를 미리 심으므로 여기서는 **매 스펙이 직접 지운다** — 안 지우면
+ * 스플래시가 애초에 마운트되지 않아 이 describe 전체가 "검사하는 척"만 한다.
+ */
+describe("#479 첫 진입 스플래시", () => {
+  beforeEach(() => window.sessionStorage.clear());
+
+  it("첫 진입에는 스플래시가 뜨고 로그인 폼은 렌더되지 않는다", () => {
+    renderLogin();
+    expect(screen.getByTestId("splash")).toBeTruthy();
+    // ⚠️ 오버레이로 덮는 것이 아니라 **대체**다 — 폼이 뒤에 살아 있으면 탭 순서가 두 화면을 읽는다.
+    expect(screen.queryByTestId("provider-choose")).toBeNull();
+    expect(screen.queryByTestId("provider-guest")).toBeNull();
+  });
+
+  it("[게임 시작] 을 누르면 현행 로그인 폼이 그대로 나온다", () => {
+    renderLogin();
+    fireEvent.click(screen.getByTestId("splash-start"));
+    expect(screen.queryByTestId("splash")).toBeNull();
+    expect(screen.getByTestId("provider-choose")).toBeTruthy();
+    expect(screen.getByTestId("provider-mock:google")).toBeTruthy();
+    expect(screen.getByTestId("provider-mock:apple")).toBeTruthy();
+    expect(screen.getByTestId("provider-local")).toBeTruthy();
+    expect(screen.getByTestId("provider-guest")).toBeTruthy();
+  });
+
+  it("[게임 시작] 이 세션 플래그를 남긴다 (세션당 1회)", () => {
+    renderLogin();
+    fireEvent.click(screen.getByTestId("splash-start"));
+    expect(window.sessionStorage.getItem(SPLASH_SEEN_KEY)).toBe("1");
+    // 같은 세션에서 다시 마운트되면 스플래시 없이 폼으로 간다.
+    cleanup();
+    renderLogin();
+    expect(screen.queryByTestId("splash")).toBeNull();
+    expect(screen.getByTestId("provider-choose")).toBeTruthy();
+  });
+
+  /** 공유 딥링크(#298)로 들어온 사람은 광고보다 목적지가 먼저다. */
+  it("?returnTo= 로 들어오면 스플래시를 건너뛴다", () => {
+    renderLogin("/login?returnTo=%2Fshare%2Fnotice%2Fabc");
+    expect(screen.queryByTestId("splash")).toBeNull();
+    expect(screen.getByTestId("provider-choose")).toBeTruthy();
   });
 });

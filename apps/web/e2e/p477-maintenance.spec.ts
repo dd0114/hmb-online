@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { appConfigPayload } from "./app-config-mock";
+import { skipSplash } from "./splash-mock";
 
 /**
  * #477 — **백엔드가 죽어도 web(CF Pages)은 뜬다.** 그때 유저가 보는 것이 빈 화면·정체불명 에러가
@@ -37,6 +38,7 @@ async function serveHealthy(page: Page) {
 test("터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다", async ({ page }) => {
   await page.route((url) => isApi(url), (route) => route.abort("connectionrefused"));
 
+  await skipSplash(page);
   await page.goto("/login");
 
   const screen = page.getByTestId("maintenance-screen");
@@ -63,6 +65,7 @@ test("백엔드만 사망(502) → 같은 점검 안내가 뜬다", async ({ pag
     (route) => route.fulfill({ status: 502, contentType: "text/html", body: "<h1>Bad gateway</h1>" }),
   );
 
+  await skipSplash(page);
   await page.goto("/login");
 
   await expect(page.getByTestId("maintenance-screen")).toBeVisible({ timeout: 30_000 });
@@ -80,6 +83,7 @@ test("복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 �
     },
   );
 
+  await skipSplash(page);
   await page.goto("/login");
   await expect(page.getByTestId("maintenance-screen")).toBeVisible({ timeout: 30_000 });
 
@@ -132,6 +136,7 @@ test("로그인 요청 도중 백엔드가 죽으면 점검 안내로 넘어간�
     },
   );
 
+  await skipSplash(page);
   await page.goto("/login");
   await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
 
@@ -158,6 +163,7 @@ test("앱 자체 에러(500)는 점검으로 오인하지 않는다", async ({ p
     (route) => route.fulfill(json({ code: "INTERNAL_ERROR", message: "boom" }, 500)),
   );
 
+  await skipSplash(page);
   await page.goto("/login");
 
   await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
@@ -172,6 +178,7 @@ test("인증 실패(401)는 점검으로 오인하지 않는다", async ({ page 
     (route) => route.fulfill(json({ code: "UNAUTHORIZED", message: "no" }, 401)),
   );
 
+  await skipSplash(page);
   await page.goto("/login");
 
   await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
@@ -182,6 +189,7 @@ test("인증 실패(401)는 점검으로 오인하지 않는다", async ({ page 
 test("오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다", async ({ page }) => {
   await serveHealthy(page);
 
+  await skipSplash(page);
   await page.goto("/login");
   await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
   // 확인 프로브 창(2회 × 2s ≈ 4s)보다 넉넉히 기다린 뒤에도 뜨면 안 된다.

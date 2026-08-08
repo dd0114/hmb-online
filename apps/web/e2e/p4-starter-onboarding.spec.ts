@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
+import { skipSplash } from "./splash-mock";
 
 /**
  * 스타터/온보딩 개편 E2E (이슈 #209) — **route-mock 전용**(백엔드/데모 8080 무접촉).
@@ -138,6 +139,7 @@ async function mockApi(page: Page, opts: { granted?: boolean } = {}): Promise<Mo
 
 /** 가입 폼 제출까지 — 지급 연출은 아직 열려 있는 상태로 멈춘다. */
 async function register(page: Page) {
+  await skipSplash(page);
   await page.goto("/login");
   await page.getByTestId("provider-local").click();
   await page.getByTestId("local-mode-toggle").click();
