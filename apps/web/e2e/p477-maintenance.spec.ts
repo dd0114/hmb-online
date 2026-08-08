@@ -101,6 +101,42 @@ test("로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안
 });
 
 /**
+ * **로그인 도중에 죽는 경우** (3R · 패널 S2 소수의견).
+ *
+ * 앞선 케이스들은 부팅 시점(`GET /api/config`)에 이미 죽어 있는 상태였다. 여기서는 앱이 정상
+ * 부팅한 뒤 **유저가 버튼을 누른 그 순간** 백엔드가 사라진다 — 터널이 유휴 중 죽는 실제 패턴과
+ * 같은 모양이고, 토큰을 얻기 전이라 "로그인 후 경로"에도 속하지 않는 사각이다.
+ */
+test("로그인 요청 도중 백엔드가 죽으면 점검 안내로 넘어간다", async ({ page }) => {
+  let alive = true;
+  await page.route(
+    (url) => isApi(url),
+    (route) => {
+      const p = new URL(route.request().url()).pathname;
+      if (!alive) return route.abort("connectionrefused");
+      if (p === "/api/config") return route.fulfill(json(appConfigPayload()));
+      if (p.startsWith("/api/auth/")) {
+        alive = false; // 이 요청을 마지막으로 터널이 사라진다
+        return route.abort("connectionrefused");
+      }
+      return route.fulfill(json({}));
+    },
+  );
+
+  await page.goto("/login");
+  await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
+
+  // 게스트도 닉네임 단계를 거쳐야 실제 요청(POST /api/auth/login)이 나간다 —
+  // 버튼만 누르면 화면 전환뿐이라 백엔드에 닿지 않는다(초판이 여기서 틀렸다).
+  await page.getByTestId("provider-guest").click();
+  await page.getByLabel("닉네임").fill("점검테스터");
+  await page.getByRole("button", { name: "계속" }).click();
+
+  await expect(page.getByTestId("maintenance-screen")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("maintenance-contact")).toBeVisible();
+});
+
+/**
  * **앱 에러는 점검이 아니다** (3R · 패널 S2 가 남긴 경계).
  *
  * 500 은 백엔드가 살아서 응답한 것이다(요청을 받고 처리하다 실패했다). 그걸 "점검 중"으로

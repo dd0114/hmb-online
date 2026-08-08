@@ -1,12 +1,13 @@
 
-Running 7 tests using 1 worker
+Running 8 tests using 1 worker
 
-  ✓  1 [chromium] › e2e/p477-maintenance.spec.ts:37:1 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다 (5.3s)
+  ✓  1 [chromium] › e2e/p477-maintenance.spec.ts:37:1 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다 (5.4s)
   ✓  2 [chromium] › e2e/p477-maintenance.spec.ts:51:1 › 백엔드만 사망(502) → 같은 점검 안내가 뜬다 (4.8s)
-  ✓  3 [chromium] › e2e/p477-maintenance.spec.ts:62:1 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다 (5.2s)
-  ✓  4 [chromium] › e2e/p477-maintenance.spec.ts:90:1 › 로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안내가 뜬다 (5.2s)
-  ✓  5 [chromium] › e2e/p477-maintenance.spec.ts:110:1 › 앱 자체 에러(500)는 점검으로 오인하지 않는다 (7.4s)
-  ✓  6 [chromium] › e2e/p477-maintenance.spec.ts:124:1 › 인증 실패(401)는 점검으로 오인하지 않는다 (7.5s)
-  ✓  7 [chromium] › e2e/p477-maintenance.spec.ts:137:1 › 오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다 (7.4s)
+  ✓  3 [chromium] › e2e/p477-maintenance.spec.ts:62:1 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다 (5.3s)
+  ✓  4 [chromium] › e2e/p477-maintenance.spec.ts:90:1 › 로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안내가 뜬다 (5.3s)
+  ✓  5 [chromium] › e2e/p477-maintenance.spec.ts:110:1 › 로그인 요청 도중 백엔드가 죽으면 점검 안내로 넘어간다 (4.9s)
+  ✓  6 [chromium] › e2e/p477-maintenance.spec.ts:146:1 › 앱 자체 에러(500)는 점검으로 오인하지 않는다 (7.5s)
+  ✓  7 [chromium] › e2e/p477-maintenance.spec.ts:160:1 › 인증 실패(401)는 점검으로 오인하지 않는다 (7.5s)
+  ✓  8 [chromium] › e2e/p477-maintenance.spec.ts:173:1 › 오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다 (7.4s)
 
-  7 passed (45.1s)
+  8 passed (50.2s)
