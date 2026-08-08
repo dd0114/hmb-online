@@ -6,6 +6,7 @@ import { TokenProvider, useToken } from "./auth/TokenContext";
 import { NavGuardProvider } from "./common/NavGuard";
 import { NavLockProvider } from "./common/NavLockProvider";
 import { AppConfigProvider } from "./common/AppConfigContext";
+import { MaintenanceGate } from "./common/MaintenanceGate";
 import { MatchLockGate } from "./common/MatchLockGate";
 import { LoginPage } from "./auth/LoginPage";
 import { loginPathWithReturn } from "./auth/return-to";
@@ -238,8 +239,14 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      {/* 재화 표기 등 서버 부트스트랩 config — 여기 한 곳에서만 조회해 트리에 내린다(#232). */}
+      {/* 재화 표기 등 서버 부트스트랩 config — 여기 한 곳에서만 조회해 트리에 내린다(#232).
+          ⚠️ **점검 게이트(#477)보다 바깥이어야 한다** — 이 조회(`GET /api/config`)가 앱이 부팅할
+          때 항상 나가는 유일한 요청이고, 백엔드가 죽었다는 사실을 처음 알려 주는 신호다. 게이트
+          안으로 들어가면 점검 상태에서 언마운트돼 "무엇으로 감지했나"가 사라진다. */}
       <AppConfigProvider>
+      {/* 백엔드에 못 닿으면 라우터 대신 점검 안내를 띄운다(#477). 라우트가 아니라 트리 대체인
+          이유는 MaintenanceGate 주석 참조 — 라우트로 두면 "이 화면에서만 안 뜨는" 구멍이 난다. */}
+      <MaintenanceGate>
       <BrowserRouter>
         <TokenProvider>
           {/* admin 플래그(/api/me additive)를 네비까지 내려준다 — AppNav 가 쿼리 컨텍스트에
@@ -258,6 +265,7 @@ function App() {
           </AdminFlagProvider>
         </TokenProvider>
       </BrowserRouter>
+      </MaintenanceGate>
       </AppConfigProvider>
     </QueryClientProvider>
   );

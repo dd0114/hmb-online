@@ -1,0 +1,11 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider20/hmb-online
+
+ ✓ apps/web/src/api/backend-health.test.ts (10 tests) 6ms
+ ✓ apps/web/src/common/MaintenanceScreen.test.ts (5 tests) 162ms
+
+ Test Files  2 passed (2)
+      Tests  15 passed (15)
+   Start at  11:57:51
+   Duration  1.29s (transform 91ms, setup 0ms, collect 259ms, tests 168ms, environment 543ms, prepare 123ms)
+

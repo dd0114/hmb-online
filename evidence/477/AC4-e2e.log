@@ -1,0 +1,9 @@
+
+Running 4 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/p477-maintenance.spec.ts:37:1 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다 (5.7s)
+  ✓  2 [chromium] › e2e/p477-maintenance.spec.ts:51:1 › 백엔드만 사망(502) → 같은 점검 안내가 뜬다 (4.7s)
+  ✓  3 [chromium] › e2e/p477-maintenance.spec.ts:62:1 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다 (5.2s)
+  ✓  4 [chromium] › e2e/p477-maintenance.spec.ts:84:1 › 오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다 (7.5s)
+
+  4 passed (25.3s)
