@@ -1,0 +1,67 @@
+=== AC1.4 이송 팩 ===
+
+[Q0] 스크립트 존재·문법
+  ✗ infra/pack-move.sh 없음
+  ✗ infra/unpack-move.sh 없음
+
+[Q1] --dry-run 이 이송 목록 6종 전부 보고
+  ✗ exit 127 (전부 있는데 실패): bash: infra/pack-move.sh: No such file or directory 
+  ✗ 목록에 infra/.env 없음
+  ✗ 목록에 deploy.env 없음
+  ✗ 목록에 dist-current 없음
+  ✗ 목록에 dist-current.functions 없음
+  ✗ 목록에 dist-current.meta 없음
+  ✗ 목록에 state/hmb 없음
+  ✗ 목록에 .claude 없음
+  ✗ 목록에 economy.override.json 없음
+
+[Q2] 누락 fail-fast (6종 각각)
+  ✗ infra/.env 누락 → exit 127 이나 어떤 항목인지 안 알려줌
+  ✗ deploy.env 누락 → exit 127 이나 어떤 항목인지 안 알려줌
+  ✗ dist-current 누락 → exit 127 이나 어떤 항목인지 안 알려줌
+  ✗ dist-current.functions 누락 → exit 127 이나 어떤 항목인지 안 알려줌
+  ✗ state/hmb 누락 → exit 127 이나 어떤 항목인지 안 알려줌
+  ✗ ~/.claude 누락 → exit 127 이나 어떤 항목인지 안 알려줌
+  ✗ economy.override.json 누락 → exit 127 이나 어떤 항목인지 안 알려줌
+
+[Q3] --no-claude = 기록되는 의도적 제외
+  ✗ exit 127 — 명시 제외인데 막는다
+  ✗ 제외가 조용하다
+
+[Q4] 팩 산출물 · 매니페스트 shasum
+  ✗ 팩 exit 127: bash: infra/pack-move.sh: No such file or directory 
+  ✗ tar 없음 (/var/folders/hg/znyc08690h1_xmwg5zc5q241gzbzj9/T/tmp.pUbLzMGs1s/out/move.tar.gz)
+  ✗ 매니페스트 없음 (/var/folders/hg/znyc08690h1_xmwg5zc5q241gzbzj9/T/tmp.pUbLzMGs1s/out/move.tar.gz.manifest)
+  ✗ (동)
+  ✗ (동)
+
+[Q5] 시크릿 비노출(카나리아) · 권한 600
+  ✓ 카나리아 값 출력 0건
+
+[Q6] 리포 내부 출력 거부
+  ✓ 리포 안 경로 거부(exit 127)
+  ✓ 리포에 파일 미생성
+
+[Q7] DB 볼륨 read-only 접근
+  ✗ docker 호출 기록 0 — 볼륨 안 항목을 어떻게 팩했나
+
+[Q8] pack → unpack 왕복 동일성
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+  ✗ 팩이 없어 왕복 검정 불가
+
+[Q9] 변조 감지 · 부분복원 방지
+
+[Q10] 기존 파일 덮어쓰기 보호
+
+[Q11] 실 HOME · 실 도커 무접촉
+  ✓ 실 HOME 에 산출물 없음
+  ✓ docker 미호출
+
+=== 결과: PASS=5 FAIL=35 ===
