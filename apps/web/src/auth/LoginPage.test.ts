@@ -20,6 +20,7 @@ vi.mock("../api/client", async () => {
 import { LoginPage } from "./LoginPage";
 import { TokenProvider } from "./TokenContext";
 import { SPLASH_SEEN_KEY } from "../splash/splash-gate";
+import { bypassSplash } from "../splash/splash-test-bypass";
 
 function renderLogin(entry = "/login") {
   return render(h(MemoryRouter, { initialEntries: [entry] }, h(TokenProvider, null, h(LoginPage))));
@@ -35,7 +36,7 @@ beforeEach(() => {
    * 보는 것이라 "이미 봤다"에서 출발시킨다. 스플래시 자체의 동선은 아래 `#479` describe 와
    * `e2e/p479-splash.spec.ts` 가 실경로로 검증한다(여기서 겸하면 두 관심사가 엉킨다).
    */
-  window.sessionStorage.setItem(SPLASH_SEEN_KEY, "1");
+  bypassSplash();
 });
 
 afterEach(() => cleanup());

@@ -61,6 +61,14 @@ function currentFrame(page: Page) {
   });
 }
 
+/**
+ * 컷 ④(지시②)의 합성 문구·카운터. 동결본의 `SAY2` 와 **같은 값을 여기 다시 적는다** —
+ * 소스에서 import 하면 "코드가 코드와 같다"는 동어반복이 되고, 문구가 바뀌는 것은 hero 가
+ * 리뷰한 연출이 바뀌는 것이라 그때는 이 계약이 red 가 되어 눈에 띄는 쪽이 맞다.
+ */
+const CUT4_TEXT = "패스 길목만 노려. 끊으면 바로 역습이야";
+const CUT4_COUNTER = "22/500"; // 표시는 `22 / 500` — 공백 제거 후 비교
+
 test.describe("#479 첫 진입 스플래시", () => {
   test.beforeEach(async ({ page }) => {
     await mockApi(page);
@@ -195,6 +203,47 @@ test.describe("#479 첫 진입 스플래시", () => {
       expect(overflow).toBeLessThanOrEqual(0);
     });
   }
+
+  /**
+   * ⑩ 컷 ④ 의 **합성 지시 카드**가 런타임에 실제로 그려진다.
+   *
+   * ⚠️ 왜 이 계약이 따로 필요한가(독립 QA major): `paintSayCard` 는 *지금 화면에 있는 프레임의
+   * `src` 에 `say-captain` 이 들어 있나* 로 게이트를 건다. 독립 QA 가 그 판정을 **항상 false** 로
+   * 변이시키자 컷 ④ 의 합성 레이어가 사라지고 소재의 빈 플레이스홀더(「…한마디를」 · `0/500`)만
+   * 남았는데 — **유닛 23건과 e2e 11건이 전부 green 이었다.** 소재가 *참조되는지*(`splash-assets`)와
+   * 그 위에 *합성이 얹히는지*는 다른 명제였고, 후자를 지키던 것은 내 눈 한 번뿐이었다.
+   *
+   * ⚠️ 세 값을 **한 프레임에서 동시에** 본다. 나눠 단언하면 타이핑이 끝난 뒤 컷이 지나가
+   * (게이트가 다시 hidden 이 되는) 순간과 엇갈려, "문구는 맞고 판때기는 숨김" 상태를 통과시킨다.
+   */
+  test("⑩ 컷 ④ 합성 지시 카드가 그려진다 — 게이트 발화 + 문구 + 카운터", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await page.goto("/login");
+    // preload 완료까지 기다린다 — 소재가 없으면 컷 ④ 프레임 자체가 안 뜬다.
+    await expect(page.getByTestId("splash-progress")).toHaveText("", { timeout: 90_000 });
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const host = document.querySelector('[data-testid="splash-stage"]');
+            const root = host?.querySelector("[data-c4]");
+            if (!host || !(root instanceof HTMLElement)) return null;
+            return {
+              vis: getComputedStyle(root).visibility,
+              txt: host.querySelector("[data-c4t]")?.textContent ?? "",
+              num: (host.querySelector("[data-c4n]")?.textContent ?? "").replace(/\s+/g, ""),
+            };
+          }),
+        {
+          // 루프 1바퀴 = 15.7초. 두 바퀴 + 여유.
+          timeout: 45_000,
+          intervals: Array.from({ length: 450 }, () => 100),
+          message: "컷 ④ 의 합성 카드가 완성된 프레임이 한 번도 관측되지 않았다",
+        },
+      )
+      .toEqual({ vis: "visible", txt: CUT4_TEXT, num: CUT4_COUNTER });
+  });
 
   /**
    * ⚠️ `toBeVisible()` 은 **뷰포트 밖도 통과한다**(모듈 CLAUDE.md §계약이 초록으로 거짓말하는

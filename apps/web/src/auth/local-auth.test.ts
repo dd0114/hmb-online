@@ -19,6 +19,8 @@ vi.mock("../api/client", async () => {
 import { ApiError } from "../api/client";
 import { LoginPage } from "./LoginPage";
 import { TokenProvider } from "./TokenContext";
+import { SPLASH_SEEN_KEY } from "../splash/splash-gate";
+import { bypassSplash } from "../splash/splash-test-bypass";
 
 const PASSWORD = "sup3rs3cret";
 /** 로그인 id 겸 표시 닉네임 — 서버가 식별자를 하나만 둔다(RegisterRequest.java). */
@@ -47,6 +49,13 @@ beforeEach(() => {
   apiFetch.mockReset();
   apiFetch.mockResolvedValue({ token: "tok_local", user: { id: "u1", nickname: "테스터" }, isNew: false });
   window.localStorage.clear();
+  window.sessionStorage.clear();
+  /**
+   * ⚠️ #479 부터 `LoginPage` 의 첫 화면은 **스플래시**다 — 이 파일의 스펙들은 그 뒤의
+   * 자체 로그인 패널을 보므로 "이미 봤다"에서 출발시킨다. 스플래시 동선 자체는
+   * `LoginPage.test.ts` 의 `#479` describe + `e2e/p479-splash.spec.ts` 소관.
+   */
+  bypassSplash();
 });
 
 afterEach(() => cleanup());
@@ -185,14 +194,17 @@ describe("login (AC-A1)", () => {
 });
 
 describe("AC-A2 — 비밀번호가 어디에도 남지 않는다", () => {
-  function dumpLocalStorage(): string {
-    const out: string[] = [];
-    for (let i = 0; i < window.localStorage.length; i += 1) {
-      const key = window.localStorage.key(i)!;
-      out.push(`${key}=${window.localStorage.getItem(key)}`);
-    }
-    return out.join("\n");
+  function keysOf(store: Storage): string[] {
+    return Array.from({ length: store.length }, (_, i) => store.key(i)!);
   }
+
+  function dumpStorage(store: Storage): string {
+    return keysOf(store)
+      .map((key) => `${key}=${store.getItem(key)}`)
+      .join("\n");
+  }
+
+  const dumpLocalStorage = () => dumpStorage(window.localStorage);
 
   it("로그인 성공 후 localStorage 전체에 비밀번호 문자열이 없다", async () => {
     openLocalPanel();
@@ -203,7 +215,16 @@ describe("AC-A2 — 비밀번호가 어디에도 남지 않는다", () => {
     const dump = dumpLocalStorage();
     expect(dump).toContain("tok_local"); // 토큰은 저장된다(기존 계약)
     expect(dump).not.toContain(PASSWORD);
-    expect(window.sessionStorage.length).toBe(0);
+    /**
+     * ⚠️ 원래 이 줄은 `sessionStorage.length === 0` 이었다 — "비밀번호가 **세션** 저장소에도
+     * 안 남는다"를 *"세션 저장소가 텅 비었다"* 로 대리 측정한 것이다. #479 가 그 저장소에
+     * 스플래시 1회 노출 플래그를 정당하게 넣으면서 그 대리값이 깨졌다.
+     *
+     * 임계를 지우는 대신 **원래 의도로 좁힌다** — 비밀번호가 없고, 키는 그 플래그 하나뿐이다.
+     * 화이트리스트라 `length` 판정보다 오히려 강하다(예상 밖의 키가 들어오면 여기서 걸린다).
+     */
+    expect(dumpStorage(window.sessionStorage)).not.toContain(PASSWORD);
+    expect(keysOf(window.sessionStorage)).toEqual([SPLASH_SEEN_KEY]);
   });
 
   it("회원가입 성공 후에도 localStorage 에 비밀번호가 없다", async () => {

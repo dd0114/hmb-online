@@ -1877,6 +1877,18 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
   (계약이 그 경로를 리터럴로 물고 있다).
 - **딥링크는 면제다**(`?returnTo=` → 스플래시 없음) — 공유 링크로 온 사람의 방문 목적은 그
   목적지다(#298 규율).
+- ⚠️ **`LoginPage` 를 렌더하는 유닛 테스트는 `bypassSplash()` 를 부른다**(`src/splash/splash-test-bypass.ts`).
+  스플래시가 첫 화면을 **대체**하므로 안 부르면 그 파일의 provider 단언이 전부 깨진다. 실제로
+  `LoginPage.test.ts` 에만 넣고 **`local-auth.test.ts`(17건)를 빠뜨린 채 커밋**했고(독립 QA blocker),
+  내가 만진 파일만 골라 돌려서 못 봤다 — **AC 증빙은 `npx vitest run apps/web` 전량이어야 한다**
+  (좁은 표본으로 넓은 주장을 하지 마라). 헬퍼만으로는 *다음* 파일을 못 막으므로
+  `splash-test-bypass.test.ts` 가 **정적으로** 훑는다: `LoginPage` 를 import 하는 테스트 파일은
+  `bypassSplash(` **호출**이 있어야 한다. ⚠️ 이 가드를 처음엔 `includes("bypassSplash")` 로 썼다가
+  남아 있는 `import` 한 줄이 조건을 충족해 **사고 재현 변이가 살아남았다** — 언급이 아니라 호출로 본다.
+- ⚠️ **`sessionStorage` 에 키가 하나 생긴 것이 남의 계약을 깬다**: `local-auth.test.ts` 의 AC-A2 는
+  "비밀번호가 세션 저장소에도 안 남는다"를 `sessionStorage.length === 0` 으로 대리 측정하고 있었다.
+  임계를 지우는 대신 **원래 의도로 좁혔다** — 비번 문자열 부재 + 키 화이트리스트(`[SPLASH_SEEN_KEY]`).
+  화이트리스트라 `length` 판정보다 강하다.
 - **e2e**: 로그인 폼을 실제로 클릭하는 스펙(10건)은 `e2e/splash-mock.ts` 의 `skipSplash(page)` 를
   `goto` **전에** 부른다. ⚠️ `[게임 시작]` 을 클릭시키는 안은 기각 — 스펙마다 137건 preload 가
   붙고, 스플래시 결함이 로그인·튜토리얼·통화 스펙을 같이 빨갛게 만드는 **잘못된 결합**이 된다.
@@ -1889,10 +1901,17 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
   버튼(「지금, 감독이 되어라」)은 눌러도 반응이 없다**(동결본 오버레이다). 15.7s 루프 중 2.3s 만
   뜨고 실버튼과 세로로 분리돼 있어 그대로 뒀다 — 혼동된다는 판정이 오면 `section` 에 `onClick` 을
   얹어 "아무 곳이나 눌러 시작"으로 바꾸면 된다(한 줄).
+- ⚠️ **소재가 참조되는 것과 그 위에 합성이 얹히는 것은 다른 명제다.** `paintSayCard` 의 게이트를
+  항상 false 로 변이시키면 컷 ④ 의 지시 카드가 사라지고 소재의 빈 플레이스홀더(`0/500`)만 남는데,
+  1R 에서는 **유닛 23 + e2e 11 이 전부 green 이었다**(독립 QA major — 그 레이어를 지키던 것은 내 눈
+  한 번뿐). 이제 `e2e/p479-splash.spec.ts` ⑩ 이 **한 프레임에서 동시에** 본다: 게이트 발화
+  (`visibility`) + 합성 문구 + 카운터 `22 / 500`. 나눠 단언하면 컷이 지나간 순간과 엇갈려
+  "문구는 맞고 판때기는 숨김"을 통과시킨다.
 - 계약 = `src/splash/splash-gate.test.ts`(7) · `src/splash/splash-assets.test.ts`(6, 참조↔반입물
-  **양방향** + 규모 예산) · `src/auth/LoginPage.test.ts` `#479` 블록(4) ·
-  `e2e/p479-splash.spec.ts`(11 — 소재 137건 200/404 0 · 재생이 실제로 흐른다 · 로딩 중 버튼 ·
-  9:16 · 히트테스트). 실화면 = `e2e/p479-splash.capture.ts` → `.p479/`.
+  **양방향** + 규모 예산) · `src/splash/splash-test-bypass.test.ts`(4, 우회 누락 정적 가드) ·
+  `src/auth/LoginPage.test.ts` `#479` 블록(4) ·
+  `e2e/p479-splash.spec.ts`(12 — 소재 137건 200/404 0 · 재생이 실제로 흐른다 · 로딩 중 버튼 ·
+  9:16 · 히트테스트 · **컷 ④ 합성 카드**). 실화면 = `e2e/p479-splash.capture.ts` → `.p479/`.
 
 ## 규칙
 - Playwright E2E(AC-W1 풀 시나리오)가 주 게이트. 시각/연출 판정은 **독립 QA 서브에이전트**로만(자기검수 금지, 루트 §2-2).
