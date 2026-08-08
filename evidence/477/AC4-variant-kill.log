@@ -1,15 +1,116 @@
-# 변이체 킬 (계약이 비어 있지 않음을 증명) — 2026-08-08
-# MaintenanceGate.tsx 의 `if (health === "outage")` → `if (false as boolean)` 로 바꾸고
-# 같은 e2e 를 그대로 실행. (실행 후 git checkout 으로 원복 확인)
 
-$ CI=1 WEB_E2E_PORT=5479 npx playwright test p477-maintenance --config=playwright.config.ts
-  3 failed
-    p477-maintenance.spec.ts:37 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다
-    p477-maintenance.spec.ts:51 › 백엔드만 사망(502) → 같은 점검 안내가 뜬다
-    p477-maintenance.spec.ts:62 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다
-  1 passed (1.7m)
-    p477-maintenance.spec.ts:84 › 오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다
+Running 5 tests using 1 worker
 
-# 판독: 기제를 끄면 "뜬다" 계약 3건이 전부 죽고, "안 뜬다" 계약(오탐 가드)만 산다 —
-# 즉 세 계약은 점검 화면의 실제 표시를 검사하고 있고, 오탐 가드는 그것과 독립이다.
-# (원복 확인: `grep -c 'health === "outage"' MaintenanceGate.tsx` → 2)
+  ✘  1 [chromium] › e2e/p477-maintenance.spec.ts:37:1 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다 (31.0s)
+  ✘  2 [chromium] › e2e/p477-maintenance.spec.ts:51:1 › 백엔드만 사망(502) → 같은 점검 안내가 뜬다 (30.5s)
+  ✘  3 [chromium] › e2e/p477-maintenance.spec.ts:62:1 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다 (30.4s)
+  ✘  4 [chromium] › e2e/p477-maintenance.spec.ts:90:1 › 로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안내가 뜬다 (30.9s)
+  ✓  5 [chromium] › e2e/p477-maintenance.spec.ts:103:1 › 오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다 (7.5s)
+
+
+  1) [chromium] › e2e/p477-maintenance.spec.ts:37:1 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다 ───────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('maintenance-screen')
+    Expected: visible
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 30000ms
+      - waiting for getByTestId('maintenance-screen')
+
+
+      41 |
+      42 |   const screen = page.getByTestId("maintenance-screen");
+    > 43 |   await expect(screen).toBeVisible({ timeout: 30_000 });
+         |                        ^
+      44 |   await expect(page.getByTestId("maintenance-contact")).toHaveAttribute(
+      45 |     "href",
+      46 |     /open\.kakao\.com\//,
+        at /Users/peter.park/spider20/hmb-online/apps/web/e2e/p477-maintenance.spec.ts:43:24
+
+    Error Context: test-results/p477-maintenance-터널-사망-응답-없음-→-점검-안내-연락처가-뜬다-chromium/error-context.md
+
+  2) [chromium] › e2e/p477-maintenance.spec.ts:51:1 › 백엔드만 사망(502) → 같은 점검 안내가 뜬다 ──────────────────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('maintenance-screen')
+    Expected: visible
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 30000ms
+      - waiting for getByTestId('maintenance-screen')
+
+
+      57 |   await page.goto("/login");
+      58 |
+    > 59 |   await expect(page.getByTestId("maintenance-screen")).toBeVisible({ timeout: 30_000 });
+         |                                                        ^
+      60 | });
+      61 |
+      62 | test("복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다", async ({ page }) => {
+        at /Users/peter.park/spider20/hmb-online/apps/web/e2e/p477-maintenance.spec.ts:59:56
+
+    Error Context: test-results/p477-maintenance-백엔드만-사망-502-→-같은-점검-안내가-뜬다-chromium/error-context.md
+
+  3) [chromium] › e2e/p477-maintenance.spec.ts:62:1 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다 ─────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('maintenance-screen')
+    Expected: visible
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 30000ms
+      - waiting for getByTestId('maintenance-screen')
+
+
+      73 |
+      74 |   await page.goto("/login");
+    > 75 |   await expect(page.getByTestId("maintenance-screen")).toBeVisible({ timeout: 30_000 });
+         |                                                        ^
+      76 |
+      77 |   alive = true; // 워치독이 터널을 되살렸다
+      78 |   await page.getByTestId("maintenance-retry").click();
+        at /Users/peter.park/spider20/hmb-online/apps/web/e2e/p477-maintenance.spec.ts:75:56
+
+    Error Context: test-results/p477-maintenance-복구-백엔드가-살아난-뒤-다시-시도-를-누르면-점검-화면이-사라진다-chromium/error-context.md
+
+  4) [chromium] › e2e/p477-maintenance.spec.ts:90:1 › 로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안내가 뜬다 ──────
+
+    Error: expect(locator).toBeVisible() failed
+
+    Locator: getByTestId('maintenance-screen')
+    Expected: visible
+    Timeout: 30000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toBeVisible" with timeout 30000ms
+      - waiting for getByTestId('maintenance-screen')
+
+
+       97 |   await page.goto("/home");
+       98 |
+    >  99 |   await expect(page.getByTestId("maintenance-screen")).toBeVisible({ timeout: 30_000 });
+          |                                                        ^
+      100 |   await expect(page.getByTestId("maintenance-contact")).toBeVisible();
+      101 | });
+      102 |
+        at /Users/peter.park/spider20/hmb-online/apps/web/e2e/p477-maintenance.spec.ts:99:56
+
+    Error Context: test-results/p477-maintenance-로그인-후-화면-home-에서-백엔드가-죽어도-같은-점검-안내가-뜬다-chromium/error-context.md
+
+  4 failed
+    [chromium] › e2e/p477-maintenance.spec.ts:37:1 › 터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다 ────────────────
+    [chromium] › e2e/p477-maintenance.spec.ts:51:1 › 백엔드만 사망(502) → 같은 점검 안내가 뜬다 ───────────────────
+    [chromium] › e2e/p477-maintenance.spec.ts:62:1 › 복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 화면이 사라진다 ──────
+    [chromium] › e2e/p477-maintenance.spec.ts:90:1 › 로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안내가 뜬다 ───────
+  1 passed (2.2m)

@@ -81,6 +81,25 @@ test("복구: 백엔드가 살아난 뒤 [다시 시도] 를 누르면 점검 �
   await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
 });
 
+/**
+ * 로그인 **후** 경로에서 죽는 경우 (2R · 패널 S2 반박).
+ *
+ * 위 세 건은 `/login` 만 봤다. 게이트가 라우터 바깥이라 구조상 같은 경로라고 **주장**할 수는
+ * 있지만, 주장과 검정은 다르다 — 실제로 유저가 장애를 만나는 자리는 거의 항상 로그인 뒤다.
+ */
+test("로그인 후 화면(/home)에서 백엔드가 죽어도 같은 점검 안내가 뜬다", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("hmb.auth.token", "mock-token");
+    localStorage.setItem("hmb.auth.provider", "guest");
+  });
+  await page.route((url) => isApi(url), (route) => route.abort("connectionrefused"));
+
+  await page.goto("/home");
+
+  await expect(page.getByTestId("maintenance-screen")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("maintenance-contact")).toBeVisible();
+});
+
 test("오탐 가드: 백엔드가 정상이면 점검 화면이 뜨지 않는다", async ({ page }) => {
   await serveHealthy(page);
 

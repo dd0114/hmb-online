@@ -24,9 +24,12 @@ export function MaintenanceScreen({
           🛠
         </div>
         <h1 className={styles.title}>점검 중입니다</h1>
+        {/* ⚠️ 마지막 문장은 장식이 아니다 — 우리는 "백엔드가 죽었다"와 "유저 wifi 가 끊겼다"를
+            구분하지 못한다(구분 수단인 navigator.onLine 은 신뢰도가 낮다). 구분 못 하는 것을
+            단정적으로 안내하면 오프라인 유저에게 거짓말이 된다. */}
         <p className={styles.text}>
           서버 점검·복구 작업이 진행 중이에요. 앱을 지우거나 다시 설치할 필요는 없습니다.
-          잠시 후 다시 시도해 주세요.
+          잠시 후 다시 시도해 주시고, 계속 이 화면이 보이면 네트워크 연결도 확인해 주세요.
         </p>
 
         <button

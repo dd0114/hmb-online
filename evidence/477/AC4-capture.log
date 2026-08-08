@@ -1,0 +1,6 @@
+
+Running 1 test using 1 worker
+
+  ✓  1 [chromium] › e2e/p477-capture.capture.ts:33:1 › 캡처: 점검 안내 화면 (모바일·데스크탑) (10.4s)
+
+  1 passed (12.4s)
