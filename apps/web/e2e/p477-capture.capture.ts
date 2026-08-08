@@ -24,9 +24,10 @@ async function killBackend(page: Page) {
  * 이미지 판독에 기대는 한 계속 재발한다. 이제 답은 DOM 이 준다.
  */
 const MUST_RENDER = [
-  "점검 중입니다",
+  "서버 점검중입니다",
   "다시 시도",
-  "카카오톡 오픈채팅으로 문의하기",
+  "이 오픈채팅으로 문의해주세요",
+  "오픈채팅 바로가기",
   "오픈채팅 코드",
 ] as const;
 
@@ -42,6 +43,13 @@ test("캡처: 점검 안내 화면 (모바일·데스크탑)", async ({ page }) 
     // 찍기 전에 "찍히는 내용"을 확정한다 — 캡처는 이 단언의 그림 버전일 뿐이다.
     const text = (await screen.innerText()).replace(/\s+/g, " ");
     for (const phrase of MUST_RENDER) expect(text, `[${label}] 누락: ${phrase}`).toContain(phrase);
+
+    // 캡처에 QR 이 **그림으로** 들어가야 한다 — 깨진 이미지는 텍스트 단언에 안 걸린다.
+    await expect
+      .poll(() =>
+        page.getByTestId("maintenance-contact-qr").evaluate((el) => (el as HTMLImageElement).naturalWidth),
+      )
+      .toBeGreaterThan(0);
 
     await page.screenshot({ path: `${SHOTS}p477-maintenance-${label}.png`, fullPage: false });
   }

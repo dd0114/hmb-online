@@ -46,6 +46,15 @@ test("터널 사망(응답 없음) → 점검 안내 + 연락처가 뜬다", asy
     /open\.kakao\.com\//,
   );
   await expect(page.getByTestId("maintenance-retry")).toBeVisible();
+
+  // ⚠️ QR 은 **백엔드가 죽어 있는 지금** 떠야 의미가 있다(PC 유저의 유일한 연락 수단).
+  // `toBeVisible()` 은 깨진 이미지도 통과하므로 실제로 픽셀이 왔는지(`naturalWidth`)를 본다 —
+  // 경로를 `/api/...` 로 옮기는 변이가 여기서 죽는다(이 테스트의 목은 /api/ 를 전부 끊는다).
+  const qr = page.getByTestId("maintenance-contact-qr");
+  await expect(qr).toBeVisible();
+  await expect
+    .poll(() => qr.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+    .toBeGreaterThan(0);
 });
 
 test("백엔드만 사망(502) → 같은 점검 안내가 뜬다", async ({ page }) => {
