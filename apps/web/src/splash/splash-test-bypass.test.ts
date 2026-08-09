@@ -57,10 +57,23 @@ const IMPORTS_APP = /^\s*import\s[\s\S]*?from\s+["'][^"']*\/App["'];?\s*$/m;
 const CALLS_BYPASS = /\bbypassSplash\s*\(/;
 const CALLS_SKIP_SPLASH = /\bskipSplash\s*\(/;
 
-/** e2e 가 로그인 폼을 실제로 만지는가. */
-const TOUCHES_LOGIN = /["']\/login["']|provider-choose|provider-/;
-/** 스플래시 **자신**을 검증하는 파일 — 우회하면 검증 대상이 사라진다. */
-const IS_SPLASH_OWN = /splash-stage|splash-start|splash-progress/;
+/**
+ * e2e 가 로그인 폼을 실제로 만지는가.
+ *
+ * ⚠️ **백틱을 빼먹으면 안 된다** — 3R 이 `` page.goto(`/login`) `` 한 줄로 이 가드를 뚫었다.
+ * 이 리포는 템플릿 리터럴을 흔하게 쓰므로, 곧은따옴표만 보는 것은 2R blocker 를 다음 사람이
+ * 무심코 재현할 수 있게 열어 두는 것이다.
+ */
+const TOUCHES_LOGIN = /["'`]\/login["'`]|provider-choose|provider-/;
+/**
+ * 스플래시 **자신**을 검증하는 파일 — 우회하면 검증 대상이 사라진다.
+ *
+ * ⚠️ **단어 언급이 아니라 testid 접근을 본다.** 3R 이 테스트 *제목*에 `"splash-stage"` 라는
+ * 단어만 넣고 본문에서 로그인 폼을 만져 면제를 받아냈다 — 이 파일 헤더가 거부한 "이름 면제
+ * 목록"이 정규식 뒤에 그대로 숨어 있던 셈이다. 실제 두 파일은 `getByTestId("splash-…")`
+ * 또는 `[data-testid="splash-…"]` 로만 접근하므로 그 형태를 요구해도 규칙이 그대로 갈린다.
+ */
+const IS_SPLASH_OWN = /(?:getByTestId\(\s*["'`]|data-testid=["'])splash-(?:stage|start|progress)/;
 
 interface Scanned {
   rel: string;
