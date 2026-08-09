@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { skipSplash } from "./splash-mock";
 
 /**
  * #477 실화면 캡처 — **판정이 아니라 눈으로 볼 증빙**이다(루트 CLAUDE §2-2 "좌표 추론 금지").
@@ -74,6 +75,8 @@ test("캡처 대조군: 백엔드 정상일 때의 평소 화면(같은 실행·
   );
 
   await page.setViewportSize(PHONE);
+  // #479 — 스플래시가 로그인 폼을 **대체**한다. goto 전에 꺼야 대조군이 평소 화면을 찍는다.
+  await skipSplash(page);
   await page.goto("/login");
   await expect(page.getByTestId("provider-choose")).toBeVisible({ timeout: 30_000 });
   await page.screenshot({ path: `${SHOTS}p477-control-login-390.png`, fullPage: false });

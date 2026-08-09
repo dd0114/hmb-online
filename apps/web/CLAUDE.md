@@ -1885,12 +1885,20 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
   `splash-test-bypass.test.ts` 가 **정적으로** 훑는다: `LoginPage` 를 import 하는 테스트 파일은
   `bypassSplash(` **호출**이 있어야 한다. ⚠️ 이 가드를 처음엔 `includes("bypassSplash")` 로 썼다가
   남아 있는 `import` 한 줄이 조건을 충족해 **사고 재현 변이가 살아남았다** — 언급이 아니라 호출로 본다.
+  ⚠️ **그 가드도 처음엔 좁았다(독립 QA 2R blocker)** — `src/**` 만 훑는 바람에 같은 부류의 실물인
+  `e2e/p477-capture.capture.ts`(#477 캡처 대조군)가 **red 인 채로 green 으로 보였다**. 지금은 두 층을
+  다 본다: ①`src/**` = `LoginPage` **직접 import** *또는* `App` **간접 렌더**(라우터로 마운트되므로
+  똑같이 막힌다 — 실제 표본 `common/MaintenanceGate.test.ts`) → `bypassSplash()` ②`e2e/**` =
+  `/login`·`provider-*` 를 만지는 파일 → `skipSplash(`. **이름 면제 목록은 안 쓴다**(목록에 든 파일은
+  다시 아무도 안 본다) — 스플래시 **자신**의 e2e 는 `splash-*` testid 참조로 규칙이 가른다.
+  주석 안의 `bypassSplash()` 언급이 호출로 세어지던 구멍도 닫았다(매칭 전 주석 제거).
 - ⚠️ **`sessionStorage` 에 키가 하나 생긴 것이 남의 계약을 깬다**: `local-auth.test.ts` 의 AC-A2 는
   "비밀번호가 세션 저장소에도 안 남는다"를 `sessionStorage.length === 0` 으로 대리 측정하고 있었다.
   임계를 지우는 대신 **원래 의도로 좁혔다** — 비번 문자열 부재 + 키 화이트리스트(`[SPLASH_SEEN_KEY]`).
   화이트리스트라 `length` 판정보다 강하다.
-- **e2e**: 로그인 폼을 실제로 클릭하는 스펙(10건)은 `e2e/splash-mock.ts` 의 `skipSplash(page)` 를
-  `goto` **전에** 부른다. ⚠️ `[게임 시작]` 을 클릭시키는 안은 기각 — 스펙마다 137건 preload 가
+- **e2e**: 로그인 폼을 실제로 만지는 파일(스펙 10건 + **캡처 하네스 `p477-capture.capture.ts`**)은
+  `e2e/splash-mock.ts` 의 `skipSplash(page)` 를 `goto` **전에** 부른다. ⚠️ 캡처 하네스를 빠뜨렸던
+  것이 2R blocker 다 — "스펙"만 세면 `*.capture.ts` 가 표본 밖으로 샌다. ⚠️ `[게임 시작]` 을 클릭시키는 안은 기각 — 스펙마다 137건 preload 가
   붙고, 스플래시 결함이 로그인·튜토리얼·통화 스펙을 같이 빨갛게 만드는 **잘못된 결합**이 된다.
 - ⚠️ **`/splash/` 를 `includes` 로 매칭하지 마라** — vite dev 는 소스 모듈을 `/src/splash/…` 로
   서브하므로 개수 단언이 137 → 142 로 어긋나고, `page.route` 에서 같은 실수를 하면 **컴포넌트 JS
@@ -1907,8 +1915,15 @@ blocker-1 이 산 이유는 구현이 아니라 **계약의 모양**이다. 그 
   한 번뿐). 이제 `e2e/p479-splash.spec.ts` ⑩ 이 **한 프레임에서 동시에** 본다: 게이트 발화
   (`visibility`) + 합성 문구 + 카운터 `22 / 500`. 나눠 단언하면 컷이 지나간 순간과 엇갈려
   "문구는 맞고 판때기는 숨김"을 통과시킨다.
+- ⚠️ **⑩ 이 보는 것은 게이트가 *켜지는* 쪽뿐이다.** 게이트를 `visibility = "visible"` 로 고정하는
+  변이는 ⑩ 을 통과한다(독립 QA 2R minor). 지금 실피해가 1프레임인 이유는 오버레이 창이 컷 경계보다
+  `0.02초`만 넓기 때문이고(`ad-show.ts` 의 `from: T.s2 - 0.02`), 그 창을 넓히는 편집이 오면
+  `ad-show.ts:176` 주석이 경고하는 "판때기가 피치 위 엉뚱한 자리로 찍힘"이 실제 노출이 된다.
+  0.02초짜리 프레임을 노리는 e2e 는 플레이키가 되어 없는 것보다 나쁘므로 **계약 대신 이 경고를
+  남긴다** — 창을 넓히려는 사람은 그때 off 분기를 함께 덮어라.
 - 계약 = `src/splash/splash-gate.test.ts`(7) · `src/splash/splash-assets.test.ts`(6, 참조↔반입물
-  **양방향** + 규모 예산) · `src/splash/splash-test-bypass.test.ts`(4, 우회 누락 정적 가드) ·
+  **양방향** + 규모 예산) · `src/splash/splash-test-bypass.test.ts`(8, 우회 누락 정적 가드 — src 유닛
+  4 + e2e 4) ·
   `src/auth/LoginPage.test.ts` `#479` 블록(4) ·
   `e2e/p479-splash.spec.ts`(12 — 소재 137건 200/404 0 · 재생이 실제로 흐른다 · 로딩 중 버튼 ·
   9:16 · 히트테스트 · **컷 ④ 합성 카드**). 실화면 = `e2e/p479-splash.capture.ts` → `.p479/`.

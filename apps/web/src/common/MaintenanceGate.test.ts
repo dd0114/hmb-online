@@ -16,6 +16,7 @@ import { createElement as h } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../App";
+import { bypassSplash } from "../splash/splash-test-bypass";
 import {
   OUTAGE_CONFIRM_PROBES,
   __resetBackendHealth,
@@ -58,6 +59,10 @@ async function forceOutage() {
 
 beforeEach(() => {
   __resetBackendHealth();
+  // #479 — `App` 은 라우터로 `LoginPage` 를 간접 마운트한다. 스플래시가 그 첫 화면을
+  // 대체하므로, 여기서 보려는 것("게이트가 켜지면/안 켜지면 라우터가 어떻게 되나")이
+  // 스플래시 뒤로 숨지 않게 끈다. 계약 = `splash/splash-test-bypass.test.ts`.
+  bypassSplash();
 });
 
 afterEach(() => {
