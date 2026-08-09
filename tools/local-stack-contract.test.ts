@@ -136,6 +136,36 @@ describe("#471 AC1 — scripts/local-stack.sh 구조 계약", () => {
     ).toEqual([]);
   });
 
+  // ── #471 패널 S2R 반려분 ───────────────────────────────────────────────
+  // 이건 정적으로 못 건다 — `exit $?` 가 "무엇의" $? 인지는 실행해야 갈린다.
+  // (구 코드 `doctor; QUIET_EXIT=1; exit $?` 는 대입문의 0 을 읽어 항상 성공으로 끝났다.)
+  it("doctor 는 전제 미충족을 exit code 로 전달한다", async () => {
+    const { createServer } = await import("node:net");
+    const { execFile } = await import("node:child_process");
+    // 포트는 **커널이 고르게 한다**(0 = ephemeral) — 데모 8080/8790·배포 18080/18790 은 물론
+    // 어떤 고정 포트도 잡지 않아야 다른 세션과 충돌하지 않는다.
+    const srv = createServer();
+    await new Promise<void>((res) => srv.listen(0, "127.0.0.1", res));
+    const port = (srv.address() as { port: number }).port;
+    try {
+      const run = (env: NodeJS.ProcessEnv) =>
+        new Promise<number>((res) => {
+          execFile("bash", [SCRIPT_PATH, "doctor"], { env: { ...process.env, ...env } }, (err) =>
+            res(err && typeof err.code === "number" ? err.code : 0),
+          );
+        });
+      // 그 포트를 스택이 쓸 포트로 지정 → doctor 의 선점 검출이 bad=1 을 세워야 한다.
+      const busy = await run({ HMB_LOCAL_E2E_WEB_PORT: String(port) });
+      expect(
+        busy,
+        "포트가 물려 있는데 doctor 가 0 으로 끝났다 — `doctor && up` 이나 CI 래퍼가 " +
+          "전제 미충족을 통과로 읽는다(#471 패널 S2R).",
+      ).not.toBe(0);
+    } finally {
+      srv.close(); // PID-only cleanup 원칙과 동일 취지 — 우리가 연 것만 우리가 닫는다.
+    }
+  }, 30_000);
+
   it("bash strict 모드로 돈다", () => {
     const src = readScript();
     expect(src.split("\n")[0]).toMatch(/^#!.*bash/);

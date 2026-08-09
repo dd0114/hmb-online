@@ -416,9 +416,14 @@ print(json.dumps({"formation": "4-3-3", "slots": slots}))
 CMD="${1:-up}"
 case "$CMD" in
   doctor)
+    # ⚠️ `exit $?` 를 doctor 바로 뒤가 아닌 곳에 두지 마라 — 구 코드는 `doctor; QUIET_EXIT=1; exit $?`
+    #    라서 `$?` 가 **대입문**(항상 0)의 상태를 읽었고, 전제 미충족을 발견해 경고를 찍고도
+    #    **항상 exit 0** 으로 끝났다. 사람은 텍스트를 보지만 `doctor && up` 이나 CI 래퍼처럼
+    #    **기계가 읽는 신호는 거짓**이 된다(#471 패널 S2R).
     doctor
+    ret=$?
     QUIET_EXIT=1
-    exit $?
+    exit $ret
     ;;
 
   smoke)
