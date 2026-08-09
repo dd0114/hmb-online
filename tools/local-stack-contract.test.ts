@@ -102,6 +102,40 @@ describe("#471 AC1 — scripts/local-stack.sh 구조 계약", () => {
     }
   });
 
+  // ── #471 패널 S2 반려분 ────────────────────────────────────────────────
+  // 둘 다 "고쳤는데 조용히 회귀하는" 부류다. 특히 첫 번째는 `apps/web/CLAUDE.md` 가
+  // 이름 붙여 경고까지 해 둔 지뢰를 그대로 밟은 것이라, 기억이 아니라 계약으로 건다.
+
+  it("web E2E 를 CI=1 로 돌린다 — 낡은 vite 재사용 금지", () => {
+    const code = codeLines(readScript()).join("\n");
+    // playwright 호출 구문(서브셸 열림 ~ `npx playwright test`) 안에 CI=1 이 있어야 한다.
+    // 파일 아무 데나 CI=1 이 있으면 통과하는 식으로 걸면 계약이 헐거워진다.
+    const call = code.match(/\(\s*cd\s+"\$ROOT\/apps\/web"[\s\S]*?npx playwright test/);
+    expect(call, "playwright 호출 구문을 못 찾았다 — 계약이 낡았다").not.toBeNull();
+    expect(
+      call![0],
+      "CI 가 비면 playwright.config.ts 의 reuseExistingServer 가 true 라 E2E_WEB_PORT 에 남은 " +
+        "낡은 vite 를 주워 쓴다. 그 vite 의 /api 프록시는 기동 시점에 고정이라 이번 백엔드가 " +
+        "아니다 → apiLive() 는 green 인데 브라우저만 다른 서버를 때린다(#471 패널 S2).",
+    ).toMatch(/(^|\s)CI=1(\s|\\)/);
+  });
+
+  it("doctor 가 선점 검사하는 포트에 빠진 것이 없다", () => {
+    const src = readScript();
+    // 스크립트가 선언한 포트 변수 전수 ↔ doctor 선점 루프가 도는 목록. 새 포트를 추가하고
+    // 루프에 안 넣으면 여기서 걸린다(E2E_WEB_PORT 가 정확히 그렇게 빠져 있었다).
+    const declared = [...src.matchAll(/^([A-Z0-9_]*PORT)="\$\{HMB_LOCAL_/gm)].map((m) => m[1]);
+    expect(declared.length, "포트 변수 선언을 못 찾았다 — 계약이 낡았다").toBeGreaterThanOrEqual(4);
+    const loop = codeLines(src).join("\n").match(/for p in ([^;]*); do/);
+    expect(loop, "doctor 의 포트 선점 루프를 못 찾았다").not.toBeNull();
+    const missing = declared.filter((v) => !loop![1].includes(`$${v}`));
+    expect(
+      missing,
+      `선점 검사에서 빠진 포트: ${missing.join(", ")} — 낡은 프로세스가 물고 있어도 ` +
+        `사람에게 신호가 안 간다(#471 패널 S2).`,
+    ).toEqual([]);
+  });
+
   it("bash strict 모드로 돈다", () => {
     const src = readScript();
     expect(src.split("\n")[0]).toMatch(/^#!.*bash/);

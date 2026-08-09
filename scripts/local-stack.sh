@@ -176,7 +176,10 @@ doctor() {
   # 선점 검출 — 이전 실행의 잔재나 다른 세션의 스택이 물고 있으면 여기서 말한다.
   # (안 하면 java 가 "포트 사용 중"으로 조용히 죽고 원인이 로그 깊숙이 묻힌다.)
   local busy=()
-  for p in "$JAVA_PORT" "$RUNNER_PORT" "$WEB_PORT"; do
+  # ⚠️ E2E_WEB_PORT 를 빠뜨리지 마라 — 그 포트에 낡은 vite 가 물려 있으면 playwright 가 그걸
+  #    주워 쓰고(아래 run_web_e2e 의 CI=1 주석), 그 vite 의 /api 프록시는 **이번 백엔드가 아니다**.
+  #    다른 세 포트는 방어하면서 이 포트만 빠져 있어 사람에게 신호조차 안 갔다(#471 패널 S2).
+  for p in "$JAVA_PORT" "$RUNNER_PORT" "$WEB_PORT" "$E2E_WEB_PORT"; do
     lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 && busy+=("$p")
   done
   if [ ${#busy[@]} -gt 0 ]; then
@@ -273,8 +276,16 @@ run_web_e2e() {
   [ -n "${HMB_LOCAL_E2E_SPECS:-}" ] && specs=(${HMB_LOCAL_E2E_SPECS})
   say "web E2E — 실서버 ${#specs[@]}스펙 (목킹 0, 프록시 → $BASE)"
   local json="$TMP/e2e.json" rc=0
+  # ⚠️ CI=1 은 장식이 아니다 — playwright.config.ts 의 `reuseExistingServer: !process.env.CI` 가
+  #    CI 없이는 **true** 라, E2E_WEB_PORT 에 낡은 vite 가 떠 있으면 조용히 그걸 재사용한다.
+  #    그런데 vite 의 /api 프록시 대상은 **기동 시점에 고정**이라(vite.config.ts) 이번 실행의
+  #    VITE_API_TARGET 을 반영하지 않는다 → apiLive() 는 이번 백엔드로 green 인데 **브라우저만
+  #    낡은 백엔드**를 때린다. 그러면 "실서버 · 목킹 0" 이라는 이 게이트의 주장 자체가 갈라진다.
+  #    CI=1 이면 재사용 대신 새로 띄우고, 포트가 물려 있으면 --strictPort 로 **시끄럽게 죽는다**.
+  #    (apps/web/CLAUDE.md 가 이미 경고해 둔 지뢰를 그대로 밟았다 — #471 패널 S2)
   ( cd "$ROOT/apps/web" \
-      && WEB_E2E_PORT="$E2E_WEB_PORT" \
+      && CI=1 \
+         WEB_E2E_PORT="$E2E_WEB_PORT" \
          VITE_API_TARGET="$BASE" \
          HMB_E2E_API_ORIGIN="$BASE" \
          PLAYWRIGHT_JSON_OUTPUT_NAME="$json" \
