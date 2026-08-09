@@ -67,7 +67,7 @@ RUN mkdir -p /var/lib/hmb && chown -R hmb:hmb /var/lib/hmb /app
 #    🟢 이제 사람 기억이 아니라 계약이 막는다 — `DataVersionParityTest` 가 이 ENV 와 application.yml
 #    의 `hmb.data.*-file` 을 파일명 단위로 대조한다(한쪽만 올리면 red).
 ENV HMB_DB_PATH=/var/lib/hmb/hmb.db \
-    HMB_DATA_PLAYERSFILE=/app/data/players/players.v2.8.json \
+    HMB_DATA_PLAYERSFILE=/app/data/players/players.v2.8.1.json \
     HMB_DATA_ECONOMYFILE=/app/data/players/economy.v4.json \
     HMB_DATA_BOTSFILE=/app/data/players/bots.v4.json \
     HMB_DATA_LEAGUEFILE=/app/data/players/league.v2.json \

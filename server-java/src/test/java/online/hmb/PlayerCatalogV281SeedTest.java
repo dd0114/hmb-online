@@ -19,10 +19,10 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
 /**
- * <b>#483 — players v2.8 소비 계약</b>(현행 소비본): 은퇴 120종까지 개명해 <b>실명 잔존 0</b>.
+ * <b>#483 — players v2.8.1 소비 계약</b>(현행 소비본): 은퇴 120종까지 개명해 <b>실명 잔존 0</b>.
  *
  * <p>{@link PlayerCatalogV27SeedTest}·V24·V23·V22 는 남겨 둔다 — 각자 자기 버전을 <b>명시 지정</b>하는
- * 회귀 가드(구 발행물이 여전히 임포트되는가 = 롤백 경로)라 기본 설정이 v2.8 로 넘어가도 계속 통과한다.
+ * 회귀 가드(구 발행물이 여전히 임포트되는가 = 롤백 경로)라 기본 설정이 v2.8.1 로 넘어가도 계속 통과한다.
  *
  * <p><b>왜 서버 쪽에도 계약이 필요한가</b> — data 쪽 파일 테스트는 "발행물에 실명이 없다"까지만 본다.
  * 유저가 실제로 보는 것은 <b>DB 를 거친 카탈로그 응답</b>이고, 그 사이에 임포터가 있다:
@@ -36,7 +36,7 @@ import org.springframework.test.context.DynamicPropertySource;
  * 둘(P081·P092)은 스타터팩이라 사실상 전원이 봤다.
  */
 @SpringBootTest
-class PlayerCatalogV28SeedTest {
+class PlayerCatalogV281SeedTest {
 
     /**
      * v2.6(실명 축)의 표시명·shortName 전집합. <b>발행물에서 직접 읽는다</b> — 실명 목록을 자바
@@ -64,19 +64,19 @@ class PlayerCatalogV28SeedTest {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         try {
-            Path dbFile = Files.createTempFile("hmb-test-v28-", ".db");
+            Path dbFile = Files.createTempFile("hmb-test-v281-", ".db");
             Files.deleteIfExists(dbFile);
             registry.add("hmb.db.path", () -> dbFile.toAbsolutePath().toString());
-            Path overrideFile = Files.createTempDirectory("hmb-test-econ-v28-")
+            Path overrideFile = Files.createTempDirectory("hmb-test-econ-v281-")
                     .resolve("economy.override.json");
             registry.add("hmb.data.economy-override-file", () -> overrideFile.toAbsolutePath().toString());
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
         // 기본 설정과 같은 세트를 **명시 지정**한다 — 기본값이 다음 버전으로 넘어가도 이 테스트는
-        // "v2.8 세트가 임포트 가능한가"를 계속 지킨다. "지금 소비 중인 버전이 이것인가"는
+        // "v2.8.1 세트가 임포트 가능한가"를 계속 지킨다. "지금 소비 중인 버전이 이것인가"는
         // DataVersionParityTest 가 별도로 건다(V27SeedTest 와 같은 규율).
-        registry.add("hmb.data.players-file", () -> "../data/players/players.v2.8.json");
+        registry.add("hmb.data.players-file", () -> "../data/players/players.v2.8.1.json");
         registry.add("hmb.data.economy-file", () -> "../data/players/economy.v4.json");
         registry.add("hmb.data.bots-file", () -> "../data/players/bots.v4.json");
         registry.add("hmb.data.league-file", () -> "../data/players/league.v2.json");
@@ -86,11 +86,11 @@ class PlayerCatalogV28SeedTest {
     private JdbcClient jdbcClient;
 
     @Test
-    void v28ImportsAllRowsAndRecordsTheVersion() {
+    void v281ImportsAllRowsAndRecordsTheVersion() {
         assertThat(jdbcClient.sql("SELECT COUNT(*) FROM players").query(Long.class).single())
-                .as("v2.8 은 행을 더하지도 지우지도 않는다(표시명 레이어)").isEqualTo(182L);
+                .as("v2.8.1 은 행을 더하지도 지우지도 않는다(표시명 레이어)").isEqualTo(182L);
         assertThat(jdbcClient.sql("SELECT value FROM meta_kv WHERE key = 'players_version'")
-                .query(String.class).single()).isEqualTo("v2.8");
+                .query(String.class).single()).isEqualTo("v2.8.1");
     }
 
     /** 🔴 이 트랙의 존재 이유 — <b>DB 를 거친 뒤에도</b> 실명이 한 건도 없다. */
@@ -160,5 +160,26 @@ class PlayerCatalogV28SeedTest {
         // 부팅 임포트는 아무것도 잠그지 않는다 — 잠금은 어드민 API 만 세운다.
         assertThat(jdbcClient.sql("SELECT COUNT(*) FROM players WHERE admin_locked <> 0")
                 .query(Long.class).single()).isZero();
+    }
+
+    /**
+     * 🔴 <b>패널 수리 검정</b> — 캐리오버 4행이 <b>DB 를 거친 뒤에도</b> 새 이름이다.
+     * (`upsertPlayers` 의 `WHERE admin_locked = 0` 때문에 "발행물은 고쳤는데 라이브는 안 바뀐다"가
+     * 구조적으로 가능하다 — 파일 테스트로는 원리적으로 안 잡히는 자리다.)
+     */
+    @Test
+    void carryoverFixedRowsLandInTheCatalog() {
+        record Row(String id, String stale, String fixed) {}
+        List<Row> rows = List.of(
+                new Row("P135", "앙헬로 킨타", "엘리안 킨타"),
+                new Row("P096", "알렉 페르잔", "네스토르 페르잔"),
+                new Row("P084", "실반 로이터", "실반 마흘러"),
+                new Row("P082", "아리츠 바르셀", "제로니 바르셀"));
+        for (Row r : rows) {
+            String name = jdbcClient.sql("SELECT name FROM players WHERE id = ?")
+                    .param(r.id()).query(String.class).single();
+            assertThat(name).as("%s 가 수리 전 이름으로 남아 있다", r.id()).isNotEqualTo(r.stale());
+            assertThat(name).as("%s 수리명", r.id()).isEqualTo(r.fixed());
+        }
     }
 }

@@ -12,6 +12,8 @@ import {
   type Grade,
   type Personality,
   V28_RETIRED_CARDS,
+  V281_FIX_CARDS,
+  V27_ACTIVE_CARDS,
 } from "./generate";
 import { createRng } from "./rng";
 import { ROSTER } from "./roster";
@@ -291,7 +293,7 @@ const REAL_CLUB_TOKENS: readonly string[] = [
 
 const {
   players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-  playersV27, playersV28, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
+  playersV27, playersV28, playersV281, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
 } = generateAll();
 
 describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
@@ -3103,6 +3105,7 @@ describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과
     ["players.v2.6.json", playersV26],
     ["players.v2.7.json", playersV27],
     ["players.v2.8.json", playersV28],
+    ["players.v2.8.1.json", playersV281],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],
@@ -3330,5 +3333,122 @@ describe("league.v2 — 디비전 난이도 사다리 (#252)", () => {
     const top = leagueV2.divisions.reduce((a, b) => (a.level <= b.level ? a : b));
     const topPower = top.gradeSlots.reduce((a, g) => a + gradeAvg[g], 0) * top.strengthMul;
     expect(topPower).toBeGreaterThan(legacyXi);
+  });
+});
+
+/**
+ * #483 패널 blocker A 수리. **이 describe 의 존재 이유는 계약 하나**다 —
+ * "개명이 자기 원본 실명을 물고 오지 않는다". 그 전까지 이 축의 방어선은 **사람 눈뿐**이었고,
+ * 그래서 `naming-log.md` §2 부류④(given-name 연상)가 정확히 겨냥한 자리에서 1건이 통과해 출하됐다.
+ */
+describe("players.v2.8.1 — 개명이 원본 실명을 물고 오지 않는다 (#483 패널 수리)", () => {
+  const PARODY = new Set(["P173", "P174", "P175", "P176", "P177", "P178", "P179", "P180", "P181", "P182"]);
+  const toks = (s: string) => s.split(" ").filter((t) => t.length >= 2);
+  /** id → 그 행이 대체한 **원본 실명**(v2.7 층은 v2.6 실명, v2.8 층은 v2.7 실명). */
+  const originalRealName = new Map<string, string>();
+  for (const c of V27_ACTIVE_CARDS) originalRealName.set(c.id, c.from);
+  for (const c of V28_RETIRED_CARDS) originalRealName.set(c.id, c.from);
+
+  it("발행물 182행 전량에서 자기-원본 토큰 캐리오버가 0 이다", () => {
+    expect(originalRealName.size).toBeGreaterThan(150); // 표본이 비면 이 계약은 아무것도 안 본다
+    const violations: string[] = [];
+    for (const p of playersV281) {
+      const orig = originalRealName.get(p.id);
+      if (!orig || PARODY.has(p.id)) continue; // 패러디는 from == to 인 의도된 항등 행
+      for (const ft of toks(orig)) {
+        for (const tt of new Set([...toks(p.name), ...toks(p.shortName)])) {
+          if (tt === ft || tt.startsWith(ft) || ft.startsWith(tt)) {
+            violations.push(`${p.id} "${orig}" → "${p.name}" (${tt} ~ ${ft})`);
+          }
+        }
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  it("⚠️ 그 계약은 v2.8 에서 실제로 깨져 있었다 — 박제(회귀 시 이 테스트가 먼저 죽는다)", () => {
+    // 이 두 건이 패널이 잡은 것이고, 수리 전 상태를 그대로 남겨 "고쳤다"가 검정 가능하게 한다.
+    const before = new Map(playersV28.map((p) => [p.id, p.name]));
+    expect(before.get("P135")).toBe("앙헬로 킨타"); // ← 앙헬 고메스 (given 캐리오버, 패널 blocker)
+    expect(before.get("P096")).toBe("알렉 페르잔"); // ← 알렉시스 맥 알리스터 (같은 부류, 프리즈된 v2.7)
+    expect(playersV281.find((p) => p.id === "P135")!.name).not.toBe("앙헬로 킨타");
+    expect(playersV281.find((p) => p.id === "P096")!.name).not.toBe("알렉 페르잔");
+  });
+
+  it("표에 있는 4행만 v2.8 과 다르고 나머지 178행은 표시명까지 바이트 동일", () => {
+    const changed = playersV281
+      .filter((p, i) => p.name !== playersV28[i]!.name || p.shortName !== playersV28[i]!.shortName)
+      .map((p) => p.id);
+    expect(changed.sort()).toEqual([...V281_FIX_CARDS].map((c) => c.id).sort());
+    expect(changed).toHaveLength(4);
+  });
+
+  it("표시명 밖 축(id·등급·포지션·능력치·성격·active)은 v2.8 과 완전 동일", () => {
+    expect(playersV281).toHaveLength(playersV28.length);
+    for (let i = 0; i < playersV28.length; i++) {
+      const { name: _a, shortName: _b, ...restBefore } = playersV28[i]!;
+      const { name: _c, shortName: _d, ...restAfter } = playersV281[i]!;
+      expect(restAfter).toEqual(restBefore);
+    }
+    expect(playersV281.filter((p) => p.active)).toHaveLength(62);
+  });
+
+  it("표시명·shortName 이 182 전역 유일", () => {
+    expect(new Set(playersV281.map((p) => p.name)).size).toBe(182);
+    expect(new Set(playersV281.map((p) => p.shortName)).size).toBe(182);
+  });
+
+  it("실명 잔존 0 이 유지된다 — v2.6 실명 토큰과 완전 일치 0 (v2.8 계약 승계)", () => {
+    const real = new Set<string>();
+    for (const p of playersV26) {
+      if (PARODY.has(p.id)) continue;
+      for (const t of p.name.split(" ")) real.add(t);
+      if (p.shortName) real.add(p.shortName);
+    }
+    expect(real.size).toBeGreaterThan(100);
+    const leaked = playersV281.filter(
+      (p) => !PARODY.has(p.id) && [...p.name.split(" "), p.shortName].some((t) => real.has(t)),
+    );
+    expect(leaked.map((p) => `${p.id} ${p.name}`)).toEqual([]);
+  });
+
+  it("수리 4행의 from 앵커가 v2.8 발행물과 일치한다(행 밀림 검출)", () => {
+    for (const c of V281_FIX_CARDS) {
+      expect(playersV28.find((p) => p.id === c.id)!.name).toBe(c.from);
+    }
+  });
+
+  it("⚠️ 활성 카드 1행을 의도적으로 바꾼다 — 예외를 두면 계약이 동어반복이 된다", () => {
+    // P096 은 v2.7 활성(프리즈)인데 같은 부류였다. 은퇴 120종에만 계약을 걸고 이 행을 면제하면
+    // 그 계약은 "내가 이번에 고른 값들은 내 규칙을 지킨다"가 된다 — 그래서 스코프를 넓혀 고쳤다.
+    const p096 = playersV281.find((p) => p.id === "P096")!;
+    expect(p096.active).toBe(true);
+    expect(p096.name).toBe("네스토르 페르잔");
+    // 표시명 축이므로 보유·성장·전적에 쓰이는 축은 그대로다.
+    expect(p096.grade).toBe(playersV28.find((p) => p.id === "P096")!.grade);
+    expect(p096.attributes).toEqual(playersV28.find((p) => p.id === "P096")!.attributes);
+  });
+
+  it("⚠️ 전역 부분문자열 금지는 채택하지 않았다 — 임계가 결함이 아니라 언어를 검정한다", () => {
+    // 근거를 박제한다: 전역(모든 v2.6 실명 토큰 상대 부분문자열)으로 걸면 무해한 범용 이름이
+    // 대량으로 걸려 작명 풀이 닫힌다. 자기-원본으로 좁히면 위반이 정확히 실제 결함만 남는다.
+    const real = new Set<string>();
+    for (const p of playersV26) {
+      if (PARODY.has(p.id)) continue;
+      for (const t of p.name.split(" ")) real.add(t);
+      if (p.shortName) real.add(p.shortName);
+    }
+    let globalHits = 0;
+    for (const p of playersV281) {
+      if (PARODY.has(p.id)) continue;
+      for (const tt of new Set([...toks(p.name), toks(p.shortName)[0] ?? ""])) {
+        if (!tt) continue;
+        for (const t of real) {
+          if (t.length >= 2 && tt !== t && (tt.includes(t) || t.includes(tt))) globalHits++;
+        }
+      }
+    }
+    // 전역 기준이면 여전히 다수 걸린다(라스 ⊂ 라스무스 · 알렉 ⊂ 알렉산더 · 바스 ⊂ 바스토니 …).
+    expect(globalHits).toBeGreaterThan(5);
   });
 });

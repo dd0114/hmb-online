@@ -94,7 +94,7 @@ hmb:
     #    바뀐 것은 **은퇴 120종의 표시명**뿐이다. v2.7 은 활성 62종만 가상화했는데, `active=0` 은
     #    **획득만** 막고 도감·덱은 `active = 1 OR 보유수 > 0` 이라 **보유분은 계속 보인다**(#207 U-D7)
     #    — 라이브 실측 210명 중 **207명**이 실명 카드를 갖고 있었고 둘(P081·P092)은 스타터팩이다.
-    players-file: ../data/players/players.v2.8.json
+    players-file: ../data/players/players.v2.8.1.json
     # economy 는 **v4**(#450 W1) — v3 를 승계하고 **스타터 두 블록만** 바뀌었다(`starterPack` 2슬롯 재매핑
     # = 은퇴 유닛 제거 · `starterTop.pool` 5종 → 활성 LEGEND 10종). #251(league.gemReward)·
     # #368(league.dailyReward)·#408(mission.reward) 블록은 v3 에서 **그대로 승계**된다 —
