@@ -1,3 +1,8 @@
+## 2026-08-09 21:59 KST — [운영] 터널 다운 복구 (수동)
+- 증상: quick tunnel 사망(워치독 DEGRADED, 힐 한도 소진 추정) → 테스터 접속 불가. 컨테이너·Pages 는 정상.
+- 조치: `bash infra/start-tunnel.sh` — 새 터널 URL=wise-symposium-webmaster-brick.trycloudflare.com, web 재배포·결선 완료, status 전항목 ✓.
+- 참고: usage-guard 조회 실패 6회는 같은 시간대 네트워크 계열 — 복구 후 정상(weekly 32%).
+
 # 배포 기록 (deploy-log) — append-only
 
 > **정책(P4-D5 / #171)**: 배포할 때마다 이 파일 맨 위(최신순)에 항목을 append 하고 커밋한다.
