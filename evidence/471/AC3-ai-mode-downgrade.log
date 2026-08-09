@@ -1,4 +1,10 @@
+# AC3 — claude 미로그인/CLI 부재 시 스텁 강등 (안내만 하고 경기는 완주한다)
+# 커맨드: 팔A `HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke` · 팔B `CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke`
+# 실행: 2026-08-10 08:45:03~08:46:51 KST · HEAD f4c9a585 · 워킹트리 변경 0 건(0=clean)
+# ⚠️ 헤더가 없으면 이 로그가 몇 세대 전 코드로 찍혔는지 아무도 모른다(#471 패널 S3 반려).
+
 ### 팔 A — claude 로그인된 상태 · 희망 claude-code (기대: live/logged-in)
+# 실행 2026-08-10 08:45:03 KST · 소요 83초
 $ HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
 
 == 전제 점검
@@ -13,38 +19,39 @@ $ HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
    ✓ 러너 준비
 
 == 권위 서버 빌드 + 기동 :31080
-   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-7Z7Z/hmb.db)
+   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-bksF/hmb.db)
 
 == AI 실행기 (희망 모드: claude-code)
-   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-7Z7Z/executor.log)
+   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-bksF/executor.log)
    ✓ 실효 AI 모드: live (logged-in) — 선수 프롬프트가 경기에 반영된다
 
 == 가입 → 덱 → 매치
-   ✓ 가입 local1786207015
+   ✓ 가입 local1786319115
    ✓ 덱 저장 (선발 11 + 벤치 2)
-   ✓ 킥오프 01KZH3R4PDCSRETDDPP03468EF
+   ✓ 킥오프 01KZMEN5GD0FGF9SKNSQDAAYS9
 
 == 관찰 (재생 창은 스킵 API 로 당긴다)
-   t+000s  GEN1
-   t+056s  FIRST_HALF
+   t+001s  GEN1
+   t+065s  FIRST_HALF
    ⏩ FIRST_HALF 재생 창 당김
-   t+056s  HALFTIME
-   t+060s  GEN2
-   t+060s  SECOND_HALF
+   t+066s  HALFTIME
+   t+069s  GEN2
+   t+069s  SECOND_HALF
    ⏩ SECOND_HALF 재생 창 당김
-   t+061s  FINISHED
+   t+070s  FINISHED
    ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME GEN2 SECOND_HALF FINISHED
 
 PASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다
-scripts/local-stack.sh: line 74: 76112 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
-scripts/local-stack.sh: line 74: 76186 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$WEB_URL" ${clock[@]+"${clock[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
-scripts/local-stack.sh: line 74: 76256 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
-로그: /tmp/hmb-local-stack-7Z7Z
+scripts/local-stack.sh: line 81: 77108 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81: 77944 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81: 78538 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-bksF
 EXIT=0
 
 ════════════════════════════════════════
 
 ### 팔 B — claude CLI 를 못 찾는 상태 · 희망 claude-code (기대: stub/cli-missing 강등, 경기는 완주)
+# 실행 2026-08-10 08:46:33 KST · 소요 18초
 $ CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
 
 == 전제 점검
@@ -59,30 +66,31 @@ $ CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_CLAUDE_BIN=/nonexistent/claude HMB_LO
    ✓ 러너 준비
 
 == 권위 서버 빌드 + 기동 :31080
-   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-Iz0c/hmb.db)
+   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-Kn52/hmb.db)
 
 == AI 실행기 (희망 모드: claude-code)
-   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-Iz0c/executor.log)
+   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-Kn52/executor.log)
    ! 실효 AI 모드: stub (cli-missing) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체
 
 == 가입 → 덱 → 매치
-   ✓ 가입 local1786207101
+   ✓ 가입 local1786319205
    ✓ 덱 저장 (선발 11 + 벤치 2)
-   ✓ 킥오프 01KZH3TRT62WGJ03BM9BK93XPH
+   ✓ 킥오프 01KZMEQWWXQJ9741X50KG5AHW4
 
 == 관찰 (재생 창은 스킵 API 로 당긴다)
    t+000s  GEN1
-   t+002s  FIRST_HALF
+   t+001s  FIRST_HALF
    ⏩ FIRST_HALF 재생 창 당김
    t+002s  HALFTIME
+   t+005s  GEN2
    t+005s  SECOND_HALF
    ⏩ SECOND_HALF 재생 창 당김
    t+006s  FINISHED
-   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME SECOND_HALF FINISHED
+   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME GEN2 SECOND_HALF FINISHED
 
 PASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다
-scripts/local-stack.sh: line 74: 79947 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
-scripts/local-stack.sh: line 74: 80086 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$WEB_URL" ${clock[@]+"${clock[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
-scripts/local-stack.sh: line 74: 80149 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
-로그: /tmp/hmb-local-stack-Iz0c
+scripts/local-stack.sh: line 81: 88554 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81: 88738 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81: 89318 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-Kn52
 EXIT=0
