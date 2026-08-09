@@ -51,7 +51,7 @@ class DataVersionParityTest {
      * "새 발행물을 소비하기 시작했는데 그 발행물을 임포트해 본 계약이 없다"는 경고다.
      */
     private static final Map<String, String> EXPECTED_FILENAMES = new LinkedHashMap<>(Map.of(
-            "players-file", "players.v2.7.json",
+            "players-file", "players.v2.8.json",
             "economy-file", "economy.v4.json",
             "bots-file", "bots.v4.json",
             "league-file", "league.v2.json"));

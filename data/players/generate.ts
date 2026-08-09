@@ -16,7 +16,8 @@
  *   players.v2.4.json = **v2.3 + 신규 LEGEND 2종 append(182)** (#256 석다이크·오시야스)
  *   players.v2.5.json = **v2.4 전 182행 능력치 9종 재롤**(신규 시작 밴드) (#405 성장 재설계)
  *   players.v2.6.json = **v2.5 + 한글 표시명(실선수 172) + shortName** (#406 요구 6)
- *   players.v2.7.json = **v2.6 + 표시명 가상화(62종) + active 재편(62/120)** (#450 W1) — 최신 발행본
+ *   players.v2.7.json = **v2.6 + 표시명 가상화(62종) + active 재편(62/120)** (#450 W1)
+ *   players.v2.8.json = **v2.7 + 은퇴 120종 표시명 가상화 = 실명 잔존 0** (#483) — 최신 발행본
  * ROSTER 는 하나이고 과거 발행물은 전부 **슬라이스로 재현**한다 — v2/v2.1 은 FROZEN_ROSTER_COUNT(172),
  * v2.2/v2.3 은 FROZEN_ROSTER_COUNT_V22(180) 경계다. 신규 유닛이 배열 맨 끝에 append 되므로 그
  * 슬라이스는 발행 당시와 바이트 동일하다(data.test.ts 가 디스크와 대조).
@@ -363,6 +364,174 @@ export const V27_ACTIVE_CARDS: readonly { id: string; from: string; to: string; 
   { id: "P136", from: "엔드릭", to: "핌 질베르", short: "질베르" },
 ];
 
+/**
+ * players 카탈로그 v2.8 (#483) — **은퇴 120종의 표시명까지 가상화**해 실명 잔존을 0 으로 만든다.
+ *
+ * ⚠️ **v2.7 이 남긴 경계를 닫는 것이다.** #450 은 활성 62종만 개명하고 은퇴 120종은 실명 + `active:
+ * false` 로 뒀다(D5 "리포 실명 존치"). 그 전제는 *"은퇴시켰으니 안 보인다"* 였는데 **성립하지 않는다** —
+ * `active=0` 은 **획득만** 막고, 도감·덱 편성은 `WHERE p.active = 1 OR 보유수 > 0`
+ * (`CatalogController`, #207 U-D7 의도된 설계)이라 **보유분은 계속 보인다**. 라이브 실측(2026-08-10):
+ * 유저 210명 중 **207명**이 실명 카드를 갖고 있고(보유 106종·726행·798장), 그중 두 종은
+ * **스타터팩**(P081 벤 화이트 · P092 메이슨 마운트)이라 사실상 전원이 본다.
+ *
+ * 행 삭제는 구조적으로 불가능하다(시드에 prune 이 없고 `AdminCatalogService.purge` 는 참조 1건이면
+ * 409) → **표시명 교체가 유일한 해소 경로**다.
+ *
+ * v2.7 과 **스키마·행 수·필드 순서·`active` 격자(62/120) 전부 동일**하다. 바뀌는 것은 은퇴 120종의
+ * `name`/`shortName` 값뿐이다 — 활성 62종은 **한 글자도 안 건드린다**(패러디 10종 포함).
+ */
+export const PLAYERS_V28_VERSION = "v2.8";
+
+/**
+ * v2.8 개명 대상 = v2.7 은퇴 **120종 전량**(`active: false` 인 행과 정확히 일치).
+ *
+ * - `from` = v2.7 발행물의 현재 표시명(**앵커**). 어긋나면 빌더가 throw — 행이 밀리거나 누가 v2.7 을
+ *   고치면 여기서 터진다(`V27_ACTIVE_CARDS` 와 같은 장치).
+ * - 작명 규칙 = `docs/plan-v5/roster-v27-spec.md` §2-1-a/§2-2 를 그대로 승계한다:
+ *   신규명의 **모든 토큰**이 v2.6 실명 172종의 어떤 토큰(성·이름·shortName)과도 **완전 일치 금지** ·
+ *   `PARODY_REAL_NAME_KO_DENYLIST` 9건 **부분문자열 0** · 한국식은 `^[가-힣]{3}$` + `short == name` +
+ *   v2.6 실명의 **성 집합·이름 집합**과 충돌 0(테스트가 발행물에서 직접 도출 — 하드코딩 금지).
+ * - 톤은 v2.7 활성 62종 계승: 외국식 96종 = `[이름] [성]`·`short` = 성 / 한국식 24종 = 3자·`short` = 풀네임.
+ *   한국식 대상은 v2.7 이 한글 3자 단일 토큰이던 **한국 선수 24종**이고, 외국 모노님(P009 펠레 ·
+ *   P023 로드리 · P062 카세미루)은 형태가 같아 보여도 **외국식**으로 간다.
+ *
+ * ⚠️ **기계가 못 잡는 축이 둘 있다** — 둘 다 사람이 눈으로 봤다(#483 I):
+ *   ① *"올바른 행에 붙었나"* — `from` 앵커는 id 별이라 **두 행의 `to` 를 통째로 맞바꿔도** 전 가드가
+ *      통과한다(`data/CLAUDE.md` 명시, #406 독립검증 minor-2).
+ *   ② *"1글자 차이로 실존 선수가 특정되는 형태"* — spec §2-2 가 #450 에서 실제로 6건을 걸러낸 축이다.
+ *      이번에도 **28건을 눈 대조로 교체**했다. 대표적으로 `판데이크`(→ 판메이런) 는 판 다이크의 실존
+ *      성 그대로였고, `라이머`(Laimer) · `클라선`(Klaassen) · `뷔르키`(Bürki) · `아피아`(Appiah) ·
+ *      `밤바`(Bamba) 도 실존 성 그대로였다. 부분문자열로 샌 것도 있었다 — `살라디`(살라) · `라울랭`(라울).
+ *      전수 사유 = `epics/483-fictional-rename/naming-log.md`.
+ */
+export const V28_RETIRED_CARDS: readonly { id: string; from: string; to: string; short: string }[] = [
+  // ── LEGEND 14 ──────────────────────────────────────────────────
+  { id: "P001", from: "레프 야신", to: "오톤 크리벨", short: "크리벨" }, // GK
+  { id: "P002", from: "프란츠 베켄바워", to: "빌헬름 로덴", short: "로덴" }, // DF
+  { id: "P003", from: "파올로 말디니", to: "엔리코 발마르", short: "발마르" }, // DF
+  { id: "P004", from: "프랑코 바레시", to: "조르당 페스카", short: "페스카" }, // DF
+  { id: "P005", from: "디에고 마라도나", to: "다리오 벤투리", short: "벤투리" }, // MF
+  { id: "P006", from: "지네딘 지단", to: "에밀리앙 카르보", short: "카르보" }, // MF
+  { id: "P007", from: "미셸 플라티니", to: "아나톨 몽테", short: "몽테" }, // MF
+  { id: "P008", from: "로타어 마테우스", to: "구스타프 슈타델", short: "슈타델" }, // MF
+  { id: "P009", from: "펠레", to: "엘리오 살리노", short: "살리노" }, // FW
+  { id: "P010", from: "호나우두 나자리우", to: "티노 델가르", short: "델가르" }, // FW
+  { id: "P011", from: "요한 크루이프", to: "예룬 발커", short: "발커" }, // FW
+  { id: "P012", from: "마르코 판 바스턴", to: "스텐 노르베리", short: "노르베리" }, // FW
+  { id: "P143", from: "박지성", to: "남도윤", short: "남도윤" }, // MF
+  { id: "P144", from: "차범근", to: "도서준", short: "도서준" }, // FW
+  // ── DIA 12 ─────────────────────────────────────────────────────
+  { id: "P016", from: "후벵 디아스", to: "이보 카브랄", short: "카브랄" }, // DF
+  { id: "P017", from: "아슈라프 하키미", to: "셀림 아르잔", short: "아르잔" }, // DF
+  { id: "P018", from: "알폰소 데이비스", to: "밀로 켄트베르", short: "켄트베르" }, // DF
+  { id: "P019", from: "안토니오 뤼디거", to: "도미닉 라이헬", short: "라이헬" }, // DF
+  { id: "P023", from: "로드리", to: "발렌 도르체", short: "도르체" }, // MF
+  { id: "P026", from: "페데리코 발베르데", to: "요아킴 베리만", short: "베리만" }, // MF
+  { id: "P027", from: "루카 모드리치", to: "야쿱 세베린", short: "세베린" }, // MF
+  { id: "P028", from: "토니 크로스", to: "라세 헬름", short: "헬름" }, // MF
+  { id: "P032", from: "킬리안 음바페", to: "마리우스 셀랑", short: "셀랑" }, // FW
+  { id: "P034", from: "해리 케인", to: "올리버 렉스톤", short: "렉스톤" }, // FW
+  { id: "P035", from: "모하메드 살라", to: "파리드 젤라니", short: "젤라니" }, // FW
+  { id: "P037", from: "손흥민", to: "류하준", short: "류하준" }, // FW
+  // ── GOLD 33 ────────────────────────────────────────────────────
+  { id: "P039", from: "잔루이지 돈나룸마", to: "마시모 그란디", short: "그란디" }, // GK
+  { id: "P041", from: "트렌트 알렉산더아널드", to: "콜린 애슈본", short: "애슈본" }, // DF
+  { id: "P042", from: "카일 워커", to: "덱스 홀브룩", short: "홀브룩" }, // DF
+  { id: "P044", from: "에데르 밀리탕", to: "질베르투 마샤두", short: "마샤두" }, // DF
+  { id: "P045", from: "로날드 아라우호", to: "에르난 로시니", short: "로시니" }, // DF
+  { id: "P046", from: "요슈코 그바르디올", to: "토미슬라 베크텐", short: "베크텐" }, // DF
+  { id: "P047", from: "쥘 쿤데", to: "아망 뒤부아", short: "뒤부아" }, // DF
+  { id: "P048", from: "리스 제임스", to: "에이든 코널리", short: "코널리" }, // DF
+  { id: "P049", from: "주앙 칸셀루", to: "제카 바레투", short: "바레투" }, // DF
+  { id: "P051", from: "마테이스 더 리흐트", to: "톤 베르스텍", short: "베르스텍" }, // DF
+  { id: "P052", from: "앤드루 로버트슨", to: "던컨 케이드", short: "케이드" }, // DF
+  { id: "P053", from: "브루누 페르난드스", to: "엔히크 마르톨", short: "마르톨" }, // MF
+  { id: "P054", from: "베르나르두 실바", to: "시몬 알베르티", short: "알베르티" }, // MF
+  { id: "P057", from: "일카이 귄도안", to: "에민 카라괴즈", short: "카라괴즈" }, // MF
+  { id: "P058", from: "니콜로 바렐라", to: "잔카를로 페트리", short: "페트리" }, // MF
+  { id: "P059", from: "자말 무시알라", to: "라스 베크만", short: "베크만" }, // MF
+  { id: "P060", from: "엔소 페르난데스", to: "아우구스토 리날", short: "리날" }, // MF
+  { id: "P061", from: "오렐리앵 추아메니", to: "티에보 모랑", short: "모랑" }, // MF
+  { id: "P062", from: "카세미루", to: "헤나투 코스텔", short: "코스텔" }, // MF
+  { id: "P063", from: "요주아 키미히", to: "요나탄 슈트룸", short: "슈트룸" }, // MF
+  { id: "P064", from: "필 포든", to: "코리 램버트", short: "램버트" }, // MF
+  { id: "P067", from: "하파엘 레앙", to: "디니스 파벨루", short: "파벨루" }, // FW
+  { id: "P068", from: "훌리안 알바레스", to: "에밀리오 콘타디", short: "콘타디" }, // FW
+  { id: "P069", from: "빅터 오시멘", to: "치디 오콘조", short: "오콘조" }, // FW
+  { id: "P070", from: "마커스 래시퍼드", to: "테런스 하이드", short: "하이드" }, // FW
+  { id: "P071", from: "라민 야말", to: "파블로 세라노", short: "세라노" }, // FW
+  { id: "P072", from: "흐비차 크바라츠헬리아", to: "레반 나탈제", short: "나탈제" }, // FW
+  { id: "P145", from: "이강인", to: "위재훈", short: "위재훈" }, // MF
+  { id: "P146", from: "기성용", to: "문준서", short: "문준서" }, // MF
+  { id: "P149", from: "이영표", to: "민세호", short: "민세호" }, // DF
+  { id: "P152", from: "안정환", to: "방태윤", short: "방태윤" }, // FW
+  { id: "P153", from: "이동국", to: "서건우", short: "서건우" }, // FW
+  { id: "P154", from: "황선홍", to: "선태오", short: "선태오" }, // FW
+  // ── SILVER 39 ──────────────────────────────────────────────────
+  { id: "P075", from: "얀 조머", to: "카스텐 뮐베르", short: "뮐베르" }, // GK
+  { id: "P076", from: "다비드 라야", to: "빅토르 렘케", short: "렘케" }, // GK
+  { id: "P081", from: "벤 화이트", to: "에드윈 콜스터", short: "콜스터" }, // DF
+  { id: "P082", from: "파우 토레스", to: "아리츠 바르셀", short: "바르셀" }, // DF
+  { id: "P083", from: "네이선 아케", to: "미카 반후텐", short: "반후텐" }, // DF
+  { id: "P084", from: "마누엘 아칸지", to: "실반 로이터", short: "로이터" }, // DF
+  { id: "P085", from: "알레산드로 바스토니", to: "다비데 코르셀", short: "코르셀" }, // DF
+  { id: "P086", from: "페데리코 디마르코", to: "로렌초 비아니", short: "비아니" }, // DF
+  { id: "P087", from: "데스티니 우도지", to: "오비 에케네", short: "에케네" }, // DF
+  { id: "P088", from: "마르코스 아쿠냐", to: "아리엘 몬토야", short: "몬토야" }, // DF
+  { id: "P089", from: "제레미 프림퐁", to: "윔 데스탱", short: "데스탱" }, // DF
+  { id: "P090", from: "키어런 트리피어", to: "제럴드 핀치", short: "핀치" }, // DF
+  { id: "P091", from: "하파엘 게레이루", to: "누엘 마르비", short: "마르비" }, // DF
+  { id: "P092", from: "메이슨 마운트", to: "오웬 브래드쇼", short: "브래드쇼" }, // MF
+  { id: "P097", from: "유리 틸레만스", to: "요스트 반에이크", short: "반에이크" }, // MF
+  { id: "P098", from: "산드로 토날리", to: "엘리아 몬디니", short: "몬디니" }, // MF
+  { id: "P099", from: "에두아르도 카마빙가", to: "아마라 실레", short: "실레" }, // MF
+  { id: "P100", from: "라이언 흐라번베르흐", to: "시브렌 하위스", short: "하위스" }, // MF
+  { id: "P101", from: "파비안 루이스", to: "하이메 오르텐", short: "오르텐" }, // MF
+  { id: "P102", from: "테윈 코프메이너스", to: "바스 데커", short: "데커" }, // MF
+  { id: "P103", from: "웨스턴 매케니", to: "웨이드 코빈", short: "코빈" }, // MF
+  { id: "P104", from: "하칸 찰하노글루", to: "오누르 셀림지", short: "셀림지" }, // MF
+  { id: "P105", from: "아마두 오나나", to: "무사 다코", short: "다코" }, // MF
+  { id: "P109", from: "랑달 콜로 무아니", to: "로맹 뒤셰르", short: "뒤셰르" }, // FW
+  { id: "P110", from: "코디 하크포", to: "티스 로버스", short: "로버스" }, // FW
+  { id: "P111", from: "올리 왓킨스", to: "에드 홀리스", short: "홀리스" }, // FW
+  { id: "P112", from: "알렉산더 이사크", to: "에스펜 뉘고르", short: "뉘고르" }, // FW
+  { id: "P113", from: "두샨 블라호비치", to: "보얀 페트코프", short: "페트코프" }, // FW
+  { id: "P114", from: "니콜라 잭슨", to: "콰메 아둠", short: "아둠" }, // FW
+  { id: "P115", from: "세루 기라시", to: "세쿠 만데", short: "만데" }, // FW
+  { id: "P155", from: "이재성", to: "송재우", short: "송재우" }, // MF
+  { id: "P156", from: "황인범", to: "신도훈", short: "신도훈" }, // MF
+  { id: "P157", from: "구자철", to: "심우진", short: "심우진" }, // MF
+  { id: "P158", from: "이청용", to: "연시완", short: "연시완" }, // MF
+  { id: "P159", from: "김영권", to: "예찬형", short: "예찬형" }, // DF
+  { id: "P160", from: "김진수", to: "우다온", short: "우다온" }, // DF
+  { id: "P162", from: "박주영", to: "원지후", short: "원지후" }, // FW
+  { id: "P163", from: "설기현", to: "임세온", short: "임세온" }, // FW
+  { id: "P164", from: "조규성", to: "장하율", short: "장하율" }, // FW
+  // ── BRONZE 22 ──────────────────────────────────────────────────
+  { id: "P117", from: "굴리엘모 비카리오", to: "체사레 폰티", short: "폰티" }, // GK
+  { id: "P118", from: "리코 루이스", to: "딜런 애커드", short: "애커드" }, // DF
+  { id: "P119", from: "리바이 콜윌", to: "케이든 마시", short: "마시" }, // DF
+  { id: "P123", from: "리카르도 칼라피오리", to: "니코데모 살바티", short: "살바티" }, // DF
+  { id: "P124", from: "조르조 스칼비니", to: "피에로 살가리", short: "살가리" }, // DF
+  { id: "P126", from: "미키 판 더 벤", to: "룰 판메이런", short: "판메이런" }, // DF
+  { id: "P128", from: "코비 마이누", to: "오마리 벨포드", short: "벨포드" }, // MF
+  { id: "P130", from: "아르다 귈레르", to: "케난 알탄", short: "알탄" }, // MF
+  { id: "P132", from: "애덤 와튼", to: "프레디 워슬리", short: "워슬리" }, // MF
+  { id: "P133", from: "주앙 네베스", to: "엘리아스 페소아", short: "페소아" }, // MF
+  { id: "P135", from: "앙헬 고메스", to: "앙헬로 킨타", short: "킨타" }, // MF
+  { id: "P137", from: "마티스 텔", to: "로뱅 되르트", short: "되르트" }, // FW
+  { id: "P138", from: "베냐민 셰슈코", to: "미하 자브렉", short: "자브렉" }, // FW
+  { id: "P140", from: "카림 아데예미", to: "유수프 다니오", short: "다니오" }, // FW
+  { id: "P141", from: "위고 에키티케", to: "뤼도 마르샹", short: "마르샹" }, // FW
+  { id: "P142", from: "알레한드로 가르나초", to: "이그나시오 벨트", short: "벨트" }, // FW
+  { id: "P165", from: "배준호", to: "전주완", short: "전주완" }, // MF
+  { id: "P166", from: "홍현석", to: "정라온", short: "정라온" }, // MF
+  { id: "P167", from: "백승호", to: "주선호", short: "주선호" }, // MF
+  { id: "P168", from: "설영우", to: "채이현", short: "채이현" }, // DF
+  { id: "P170", from: "양민혁", to: "천유겸", short: "천유겸" }, // FW
+  { id: "P172", from: "양현준", to: "하리안", short: "하리안" }, // FW
+];
+
 /** league 시드 데이터 버전(봇 클럽명·성향 프리셋·순위 보상). */
 export const LEAGUE_VERSION = "v1";
 
@@ -616,6 +785,12 @@ export interface PlayerSeedV26 extends PlayerSeedV25 {
  * 활성 62종의 `name`/`shortName`, 그리고 182행 전체의 `active`(62 true / 120 false). (#450 W1)
  */
 export type PlayerSeedV27 = PlayerSeedV26;
+
+/**
+ * players.v2.8 = v2.7 과 **스키마·행 수·필드 순서·`active` 격자 동일**(additive 필드 0). 바뀌는 것은
+ * 은퇴 120종의 `name`/`shortName` 뿐이다 — 활성 62종은 값까지 그대로다. (#483)
+ */
+export type PlayerSeedV28 = PlayerSeedV27;
 
 const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "technical",
@@ -1127,8 +1302,10 @@ export interface GeneratedData {
   playersV25: PlayerSeedV25[];
   /** players.v2.6.json — v2.5 + 한글 표시명(실선수 172) + shortName (#406). */
   playersV26: PlayerSeedV26[];
-  /** players.v2.7.json — v2.6 + 표시명 가상화 62종 + active 재편(62/120) (#450). 최신 발행본. */
+  /** players.v2.7.json — v2.6 + 표시명 가상화 62종 + active 재편(62/120) (#450). 동결. */
   playersV27: PlayerSeedV27[];
+  /** players.v2.8.json — v2.7 + 은퇴 120종 표시명 가상화 (#483). **최신 발행본**. */
+  playersV28: PlayerSeedV28[];
   economy: EconomySeed;
   /**
    * economy.v3.json — v2 + starterTop 블록 (#209).
@@ -1559,6 +1736,104 @@ function buildPlayersV27(playersV26: PlayerSeedV26[]): PlayerSeedV27[] {
     const { name: _m, shortName: _t, active: _b, ...restAfter } = out[i]!;
     if (JSON.stringify(restBefore) !== JSON.stringify(restAfter)) {
       throw new Error(`v2.7 레이어가 ${playersV26[i]!.id} 의 이름/active 밖 축을 건드렸다(#450)`);
+    }
+  }
+  return out;
+}
+
+/**
+ * players.v2.7 위에 v2.8 을 만든다 (#483) — 은퇴 120종의 표시명을 가상명으로 덮는 **순수 문자열 레이어**.
+ * **v2.7 이하 빌더는 건드리지 않는다**(v2.7 이 v2.6 을 대하는 방식과 동일). RNG 미사용 · 행 추가 0 ·
+ * `active` 무접촉 — 그래서 `bots.v4`·`economy.v4` 의 활성 참조 계약이 자동으로 그대로 성립한다.
+ *
+ * fail-closed 로 보는 것(조용한 사고를 전부 터뜨린다):
+ *   ① 표 120행 · id 유일 · 전원 v2.7 에 존재 · **전원이 v2.7 에서 비활성**(활성 개명은 이 트랙 밖)
+ *   ② 표의 id 집합 == v2.7 비활성 집합 (한 명이라도 실명이 남으면 이 트랙의 목적이 무너진다)
+ *   ③ `from` 앵커가 v2.7 의 현재 이름과 일치 — 행이 밀리거나 v2.7 을 고치면 여기서 터진다
+ *   ④ 신규명 = 한글 전용 · 길이 상한 · `short` 가 풀네임의 토큰 · 빈 문자열 금지
+ *   ⑤ 표시명 **182 전역 유일** · shortName **182 전역 유일**
+ *      (⚠️ v2.7 은 shortName 유일을 활성 62 안에서만 걸었다 — 비활성에 "루이스" 2쌍이 남아서다.
+ *       그 두 행이 이번에 개명되므로 **전역 유일이 성립하고, 그래서 계약을 전역으로 올린다**.)
+ *   ⑥ `active` 카운트 = 62 / 120 **불변** · 활성 62종의 `name`/`shortName` **바이트 동일**
+ *   ⑦ id/position/grade/attributes/personality 는 v2.7 과 **완전 동일**(표시명 레이어다)
+ */
+function buildPlayersV28(playersV27: PlayerSeedV27[]): PlayerSeedV28[] {
+  if (V28_RETIRED_CARDS.length !== 120) {
+    throw new Error(`v2.8 개명 표는 120행이어야 하는데 ${V28_RETIRED_CARDS.length} 이다(#483)`);
+  }
+  const byId = new Map(playersV27.map((p) => [p.id, p]));
+  const card = new Map<string, (typeof V28_RETIRED_CARDS)[number]>();
+  for (const c of V28_RETIRED_CARDS) {
+    if (card.has(c.id)) throw new Error(`v2.8 개명 표에 ${c.id} 가 두 번 있다`);
+    const src = byId.get(c.id);
+    if (!src) throw new Error(`v2.8 개명 표의 ${c.id} 가 v2.7 카탈로그에 없다`);
+    if (src.active) {
+      throw new Error(`${c.id} 는 v2.7 활성이다 — v2.8 은 은퇴 120종만 개명한다(#483 스코프)`);
+    }
+    if (src.name !== c.from) {
+      throw new Error(
+        `${c.id} 의 v2.7 이름이 "${c.from}" 이어야 하는데 "${src.name}" 이다 — ` +
+          `v2.7 은 발행 후 수정 금지다. 표시명 변경은 V28_RETIRED_CARDS 에서만 한다.`,
+      );
+    }
+    card.set(c.id, c);
+  }
+  // 표의 id 집합 == v2.7 비활성 집합. 빠진 행이 있으면 그 선수의 실명이 라이브에 그대로 남는다.
+  for (const p of playersV27) {
+    if (!p.active && !card.has(p.id)) {
+      throw new Error(`${p.id} "${p.name}" 이 비활성인데 v2.8 개명 표에 없다 — 실명이 남는다(#483)`);
+    }
+  }
+
+  for (const c of V28_RETIRED_CARDS) {
+    if (!c.to || !HANGUL_ONLY.test(c.to)) {
+      throw new Error(`${c.id} 새 표시명이 한글 전용이 아니다: "${c.to}"`);
+    }
+    if (!c.short || !HANGUL_ONLY.test(c.short)) {
+      throw new Error(`${c.id} 새 shortName 이 한글 전용이 아니다: "${c.short}"`);
+    }
+    if (c.to.length > V27_MAX_NAME_LEN) {
+      throw new Error(`${c.id} 새 표시명 "${c.to}" 이 상한 ${V27_MAX_NAME_LEN}자를 넘는다`);
+    }
+    if (c.short.length > V27_MAX_SHORT_LEN || c.short.length > c.to.length) {
+      throw new Error(`${c.id} 새 shortName "${c.short}" 이 상한/풀네임 길이를 넘는다`);
+    }
+    // short 는 풀네임에서 잘라낸 것이어야 한다 — 임의 문자열이면 두 축이 다른 사람을 가리킬 수 있다.
+    if (c.short !== c.to && !c.to.split(" ").includes(c.short)) {
+      throw new Error(`${c.id} shortName "${c.short}" 이 풀네임 "${c.to}" 의 토큰이 아니다`);
+    }
+  }
+
+  const out: PlayerSeedV28[] = playersV27.map((p) => {
+    const c = card.get(p.id);
+    // v2.7 키 순서를 유지한 채 값만 덮는다(스프레드라 순서 보존 — additive 필드 0).
+    return c ? { ...p, name: c.to, shortName: c.short } : p;
+  });
+
+  if (new Set(out.map((p) => p.name)).size !== out.length) {
+    throw new Error("v2.8 표시명 충돌 — 가상명이 기존 이름과 겹친다(도감 중복)");
+  }
+  if (new Set(out.map((p) => p.shortName)).size !== out.length) {
+    throw new Error("v2.8 shortName 충돌 — 밀집 UI 가 두 선수를 구분 못 한다");
+  }
+  const activeRows = out.filter((p) => p.active);
+  if (activeRows.length !== 62 || out.length - activeRows.length !== 120) {
+    throw new Error(
+      `v2.8 활성 62 / 비활성 120 이어야 하는데 ${activeRows.length} / ${out.length - activeRows.length} 이다`,
+    );
+  }
+
+  // 표시명 레이어다: 그 밖은 v2.7 과 완전 동일 + 활성 62종은 이름까지 동일해야 한다.
+  for (let i = 0; i < playersV27.length; i++) {
+    const before = playersV27[i]!;
+    const after = out[i]!;
+    const { name: _n, shortName: _s, ...restBefore } = before;
+    const { name: _m, shortName: _t, ...restAfter } = after;
+    if (JSON.stringify(restBefore) !== JSON.stringify(restAfter)) {
+      throw new Error(`v2.8 레이어가 ${before.id} 의 표시명 밖 축을 건드렸다(#483)`);
+    }
+    if (before.active && (before.name !== after.name || before.shortName !== after.shortName)) {
+      throw new Error(`v2.8 이 활성 유닛 ${before.id} 의 표시명을 바꿨다 — 스코프 밖이다(#483)`);
     }
   }
   return out;
@@ -2168,6 +2443,8 @@ export function generateAll(): GeneratedData {
   const playersV26 = buildPlayersV26(playersV25);
   // #450: v2.7 은 v2.6 위에 얹는 **표시명 + active 레이어**(RNG 미사용, 행 추가 0, 로스터 무접촉).
   const playersV27 = buildPlayersV27(playersV26);
+  // #483: v2.8 은 v2.7 위에 얹는 **표시명 레이어**(RNG 미사용, 행 추가 0, `active` 무접촉).
+  const playersV28 = buildPlayersV28(playersV27);
   const league = buildLeague();
 
   // economy v3(#209) = v2 그대로 + starterTop 블록. v2 객체는 건드리지 않는다(발행물 불변).
@@ -2220,7 +2497,7 @@ export function generateAll(): GeneratedData {
 
   return {
     players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-    playersV27,
+    playersV27, playersV28,
     economy, economyV3, economyV4, bots, league,
     leagueV2: buildLeagueV2(league),
     botsV3,
@@ -2240,7 +2517,7 @@ const isMain = (() => {
 if (isMain) {
   const {
     players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-    playersV27, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
+    playersV27, playersV28, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
   } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
   writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(playersV2, null, 2) + "\n");
@@ -2272,6 +2549,10 @@ if (isMain) {
     join(here, `players.${PLAYERS_V27_VERSION}.json`),
     JSON.stringify(playersV27, null, 2) + "\n",
   );
+  writeFileSync(
+    join(here, `players.${PLAYERS_V28_VERSION}.json`),
+    JSON.stringify(playersV28, null, 2) + "\n",
+  );
   writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
   // ⚠️ **`economy.v3.json` 은 더 이상 쓰지 않는다**(#450 W1 발견).
   // 발행 후 세 웨이브(#251 시즌 다이아 · #368 리그 데일리 18칸 · #408 원정 미션)가 이 **발행물 JSON 을
@@ -2300,7 +2581,8 @@ if (isMain) {
       `v2.5 ${playersV25.length} rerolled to lowered start bands ` +
       `active=${playersV25.filter((p) => p.active).length}, ` +
       `v2.6 ${playersV26.length} ko-names+shortName, ` +
-      `v2.7 ${playersV27.length} fictional names active=${playersV27.filter((p) => p.active).length}), ` +
+      `v2.7 ${playersV27.length} fictional names active=${playersV27.filter((p) => p.active).length}, ` +
+      `v2.8 ${playersV28.length} all-fictional names active=${playersV28.filter((p) => p.active).length}), ` +
       // ⚠️ v3 는 더 이상 쓰지 않는다(#453). 로그에 남겨 두면 다음 사람이 "재생성된다"고 오판한다.
       `economy.${DATA_VERSION}.json + economy.${ECONOMY_V4_VERSION}.json(starter v4, v3 승계·v3 무기록), ` +
       `${bots.length} bots + bots.${BOTS_V4_VERSION}.json, league.${LEAGUE_VERSION}.json -> data/players/`,

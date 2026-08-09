@@ -90,7 +90,11 @@ hmb:
     #    은퇴는 **행 삭제가 아니라 플래그**(시드에 prune 이 없고 참조가 남아 있다) — 보유분은 계속 보인다.
     #    ⚠️ `shortName` 은 **이 웨이브(#450 W2)부터 서버가 임포트한다**(`players.short_name`, V41).
     #       구 발행물(v2.5 이하)엔 그 필드가 없어 NULL 로 들어오고, web 은 풀네임으로 폴백한다.
-    players-file: ../data/players/players.v2.7.json
+    # → **v2.8(현행 소비본, #483)** = v2.7 위의 **표시명 레이어**. 182행·`active` 62/120 **그대로**이고
+    #    바뀐 것은 **은퇴 120종의 표시명**뿐이다. v2.7 은 활성 62종만 가상화했는데, `active=0` 은
+    #    **획득만** 막고 도감·덱은 `active = 1 OR 보유수 > 0` 이라 **보유분은 계속 보인다**(#207 U-D7)
+    #    — 라이브 실측 210명 중 **207명**이 실명 카드를 갖고 있었고 둘(P081·P092)은 스타터팩이다.
+    players-file: ../data/players/players.v2.8.json
     # economy 는 **v4**(#450 W1) — v3 를 승계하고 **스타터 두 블록만** 바뀌었다(`starterPack` 2슬롯 재매핑
     # = 은퇴 유닛 제거 · `starterTop.pool` 5종 → 활성 LEGEND 10종). #251(league.gemReward)·
     # #368(league.dailyReward)·#408(mission.reward) 블록은 v3 에서 **그대로 승계**된다 —
