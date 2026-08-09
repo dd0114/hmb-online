@@ -45,20 +45,38 @@ done
 
 # ── 2) 플래그가 실제로 먹히는가 ───────────────────────────────────────
 # 런북 한 줄에서 `infra/foo.sh … --bar` 를 뽑아, foo.sh 가 --bar 를 파싱하는지 본다.
-# ⚠️ "스크립트가 그 문자열을 갖고 있다" 가 아니라 **인자 파싱부에 있다**를 본다 —
-#    주석에만 있는 플래그는 먹지 않는다.
+#
+# ⚠️ **이 검사는 한 번 뚫렸다**(#472 sk2 소수의견). 옛 정규식은 파일 전체에서 그 리터럴을 찾아
+#    `(^|[[:space:]|(])--flag[)|[:space:]]` 로 봤는데, 그러면 **산문이 검사를 만족시킨다** —
+#    사용법 주석의 `--no-claude`, 안내문 `note "…(--no-claude)…"`, `echo "사용: […|--go|…]"` 가
+#    전부 통과한다. 실제 변이로 확인됐다: `pack-move.sh` 의 **진짜 case 분기**를
+#    `--no-claude)` → `--skip-claude)` 로 갈아도 이 검사는 green 이고, 런북대로 실행하면
+#    `알 수 없는 인자` **exit 64** 가 난다 — 그것도 **정지 창 안(P0-4)** 에서.
+#    검사의 pass 조건("플래그 미스 0")이 정확히 그 사고를 막겠다는 약속이었으므로 구멍이었다.
+#
+# 그래서 **처방 형태**로 앵커한다 — 언급이 아니라 *받는 코드*만 센다:
+#   ⓐ 주석을 걷어낸다(이력·사용법 주석은 남아야 하지만, 통과 근거가 되면 안 된다)
+#   ⓑ `case` 분기 **패턴 자리**에서만 찾는다(줄머리 → `|` 로 이어진 패턴 목록 → `)`)
+#   ⓒ `[ "$1" = "--flag" ]` 형태의 비교도 인정한다(파싱 방식이 case 가 아닐 수 있다)
+# 문자열 안의 언급은 줄머리 앵커에 걸려 ⓑ 를 통과하지 못한다(usage 문자열 `[--a|--b]` 포함).
 echo ""
 echo "── 플래그 ──"
+accepts_flag(){ # <스크립트> <--플래그> → 인자 파싱부가 실제로 받으면 0
+  local body; body=$(sed 's/#.*//' "$1")
+  printf '%s\n' "$body" | grep -qE "^[[:space:]]*\(?([^|)]*\|)*[[:space:]]*$2[[:space:]]*(\||\))" && return 0
+  printf '%s\n' "$body" | grep -qE "==?[[:space:]]*\"?$2\"?" && return 0
+  return 1
+}
 badflag=""
 while IFS= read -r line; do
   script=$(printf '%s' "$line" | grep -oE 'infra/[A-Za-z0-9._-]+\.sh' | head -1)
   [ -n "$script" ] && [ -f "$script" ] || continue
   for fl in $(printf '%s' "$line" | grep -oE ' --[a-z][a-z0-9-]*' | tr -d ' ' | sort -u); do
-    # 인자 파싱부(case 분기 또는 while 루프)에 그 리터럴이 있는가.
-    grep -qE "(^|[[:space:]|(])${fl}[)|[:space:]]" "$script" || badflag="$badflag ${script}${fl}"
+    accepts_flag "$script" "$fl" || badflag="$badflag ${script}${fl}"
   done
 done < <(grep -E 'infra/[A-Za-z0-9._-]+\.sh' "$RB")
-[ -z "$badflag" ] && ok "플래그 미스 0" || bad "스크립트가 받지 않는 플래그:$badflag"
+[ -z "$badflag" ] && ok "플래그 미스 0 (case 분기·비교문 기준 — 산문 언급은 근거로 안 센다)" \
+  || bad "스크립트가 받지 않는 플래그:$badflag"
 
 # ── 3) 이사 함정 4종이 스텝으로 남아 있는가 (#472 AC2.2) ──────────────
 # 이 넷은 **조사에서 실제로 발견된** 함정이다. 문서를 줄이다가 조용히 빠지는 것을 막는다.

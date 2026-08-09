@@ -1,0 +1,9 @@
+### 콜드 게이트 — #472 마감 (전부 지금 코드로 재실행)
+
+  infra/tests/portable.test.sh                  exit=0
+  infra/tests/env-contract.test.sh              exit=0
+  infra/tests/move-pack.test.sh                 exit=0
+  infra/tests/watchdog-portability.test.sh      exit=0
+  infra/tests/runbook-sync.test.sh              exit=0
+  infra/check-runbook-sync.sh                   exit=0
+  infra/check-env-contract.sh                   exit=0
