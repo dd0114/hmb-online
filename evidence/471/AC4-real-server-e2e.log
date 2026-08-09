@@ -1,0 +1,45 @@
+# AC4 — 로컬 스택 실서버 web E2E (목킹 0 · 스킵 0)
+# 커맨드: bash scripts/local-stack.sh e2e
+# 실행: 2026-08-09 10:04:04 KST · HEAD cac575d7
+
+
+== 전제 점검
+   ✓ node v20.19.6 (요구 20.19.6)
+   ✓ npm 10.8.2
+   ✓ JDK 21.0.8 (JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home)
+   ✓ claude 로그인됨 (logged-in) → 라이브 AI
+   포트: java 31080 · runner 31790 · web 31173  (HMB_LOCAL_*_PORT 로 변경)
+   ✓ 로컬 빌드 전제 충족
+
+== 엔진 러너 :31790
+   ✓ 러너 준비
+
+== 권위 서버 빌드 + 기동 :31080
+   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-3rMI/hmb.db)
+
+== AI 실행기 (희망 모드: stub)
+   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-3rMI/executor.log)
+   ! 실효 AI 모드: stub (not-wanted) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체
+
+== web E2E — 실서버 3스펙 (목킹 0, 프록시 → http://localhost:31080)
+     3 passed (1.1m)
+   실행 집계: pass=3 fail=0 skip=0 (로그 /tmp/hmb-local-stack-3rMI/e2e.log · JSON /tmp/hmb-local-stack-3rMI/e2e.json)
+   ✓ web E2E 3건 통과 · 스킵 0 (실서버 http://localhost:31080)
+
+PASS — 실서버 web E2E (목킹 0 · 스킵 0)
+scripts/local-stack.sh: line 81: 31320 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81: 31395 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81: 31821 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-3rMI
+
+=== playwright 원본 로그 (/tmp/hmb-local-stack-3rMI/e2e.log) ===
+
+Running 3 tests using 1 worker
+
+  ✓  1 [chromium] › e2e/league-season.spec.ts:71:1 › AC-F: 리그 시작 → 순위표 → 다음 경기 완주 → 정산·순위 갱신 → 로그 반영 (19.7s)
+  ✓  2 [chromium] › e2e/match-flow.spec.ts:55:1 › AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → 전적 반영 (22.8s)
+[smoke] half1 viewer rendered — score w3smoke_msl3mlkn내 팀0 : 1블루 월, tick 672
+[smoke] 390px horizontal overflow px = 0
+  ✓  3 [chromium] › e2e/w3-viewer-smoke.spec.ts:74:1 › W3 smoke: 시각 재생 탭이 감독시간에 실제 렌더 + 종료화면까지 완주 · 스크린샷 (18.8s)
+
+  3 passed (1.1m)

@@ -305,7 +305,9 @@ run_web_e2e() {
   [ "$nfail" = "0" ] || fail "web E2E 실패 $nfail 건 — $TMP/e2e.log"
   [ "$nskip" = "0" ] || fail "web E2E 가 $nskip 건 스킵됐다 — 실서버에 안 붙었다는 뜻이다(그 green 은 거짓이다)"
   [ "$pass" -ge "${#specs[@]}" ] || fail "실행된 테스트가 스펙 수보다 적다(pass=$pass) — 0건 실행 green 방지"
-  ok "web E2E $pass건 통과 · 스킵 0 (실서버 $BASE)"
+  # ⚠️ `${pass}` 로 감싼다 — `$pass건` 은 bash 가 변수명을 `pass건` 으로 읽어 `set -u` 아래에서
+  #    **성공 경로에서만** unbound variable 로 죽는다(실패 경로는 그 앞에서 exit 해서 안 보인다).
+  ok "web E2E ${pass}건 통과 · 스킵 0 (실서버 $BASE)"
 }
 
 start_web() {

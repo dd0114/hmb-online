@@ -81,7 +81,12 @@ test("AC-F: 리그 시작 → 순위표 → 다음 경기 완주 → 정산·순
   // 2) 리그 진입 → 시작 CTA(신규 유저 = 시즌 없음)
   await page.goto("/league");
   const startCta = page.getByTestId("start-league");
-  if (await startCta.isVisible().catch(() => false)) {
+  // ⚠️ **한 번만 보면 안 된다** — 진입 직후엔 시즌 쿼리가 로딩 중이라 CTA 도 대시보드도 아직 없다.
+  //    구 코드의 `isVisible()` 한 방은 그 순간 false 를 받고 시작을 건너뛴 채 대시보드를 기다려
+  //    15초 뒤 죽었다(실서버 콜드 실측, #471 AC4 — 서버 없으면 skip 되던 탓에 안 잡혔다).
+  //    둘 중 **먼저 확정되는 쪽**을 기다린 뒤 판단한다(이미 시즌이 있으면 대시보드가 바로 온다).
+  await expect(startCta.or(page.getByTestId("league-dashboard")).first()).toBeVisible({ timeout: 30_000 });
+  if (await startCta.isVisible()) {
     await startCta.click();
   }
 
