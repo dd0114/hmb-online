@@ -11,6 +11,7 @@ import {
   type Position,
   type Grade,
   type Personality,
+  V28_RETIRED_CARDS,
 } from "./generate";
 import { createRng } from "./rng";
 import { ROSTER } from "./roster";
@@ -290,7 +291,7 @@ const REAL_CLUB_TOKENS: readonly string[] = [
 
 const {
   players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-  playersV27, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
+  playersV27, playersV28, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
 } = generateAll();
 
 describe("players 카탈로그 — counts/distribution (AC-PL1)", () => {
@@ -2473,6 +2474,193 @@ describe("players.v2.7 — 표시명 가상화 + active 재편 (#450 W1)", () =>
   });
 });
 
+describe("players.v2.8 — 은퇴 120종 표시명 가상화 = 실명 잔존 0 (#483)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  /** 디스크의 **발행된** v2.7 — 대조 기준을 코드가 아니라 파일에서 가져온다(자기참조 회피, v2.7 선례). */
+  const diskV27 = JSON.parse(readFileSync(join(here, "players.v2.7.json"), "utf8")) as {
+    id: string;
+    name: string;
+    position: Position;
+    grade: Grade;
+    attributes: PlayerSeed["attributes"];
+    personality: Personality;
+    active: boolean;
+    shortName: string;
+  }[];
+  /** 디스크의 발행된 v2.6 — 실명 축의 SoT. 하드코딩하면 스테일해진다(명세 §6-1-6). */
+  const diskV26 = JSON.parse(readFileSync(join(here, "players.v2.6.json"), "utf8")) as typeof diskV27;
+
+  const parodySet = new Set(V26_PARODY_IDS);
+  const byId = new Map(playersV28.map((p) => [p.id, p]));
+  const retiredIds = diskV27.filter((p) => !p.active).map((p) => p.id);
+  /** 개명 대상 = v2.7 비활성 120종. */
+  const renamed = playersV28.filter((p) => !p.active);
+
+  // v2.6 발행물에서 **직접 도출**하는 실명 축.
+  const realRows = diskV26.filter((p) => !parodySet.has(p.id));
+  const realTokens = new Set<string>();
+  for (const p of realRows) {
+    for (const t of p.name.split(" ")) realTokens.add(t);
+    realTokens.add(p.shortName);
+  }
+  const realFullNames = new Set(realRows.map((p) => p.name));
+  /** 한국식(공백 없는) 실명에서 도출한 성·이름 집합. 비한국 3자명(로드리·알리송…)도 포함하는 **초집합**. */
+  const realNoSpace = realRows.filter((p) => !p.name.includes(" "));
+  const realSurnames = new Set(realNoSpace.map((p) => p.name[0]!));
+  const realGivenNames = new Set(realNoSpace.map((p) => p.name.slice(1)));
+
+  // ── ① 이 웨이브의 존재 이유: 실명이 한 건도 안 남는다 ─────────────────────
+  it("🔴 v2.8 전 182행에 v2.6 실명(풀네임·shortName)이 **0건** 남는다", () => {
+    // 이 트랙의 목적 그 자체. `active` 로는 못 가린다 — 도감·덱은 보유분을 계속 보여준다
+    // (`CatalogController` `WHERE p.active = 1 OR 보유수 > 0`, #207 U-D7).
+    const leaked = playersV28.filter((p) => realFullNames.has(p.name) || realTokens.has(p.shortName));
+    expect(leaked.map((p) => `${p.id}:${p.name}`)).toEqual([]);
+  });
+
+  it("개명 표가 v2.7 비활성 집합과 **정확히 일치** — 한 명도 빠지지 않는다", () => {
+    expect(V28_RETIRED_CARDS).toHaveLength(120);
+    expect(V28_RETIRED_CARDS.map((c) => c.id).sort()).toEqual([...retiredIds].sort());
+    // 활성은 한 건도 표에 없다(스코프 경계).
+    for (const c of V28_RETIRED_CARDS) {
+      expect(diskV27.find((p) => p.id === c.id)!.active, `${c.id} 는 비활성이어야 개명 대상`).toBe(false);
+    }
+  });
+
+  it("`from` 앵커가 v2.7 발행물의 현재 이름과 일치 — 행이 밀리면 여기서 터진다", () => {
+    const v27ById = new Map(diskV27.map((p) => [p.id, p]));
+    for (const c of V28_RETIRED_CARDS) {
+      expect(v27ById.get(c.id)!.name, `${c.id} 앵커`).toBe(c.from);
+    }
+  });
+
+  // ── ② 활성 62종은 한 글자도 안 바뀐다 (v2.7 계약 승계) ────────────────────
+  it("활성 62종이 v2.7 발행물과 **바이트 동일** — 이 레이어는 은퇴 구간만 만진다", () => {
+    const a = diskV27.filter((p) => p.active);
+    const b = playersV28.filter((p) => p.active);
+    expect(JSON.stringify(b)).toBe(JSON.stringify(a));
+  });
+
+  it("`active` 격자 62/120 불변 · 표시명 밖 축은 v2.7 과 완전 동일", () => {
+    expect(playersV28).toHaveLength(diskV27.length);
+    expect(playersV28.filter((p) => p.active)).toHaveLength(62);
+    expect(playersV28.filter((p) => !p.active)).toHaveLength(120);
+    for (let i = 0; i < diskV27.length; i++) {
+      const { name: _n, shortName: _s, ...before } = diskV27[i]!;
+      const { name: _m, shortName: _t, ...after } = playersV28[i]!;
+      expect(after, `${diskV27[i]!.id} 표시명 밖 축`).toEqual(before);
+    }
+  });
+
+  // ── ③ 작명 규칙 (spec §2-1-a / §2-2 승계) ────────────────────────────────
+  it("신규명의 **모든 토큰**이 v2.6 실명 토큰과 완전 일치 0", () => {
+    for (const c of V28_RETIRED_CARDS) {
+      for (const t of new Set([...c.to.split(" "), c.short])) {
+        expect(realTokens.has(t), `${c.id} "${c.to}" 의 토큰 "${t}"`).toBe(false);
+      }
+    }
+  });
+
+  it("PARODY_REAL_NAME_KO_DENYLIST 9건이 **부분문자열로도** 안 들어간다", () => {
+    for (const c of V28_RETIRED_CARDS) {
+      for (const d of PARODY_REAL_NAME_KO_DENYLIST) {
+        expect(c.to.includes(d), `${c.id} "${c.to}" ⊃ "${d}"`).toBe(false);
+        expect(c.short.includes(d), `${c.id} short "${c.short}" ⊃ "${d}"`).toBe(false);
+      }
+    }
+  });
+
+  it("형식 — 한글 전용 · 길이 상한 · shortName 은 풀네임의 토큰", () => {
+    const HANGUL_ONLY = /^[가-힣]+(?: [가-힣]+)*$/;
+    for (const c of V28_RETIRED_CARDS) {
+      expect(HANGUL_ONLY.test(c.to), `${c.id} "${c.to}" 한글 전용`).toBe(true);
+      expect(HANGUL_ONLY.test(c.short), `${c.id} short "${c.short}" 한글 전용`).toBe(true);
+      expect(c.to.length, `${c.id} 풀네임 길이`).toBeLessThanOrEqual(14);
+      expect(c.short.length, `${c.id} short 길이`).toBeLessThanOrEqual(8);
+      expect(c.short.length).toBeLessThanOrEqual(c.to.length);
+      expect(c.short === c.to || c.to.split(" ").includes(c.short), `${c.id} short ⊂ 풀네임`).toBe(true);
+    }
+  });
+
+  it("한국식 24종 — 3자 · `short == name` · v2.6 실명 성/이름 집합과 충돌 0", () => {
+    const kor = V28_RETIRED_CARDS.filter((c) => !c.to.includes(" "));
+    expect(kor).toHaveLength(24);
+    for (const c of kor) {
+      expect(/^[가-힣]{3}$/.test(c.to), `${c.id} "${c.to}" 3자`).toBe(true);
+      expect(c.short, `${c.id} short == name`).toBe(c.to);
+      expect(realSurnames.has(c.to[0]!), `${c.id} 성 "${c.to[0]}"`).toBe(false);
+      expect(realGivenNames.has(c.to.slice(1)), `${c.id} 이름 "${c.to.slice(1)}"`).toBe(false);
+    }
+    // 나머지는 외국식 2토큰(`short` = 뒤 토큰).
+    const foreign = V28_RETIRED_CARDS.filter((c) => c.to.includes(" "));
+    expect(foreign).toHaveLength(96);
+    for (const c of foreign) expect(c.short).toBe(c.to.split(" ").at(-1));
+  });
+
+  // ── ④ 유일성 — v2.7 이 못 걸던 것을 **전역으로 올린다** ────────────────────
+  it("풀네임·shortName 이 **182 전역 유일** — v2.7 의 비활성 중복 2쌍이 개명으로 해소됐다", () => {
+    // v2.7 은 shortName 유일을 활성 62 안에서만 걸었다: 비활성에 "루이스"(P101·P118)가 남아서다.
+    // 그 두 행이 이번에 개명되므로 전역 유일이 **성립하고**, 그래서 계약을 전역으로 올린다.
+    expect(new Set(playersV28.map((p) => p.name)).size).toBe(playersV28.length);
+    expect(new Set(playersV28.map((p) => p.shortName)).size).toBe(playersV28.length);
+    // 회귀 방향 박제: v2.7 에서는 실제로 중복이었다(계약이 느슨했던 게 아니라 사실이 그랬다).
+    expect(new Set(diskV27.map((p) => p.shortName)).size).toBeLessThan(diskV27.length);
+  });
+
+  // ── ⑤ 과거 발행 축 무회귀 ────────────────────────────────────────────────
+  it("발행물 v2 ~ v2.7 이 여전히 **바이트 동일** 재현된다 — v2.8 이 과거 축을 안 건드렸다", () => {
+    const cases: readonly [string, unknown][] = [
+      ["players.v2.json", playersV2],
+      ["players.v2.1.json", playersV21],
+      ["players.v2.2.json", playersV22],
+      ["players.v2.3.json", playersV23],
+      ["players.v2.4.json", playersV24],
+      ["players.v2.5.json", playersV25],
+      ["players.v2.6.json", playersV26],
+      ["players.v2.7.json", playersV27],
+    ];
+    for (const [file, data] of cases) {
+      expect(readFileSync(join(here, file), "utf8"), file).toBe(JSON.stringify(data, null, 2) + "\n");
+    }
+  });
+
+  it("bots.v4 · economy.v4 의 활성 참조가 v2.8 에서도 성립한다 (`active` 무접촉의 귀결)", () => {
+    const activeIds = new Set(playersV28.filter((p) => p.active).map((p) => p.id));
+    for (const bot of botsV4) {
+      // ⚠️ 두 축의 모양이 다르다 — starters 는 `{playerId, slotIndex}` 객체, bench 는 id 문자열.
+      const ids = [...bot.deck.starters.map((s) => s.playerId), ...bot.deck.bench];
+      for (const id of ids) expect(activeIds.has(id), `bots.v4 ${bot.id} ${id}`).toBe(true);
+    }
+    for (const id of [...economyV4.starterPack, ...economyV4.starterTop!.pool]) {
+      expect(activeIds.has(id), `economy.v4 ${id}`).toBe(true);
+    }
+  });
+
+  it("zod PlayerCard 호환 유지 — 가상명이 계약을 깨지 않는다", () => {
+    for (const p of playersV28) {
+      const parsed = PlayerCard.safeParse({
+        playerId: p.id,
+        name: p.name,
+        position: p.position,
+        attributes: p.attributes,
+      });
+      expect(parsed.success, `${p.id} ${p.name}`).toBe(true);
+    }
+  });
+
+  it("개명이 **행마다 1:1** — 두 행의 이름이 뒤바뀌지 않았다(기계가 잡을 수 있는 부분만)", () => {
+    // ⚠️ 이 계약은 "올바른 행에 붙었나"를 **완전히는 못 잡는다** — `from` 앵커가 id 별이라
+    // 두 행의 `to` 를 통째로 맞바꿔도 전 가드가 통과한다(#406 독립검증 minor-2, `data/CLAUDE.md` 명시).
+    // 사람이 눈으로 본 근거 = `epics/483-fictional-rename/naming-log.md`. 여기서는 표가 실제로
+    // 발행물에 반영됐는지(빠뜨림·중복 적용 0)만 건다.
+    for (const c of V28_RETIRED_CARDS) {
+      const row = byId.get(c.id)!;
+      expect(row.name, `${c.id} 적용`).toBe(c.to);
+      expect(row.shortName, `${c.id} short 적용`).toBe(c.short);
+    }
+    expect(renamed).toHaveLength(120);
+  });
+});
+
 describe("bots.v4 — 은퇴 참조 재매핑 (#450 §6-4)", () => {
   const byId = new Map(playersV27.map((p) => [p.id, p]));
   const sum = (id: string) =>
@@ -2914,6 +3102,7 @@ describe("발행 파일 동기화 — v2 파일 = generateAll() 직렬화 결과
     ["players.v2.5.json", playersV25],
     ["players.v2.6.json", playersV26],
     ["players.v2.7.json", playersV27],
+    ["players.v2.8.json", playersV28],
     ["economy.v2.json", economy],
     ["bots.v2.json", bots],
     ["league.v1.json", league],

@@ -1,0 +1,8 @@
+# AC2 evidence — data 패키지 계약 (#483 v2.8)
+
+명령: npm -w data test
+결과:
+  ✓ players/chars-map.test.ts (43 tests)
+  ✓ players/data.test.ts     (279 tests)
+  Test Files  2 passed (2)
+  Tests       322 passed (322)
