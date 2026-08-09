@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { mockAppConfig } from "./app-config-mock";
+import { skipSplash } from "./splash-mock";
 
 /**
  * 공지 공유 딥링크 `/share/notice/{id}` E2E 계약 (#298, 에픽 #293).
@@ -247,6 +248,7 @@ test.describe("#298 AC3 — 오픈 리다이렉트 차단", () => {
   for (const c of hostile) {
     test(`${c.name} → 로비로 폴백한다`, async ({ page }) => {
       await mockApp(page, { authed: false });
+      await skipSplash(page);
       await page.goto(`/login?returnTo=${encodeURIComponent(c.raw)}`);
       await loginAsGuest(page);
 

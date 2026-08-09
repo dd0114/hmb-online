@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 import { mkdirSync } from "node:fs";
+import { skipSplash } from "./splash-mock";
 
 /**
  * W3 뷰어 통합 스모크 (AC-W5) — 실동작 증적용. 풀스택(server-java + ts-servants) 이 떠 있을 때만
@@ -77,6 +78,7 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   const nickname = `w3smoke_${Date.now().toString(36)}`;
 
   // 신 /login: provider stage(게스트) → 닉네임 → "계속" (AC-A1 개편)
+  await skipSplash(page);
   await page.goto("/login");
   await page.getByTestId("provider-guest").click();
   await page.getByPlaceholder("2~16자").fill(nickname);

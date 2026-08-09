@@ -1,4 +1,5 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { skipSplash } from "./splash-mock";
 
 /**
  * AC-W1 / Phase 2 연습 플로우 — 신규 닉네임 로그인 → **덱 구성(UI)** → 연습 경기 완주 →
@@ -57,6 +58,7 @@ test("AC-W1: login → 덱 구성(UI) → 연습 매치 완주 → 결과 → �
   const nickname = `e2e_${Date.now().toString(36)}`;
 
   // 1) 신규 로그인(게스트 플로우) → 스타터 팩 모달
+  await skipSplash(page);
   await page.goto("/login");
   await page.getByTestId("provider-guest").click();
   await page.getByPlaceholder("2~16자").fill(nickname);

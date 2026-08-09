@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type { Page } from "@playwright/test";
 import { mockAppConfig } from "./app-config-mock";
+import { skipSplash } from "./splash-mock";
 
 /**
  * #386 공용 목 — **라이브 공지를 그대로** 쓴다.
@@ -144,6 +145,7 @@ export async function mockNoticeWorld(
 
 /** 로컬 가입(`isNew`) → 스타터팩 공개 → 홈 착지. 신규 유저의 **실제 첫 동선**. */
 export async function registerNewUser(page: Page): Promise<void> {
+  await skipSplash(page);
   await page.goto("/login");
   await page.getByTestId("provider-local").click();
   await page.getByTestId("local-mode-toggle").click();
