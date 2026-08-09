@@ -11,6 +11,42 @@
 
 ---
 
+## 2026-08-09T17:10Z — **배포 v3.25 — 백엔드 단독** — 은퇴 120종 표시명 가상화 (#483 / PR #484)
+
+- **git**: **`39c3fe3f`**(main, merge of #484). 범위 = `data/players/**` **3** + `server-java/**` **4**
+  (`application.yml` · `Dockerfile` · `DataVersionParityTest` · `PlayerCatalogV28SeedTest` 신설)
+  + `epics/`·`evidence/` 문서. **`apps/web`·`packages/**`·`infra/**` 전부 0** — Flyway 무접촉.
+- **탑재**: `players.v2.7` → **`players.v2.8`**. #450 이 은퇴시키며 실명으로 남겨 둔 **120종**의
+  표시명을 가상 인물명으로 교체. `active=0` 은 **획득만** 막고 도감·덱 편성은
+  `WHERE p.active = 1 OR 보유수 > 0`(#207 U-D7) 이라 **보유분은 계속 보였다** —
+  라이브 실측 유저 **210명 중 207명**이 실명 카드 보유(106종·726행), P081·P092 는 스타터팩.
+- **이미지**: java **`sha256:f0afb687…`**(재빌드) · runner `sha256:97a82f3f…`(**무변경**).
+- **web**: **재배포 없음.** 프로덕션 번들 전수 grep 실명 **0건**(실명이 있는 파일은
+  `import.meta.env.DEV` 게이트 라우트라 빌드에서 제거) ⇒ 미오픈 캐릭터 프리즈 리스크를 경로에서 제거.
+- **터널**: `https://wise-symposium-webmaster-brick.trycloudflare.com` (pid 79390, **회전 없음**).
+- **절차**: `docker compose build java` → `up -d java`. 재기동 직전 **진행 중 매치 0건** 확인 후 실행
+  (매니저 지시 조건). runner·executor·web 무접촉.
+- **배포자**: hmb:rename 세션(#483). 머지 = hmb:main 매니저.
+
+### 라이브 검증 (재기동 전/후)
+
+| 축 | 전(v2.7) | 후(v2.8) |
+|---|---|---|
+| `meta_kv.players_version` | v2.7 | **v2.8** |
+| players 행 / active·inactive | 182 / 62·120 | 182 / 62·120 |
+| **실명 잔존**(v2.6 축 301종 대조) | **120건** | **0건** |
+| `user_players` 행 | 3535 | **3535**(무손실) |
+| users | 210 | 210 |
+| `admin_locked` | 0 | 0 |
+| 은퇴카드 보유 유저/행 | 207 / 726 | 207 / 726 |
+| 전역 중복 표시명 / shortName | — | 0 / 0 |
+| 이름 빈칸 행 | — | 0 |
+
+E2E(터널): `POST /api/auth/register` → `GET /api/players` → 62행 · 실명 **0건**.
+`playerId` 불변이라 보유·성★·잠재·전적·덱 편성 **전부 무손실**. 증빙 = `evidence/483/`.
+
+---
+
 ## 2026-08-09T06:51Z — **배포 v3.24 — web 단독** — 첫 진입 스플래시 (#479 / PR #481)
 
 - **git**: **`32f675ab`**(main, squash merge of #481). 범위(`e05a58ce`..`32f675ab`) = **167 files**

@@ -1,0 +1,42 @@
+# AC4 evidence — 라이브 반영 (#483 v2.8)
+
+배포 = infra/docker-compose.yml `docker compose build java` + `up -d java` (web·runner·executor 무접촉)
+
+| 축 | 재기동 전(v2.7) | 재기동 후(v2.8) |
+|---|---|---|
+| meta_kv.players_version | v2.7 | **v2.8** |
+| players 행 | 182 | 182 |
+| active / inactive | 62 / 120 | 62 / 120 |
+| user_players 행 | 3535 | **3535** |
+| users | 210 | 210 |
+| admin_locked | 0 | 0 |
+| 실명(v2.6 축 301종) 잔존 | **120건** | **0건** |
+| 은퇴카드 보유 유저/행 | 207 / 726 | 207 / 726 |
+| 전역 중복 표시명 / shortName | — | 0 / 0 |
+| 이름 빈칸 행 | — | 0 |
+
+노출 최대 두 종(스타터팩, 각 206명 보유):
+```
+P081  벤 화이트      → 에드윈 콜스터  (콜스터)
+P092  메이슨 마운트  → 오웬 브래드쇼  (브래드쇼)
+P143  박지성        → 남도윤  (남도윤)
+P037  손흥민        → 류하준  (류하준)
+```
+
+## E2E — 라이브 HTTP (터널 경유, 실제 유저 경로)
+
+```
+POST /api/auth/register  (신규 계정 qa483e2e)
+GET  /api/players        Authorization: Bearer <token>
+  → rows 62 (신규 유저는 활성만 — active=1 OR 보유수>0)
+  → 실명 잔존 0건
+  → sample: P013 마르첼 벤티 / 벤티 · P014 요나스 브리크 / 브리크
+```
+
+⚠️ 보유 은퇴카드의 표시명은 `CatalogController` 가 `players.name` 을 그대로 읽으므로
+DB 축 검증(위 표, 실명 0건)이 곧 그 경로의 증명이다 — 이름의 다른 출처가 없다.
+
+## 재기동 안전성
+
+재기동 직전 진행 중 매치(state ∉ {FINISHED, FAILED, ABANDONED}) = **0건** (매니저 지시 조건).
+web(Pages)·runner·executor 무접촉 — `docker compose up -d java` 만.
