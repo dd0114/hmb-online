@@ -18,6 +18,7 @@ import {
   readTutorialPending,
   resetTutorialDone,
 } from "./tutorial-storage";
+import { markGuidePending } from "./guide-storage";
 
 /**
  * 한 세션에서 같은 스텝을 찾아가는 최대 횟수.
@@ -254,6 +255,9 @@ export function TutorialProvider({
           queryClient.invalidateQueries({ queryKey: ["deck"] });
         }
       });
+      // #493 W2: 온보딩을 끝낸 계정에 화면별 가이드 래치를 세운다 — 이 래치가 없으면
+      // GuideProvider 는 절대 발화하지 않는다(기존 유저·목 유저 오발화 방지, guide-storage 머리말).
+      markGuidePending(userId);
     }
     resetSession();
   }, [userId, resetSession, queryClient]);

@@ -9,6 +9,7 @@ import { RecordPanel } from "./RecordPanel";
 import { RankingBoard } from "../common/RankingBoard";
 import { useAwayRankings, useLeagueRankings } from "../api/hooks-p286";
 import { useTutorial } from "../common/tutorial-context";
+import { useGuide } from "../common/guide-context";
 import styles from "./MePage.module.css";
 
 /**
@@ -29,6 +30,7 @@ export function MePage() {
   const { data: me } = useMe();
   const { provider } = useToken();
   const { restart: restartTutorial } = useTutorial();
+  const { replay: replayGuides } = useGuide();
   const rec = me?.records;
   // 순위 2카드 (#286 W5, 설계 §3.7) — 서버가 없으면 각자 조용히 사라진다.
   const { data: awayRank } = useAwayRankings();
@@ -106,6 +108,20 @@ export function MePage() {
           }}
         >
           튜토리얼 다시 보기
+        </button>
+
+        <button
+          type="button"
+          className={styles.tutorialReplay}
+          data-testid="guide-replay"
+          onClick={() => {
+            // #493 W2: 이 계정의 화면별 가이드 seen 을 비운다 — 각 화면(게임·원정·선수·영입·
+            // 리그·내 정보)에 다시 들어갈 때 안내가 한 번씩 다시 뜬다. 온보딩과 별개 축이라
+            // 홈으로 이동하지 않는다(이 화면의 가이드는 지금 자리에서 다시 뜬다).
+            replayGuides();
+          }}
+        >
+          화면 안내 다시 보기
         </button>
       </div>
     </Layout>

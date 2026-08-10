@@ -31,6 +31,7 @@ import { GachaFxPreview } from "./design/GachaFxPreview";
 import { QaConsolePage } from "./qa/QaConsolePage";
 import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
+import { GuideProvider } from "./common/GuideProvider";
 import { setUnauthorizedHandler } from "./api/client";
 import { queryClient } from "./api/query-client";
 
@@ -273,7 +274,12 @@ function App() {
                 useTutorial() 로 어디서든 붙는다(src/common/tutorial-context.ts). */}
             <NavLockProvider>
               <TutorialProvider>
-                <AppRoutes />
+                {/* 화면별 첫 진입 가이드(#493 W2) — 온보딩과 **분리된** 프로바이더.
+                    TutorialProvider 안쪽인 이유: useTutorial().active 로 온보딩이 도는 동안
+                    발화를 미룬다(두 코치마크가 겹치지 않게). */}
+                <GuideProvider>
+                  <AppRoutes />
+                </GuideProvider>
               </TutorialProvider>
             </NavLockProvider>
           </AdminFlagProvider>

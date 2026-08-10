@@ -17,6 +17,7 @@ import { visibleNotices, type Notice } from "../lobby/notice-logic";
 import { pickLobbyPopup } from "../lobby/lobby-popup";
 import { useUnbiddenPopupHold } from "../lobby/tutorial-hold";
 import { useTutorial } from "../common/tutorial-context";
+import { useGuide } from "../common/guide-context";
 import { DecklessDialog } from "../common/DecklessDialog";
 import { deckMissing } from "../common/deckless";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
@@ -87,6 +88,7 @@ export function HomePage() {
   const notices = useActiveNotices();
   const [noticeDone, setNoticeDone] = useState(false);
   const { active: tutorialActive } = useTutorial();
+  const { active: guideActive } = useGuide();
   const candidates: Notice[] = useMemo(
     () => visibleNotices(notices.data, Date.now()),
     [notices.data],
@@ -100,7 +102,9 @@ export function HomePage() {
    * "다음 진입"이 영영 오지 않았다 — 신규 유저가 공지를 한 번도 못 보는 실제 원인이었다.
    * 판정 규칙과 근거는 `lobby/tutorial-hold.ts`.
    */
-  const tutorialHold = useUnbiddenPopupHold(tutorialActive);
+  // #493 W2: 화면별 가이드(GuideProvider)도 같은 홀드 축에 태운다 — 오늘 홈에는 가이드가
+  // 없지만(guide-steps 계약), 생기는 날 공지·원정 팝업과 겹치는 사고를 여기서 미리 막는다.
+  const tutorialHold = useUnbiddenPopupHold(tutorialActive || guideActive);
 
   // 첫 진입에 보인 목록을 **고정**한다. 포커스 복귀 refetch 로 목록이 갈리면 스택 인덱스가
   // 어긋나 유저가 이미 닫은 장이 다시 앞으로 나온다. 온보딩이 잡은 방문에서는 고정도 하지
