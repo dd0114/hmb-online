@@ -1,14 +1,20 @@
-=== HEAD: e3230c7 · Sat Aug  8 01:36:13 KST 2026 ===
---- 기준(변이 없음) ---
-      Tests  7 passed (7)
-   Start at  01:36:15
-   Duration  715ms (transform 43ms, setup 0ms, collect 70ms, tests 8ms, environment 0ms, prepare 126ms)
+# AC2 — README ↔ 스크립트 ↔ 버전 SoT 싱크 계약 (9 계약 + 변이체 6팔 전부 RED)
+# 커맨드: npx vitest run tools/readme-parity.test.ts · HMB_PARITY_MUTANT=<팔> 로 6팔
+# 실행: 2026-08-10 09:17:54 KST · HEAD 895b72f4 · 워킹트리 변경 0 건(0=clean)
+# ⚠️ 헤더가 없으면 이 로그가 몇 세대 전 코드로 찍혔는지 아무도 모른다(#471 패널 S3 반려).
 
---- 변이체 5팔 (전부 RED 여야 계약이 무는 것) ---
-node-version  RED   ← 좋음
-jdk-version  RED   ← 좋음
-script-path  RED   ← 좋음
-subcommand  RED   ← 좋음
-port  RED   ← 좋음
---- 실행 후 워킹트리(더러워지면 안 된다) ---
+--- 기준(변이 없음) ---
+ ✓ tools/readme-parity.test.ts (9 tests) 6ms
+      Tests  9 passed (9)
+   Duration  555ms (transform 48ms, setup 0ms, collect 66ms, tests 6ms, environment 0ms, prepare 101ms)
+
+--- 변이체 6팔 (전부 RED 여야 계약이 무는 것) ---
+node-version   RED   ← 좋음 · 무는 계약: README 의 Node 버전 = .nvmrc 
+jdk-version    RED   ← 좋음 · 무는 계약: README 의 JDK 버전 = build.gradle.kts toolchain 
+script-path    RED   ← 좋음 · 무는 계약: README 가 로컬 빌드 절차를 담고 스크립트를 가리킨다 
+subcommand     RED   ← 좋음 · 무는 계약: README 가 부르는 서브커맨드가 전부 스크립트에 있다 
+port           RED   ← 좋음 · 무는 계약: README 가 적는 접속 포트 = 스크립트 기본값 (그리고 데모 
+env-default    RED   ← 좋음 · 무는 계약: README env 표의 포트 기본값 = 스크립트의 `${VAR:-기본값}` 
+
+--- 실행 후 워킹트리(더러워지면 안 된다 — 변이는 메모리에서만) ---
  M evidence/471/AC2-readme-parity.log
