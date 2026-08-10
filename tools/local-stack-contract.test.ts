@@ -223,11 +223,113 @@ describe("#471 AC1 — scripts/local-stack.sh 구조 계약", () => {
       });
       expect(out.code, `선점 상태인데 스택이 성공으로 끝났다:\n${out.text}`).not.toBe(0);
       expect(out.text, "고아의 200 을 우리 러너로 오인했다").not.toContain("✓ 러너 준비");
-      expect(out.text).toContain("러너 프로세스가 죽었다");
+      // 방어가 두 겹이라 **어느 쪽이 먼저 물어도 통과**다: 띄우기 전 포트 점유 검사(1차,
+      // 의존성 0)와 기동 후 소유·생존 판정(2차). 어느 문구든 "남의 200 을 우리 것으로 읽지
+      // 않았다"를 뜻한다 — 특정 문구 하나에 걸면 방어를 강화할 때마다 계약이 거짓 red 가 된다.
+      expect(out.text).toMatch(/이미 누가 듣고 있다|러너 프로세스가 죽었다/);
     } finally {
       orphan.close();
     }
   }, 120_000);
+
+  // ── #471 패널 4R 반려분 (S2) ───────────────────────────────────────────
+  // 위 방어를 `lsof` 로만 세우면 **lsof 없는 환경에서 통째로 조용히 사라진다** — `port_owner_ok`
+  // 는 `command -v lsof || return 0` 으로 통과하고, 구 `ports_busy` 는 lsof 로 재서 "아무도 안 문다"
+  // 를 돌려줬다. 그래서 1차 방어를 **bash 내장 `/dev/tcp`** 로 내렸다(외부 명령 의존 0).
+  // 이 계약은 그 사실을 **lsof 를 실제로 숨기고** 검정한다.
+
+  it("lsof 가 없어도 고아 선점을 잡는다 (검출이 도구 설치에 걸리지 않는다)", async () => {
+    const { createServer } = await import("node:http");
+    const { execFile } = await import("node:child_process");
+    const { mkdtempSync, writeFileSync, chmodSync, readdirSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+
+    // PATH 를 갈아끼워 lsof 만 사라진 환경을 만든다 — 나머지 도구는 심링크로 그대로 보인다.
+    const shim = mkdtempSync(join(tmpdir(), "hmb-nolsof-"));
+    const realPath = process.env.PATH ?? "";
+    const seen = new Set<string>();
+    for (const dir of realPath.split(":")) {
+      let entries: string[] = [];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        continue;
+      }
+      for (const name of entries) {
+        if (name === "lsof" || seen.has(name)) continue;
+        seen.add(name);
+        // 심링크 대신 얇은 래퍼 — 원본 경로를 그대로 exec 한다(권한/플랫폼 차이에 덜 민감).
+        try {
+          writeFileSync(join(shim, name), `#!/bin/sh\nexec "${join(dir, name)}" "$@"\n`);
+          chmodSync(join(shim, name), 0o755);
+        } catch {
+          /* 이름이 이상한 파일은 건너뛴다 — 이 테스트의 주제가 아니다 */
+        }
+      }
+    }
+
+    const orphan = createServer((_q, s) => {
+      s.writeHead(200, { "content-type": "application/json" });
+      s.end('{"ok":true,"who":"orphan"}');
+    });
+    await new Promise<void>((res) => orphan.listen(0, res));
+    const port = (orphan.address() as { port: number }).port;
+    try {
+      const out = await new Promise<{ code: number; text: string }>((res) => {
+        execFile(
+          "bash",
+          [SCRIPT_PATH, "smoke"],
+          {
+            env: {
+              ...process.env,
+              PATH: shim,
+              HMB_LOCAL_RUNNER_PORT: String(port),
+              // 선점 게이트까지 열어 **띄우기 직전 방어**만 남긴 최악 조건에서 검정한다.
+              HMB_LOCAL_ALLOW_BUSY_PORTS: "1",
+              HMB_LOCAL_AI: "stub",
+            },
+            timeout: 90_000,
+            maxBuffer: 8 << 20,
+          },
+          (err, stdout, stderr) =>
+            res({
+              code: err && typeof err.code === "number" ? err.code : 0,
+              text: `${stdout}${stderr}`,
+            }),
+        );
+      });
+      // 이 환경에 정말 lsof 가 없었는지부터 확인한다 — 아니면 이 계약은 아무것도 검정하지 않는다.
+      expect(out.text, "lsof 가 여전히 보인다 — PATH 차폐가 실패했다(계약이 동어반복)").toContain(
+        "lsof 가 없다",
+      );
+      expect(out.code, `lsof 없는 환경에서 선점을 통과시켰다:\n${out.text}`).not.toBe(0);
+      expect(out.text, "고아의 200 을 우리 러너로 오인했다").not.toContain("✓ 러너 준비");
+    } finally {
+      orphan.close();
+    }
+  }, 120_000);
+
+  // 위 두 계약은 **1차 방어**(띄우기 전 점유 검사)가 먼저 물어서 통과한다. 그러면 2차 방어인
+  // `wait_http` 의 소유 판정은 어떤 테스트도 안 태우는 코드가 된다 — 그 층이 막는 것은
+  // "검사할 땐 비어 있었는데 우리가 바인드하기 전에 남이 잡은" 경주라 스택 전체로는 재현하기
+  // 어렵다. 그래서 함수를 **직접** 부른다(`HMB_LOCAL_LIB_ONLY=1` 로 source = 함수만 로드).
+  it("wait_http 는 리스너가 우리 잡이 아니면 200 을 받아도 준비완료로 안 읽는다", async () => {
+    const { execFile } = await import("node:child_process");
+    // 프로브가 왜 별도 파일인지는 그 파일 머리말 참조(스택 전체로는 이 층을 태울 수 없다).
+    const out = await new Promise<string>((res) => {
+      execFile(
+        "bash",
+        [`${ROOT}tools/local-stack-wait-http-probe.sh`],
+        { timeout: 60_000 },
+        (_e, stdout, stderr) => res(`${stdout}${stderr}`),
+      );
+    });
+    // 3 = "남이 그 포트를 물고 있다". 소유 확인을 지우면 여기가 0 이 된다(변이체 킬 지점).
+    expect(out, `남의 리스너를 우리 것으로 읽었다:\n${out}`).toContain("foreign_arm=3");
+    // 반대 팔 — 자기 자신도 못 알아보면 스택이 영영 안 뜬다(늘 3 을 뱉는 계약이 아님).
+    expect(out, `우리 리스너를 못 알아봤다:\n${out}`).toContain("own_arm=0");
+  }, 90_000);
 
   it("bash strict 모드로 돈다", () => {
     const src = readScript();

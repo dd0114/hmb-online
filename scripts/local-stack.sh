@@ -97,13 +97,34 @@ proc_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 # 로 실측). 그래서 리스너의 PGID 를 대조하면 "이 200 이 누구 것인가"가 갈린다.
 # ⚠️ 생존 확인(`kill -0`)만으로는 부족하다 — 고아는 **즉시** 200 을 주는데 우리 npm 은 EADDRINUSE
 #    로 죽기까지 몇 초 걸린다. 그 창에서 생존만 보면 남의 200 을 우리 것으로 읽는다(실측).
+# ⚠️ 이 확인은 **lsof 가 있을 때만** 유효하다. lsof 없는 환경(슬림 컨테이너 등)에서 조용히
+#    통과시키면 방어가 통째로 사라진다 → 그래서 이것은 **2차 방어**이고, 1차는 아래
+#    `port_listening`(bash 내장 `/dev/tcp`, 외부 의존 0)이 **띄우기 전에** 막는다.
 port_owner_ok() { # port, 우리-잡-PID
   local port="$1" pid="$2" lp
-  command -v lsof >/dev/null 2>&1 || return 0 # 확인 불가 → 막지 않는다(doctor 도 lsof 전제)
+  command -v lsof >/dev/null 2>&1 || return 0 # 확인 불가 → 1차 방어에 맡긴다(경고는 doctor 가 한다)
   for lp in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
     [ "$(ps -o pgid= -p "$lp" 2>/dev/null | tr -d ' ')" = "$pid" ] && return 0
   done
   return 1
+}
+
+# 그 포트에 이미 누가 듣고 있나. **bash 내장 `/dev/tcp` 만 쓴다 — 외부 명령 의존 0.**
+# (lsof·nc·ss 는 있는 환경도 없는 환경도 있다. 검출이 도구 설치 여부에 걸리면 방어가 조용히 죽는다.)
+# ⚠️ 열고 닫기를 **서브셸 안에서** 끝낸다. 바깥에서 `exec 3<&-` 로 닫으려 하면 fd 3 은 바깥에
+#    열린 적이 없어 리다이렉션 에러가 나고, `exec` 는 특수 빌트인이라 **비대화형 셸이 그 자리에서
+#    죽는다**(메시지도 없이 exit 1 — 실제로 이 스크립트가 그렇게 조용히 죽었다). 서브셸이
+#    끝나면 fd 는 알아서 닫힌다.
+port_listening() { # port — 듣고 있으면 0
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
+# **띄우기 전에** 그 포트가 비어 있어야 한다 = 이후 그 포트의 리스너는 정의상 우리 것이다.
+# 이것이 소유 판정의 1차이자 유일하게 의존성 없는 방어다 — 고아가 200 을 주는 시나리오는
+# 애초에 "우리가 띄우기 전부터 누가 듣고 있다" 이므로 여기서 전부 걸린다.
+require_port_free() { # port, 이름
+  port_listening "$1" || return 0
+  fail "$2 포트 :$1 를 이미 누가 듣고 있다 — 그 200 은 우리 것이 아니다(낡은 프로세스를 잴 뻔했다). HMB_LOCAL_*_PORT 로 바꾸거나 그 프로세스를 끄고 다시"
 }
 
 # url, 초, 우리가-띄운-PID, [헤더…] — 헤더는 `-H` 인자로 그대로 넘어간다.
@@ -195,10 +216,12 @@ claude_state() {
 #    주워 쓰고(run_web_e2e 의 CI=1 주석), 그 vite 의 /api 프록시는 **이번 백엔드가 아니다**.
 #    다른 세 포트는 방어하면서 이 포트만 빠져 있어 사람에게 신호조차 안 갔다(#471 패널 S2).
 # 선점된 포트를 공백 구분으로 stdout 에. 없으면 아무것도 안 찍는다(호출부는 빈 문자열로 판정).
+# ⚠️ 검출은 lsof 가 아니라 `port_listening`(bash 내장)으로 한다 — lsof 없는 환경에서 lsof 로 재면
+#    "아무도 안 문다" 가 나와 선점 경고·게이트가 통째로 조용히 죽는다(#471 패널 4R S2).
 ports_busy() {
   local busy=()
   for p in "$JAVA_PORT" "$RUNNER_PORT" "$WEB_PORT" "$E2E_WEB_PORT"; do
-    lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 && busy+=("$p")
+    port_listening "$p" && busy+=("$p")
   done
   [ ${#busy[@]} -eq 0 ] || echo "${busy[*]}"
 }
@@ -234,6 +257,10 @@ doctor() {
     *)             warn "claude 로그인 상태를 못 읽었다 (probe-failed) → 스텁 엔진으로 강등" ;;
   esac
   info "포트: java ${JAVA_PORT} · runner ${RUNNER_PORT} · web ${WEB_PORT}  (HMB_LOCAL_*_PORT 로 변경)"
+  # 선점 검출·소유 판정이 도구 유무에 걸리면 안 된다 — 검출은 bash 내장으로 하고, lsof 는
+  # "그 포트를 무는 게 우리 프로세스인가"까지 보는 **2차** 방어다. 없으면 없다고 말한다(조용한 강등 금지).
+  command -v lsof >/dev/null 2>&1 \
+    || warn "lsof 가 없다 — 포트 선점 검출은 그대로 되지만(bash /dev/tcp) 리스너 소유 대조는 건너뛴다"
   # 선점 검출 — 이전 실행의 잔재나 다른 세션의 스택이 물고 있으면 여기서 말한다.
   # (안 하면 java 가 "포트 사용 중"으로 조용히 죽고 원인이 로그 깊숙이 묻힌다.)
   local busy
@@ -249,6 +276,7 @@ doctor() {
 # ── 기동 ─────────────────────────────────────────────────────────────────
 start_runner() {
   say "엔진 러너 :$RUNNER_PORT"
+  require_port_free "$RUNNER_PORT" "러너"
   ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server >"$TMP/runner.log" 2>&1 ) &
   RUNNER_PID=$!
   wait_http "http://localhost:$RUNNER_PORT/health" 90 "$RUNNER_PID"
@@ -263,6 +291,7 @@ start_runner() {
 
 start_java() {
   say "권위 서버 빌드 + 기동 :$JAVA_PORT"
+  require_port_free "$JAVA_PORT" "권위 서버"
   ( cd "$ROOT/server-java" && ./gradlew bootJar -q ) || fail "bootJar 실패"
   local jar
   jar="$(ls "$ROOT"/server-java/build/libs/*.jar | grep -v plain | head -1)"
@@ -393,6 +422,7 @@ run_web_e2e() {
 
 start_web() {
   say "web :$WEB_PORT"
+  require_port_free "$WEB_PORT" "web"
   ( cd "$ROOT/apps/web" && VITE_API_TARGET="$BASE" \
       npm run dev -- --port "$WEB_PORT" --strictPort >"$TMP/web.log" 2>&1 ) &
   WEB_PID=$!
@@ -491,6 +521,15 @@ print(json.dumps({"formation": "4-3-3", "slots": slots}))
 }
 
 # ── 서브커맨드 ───────────────────────────────────────────────────────────
+# ⚠️ `HMB_LOCAL_LIB_ONLY=1` 로 source 하면 **함수만 싣고 아무것도 실행하지 않는다**.
+#    계약이 `wait_http`·`port_owner_ok` 같은 판정 함수를 **직접** 부를 수 있어야 하기 때문이다 —
+#    안 그러면 그 층은 전체 스택을 띄워야만 검정 가능하고, 앞단 방어가 먼저 걸리는 경로는
+#    영영 안 태워진다(= 테스트 없는 코드가 된다). 실행 경로에는 영향이 없다.
+if [ -n "${HMB_LOCAL_LIB_ONLY:-}" ]; then
+  QUIET_EXIT=1
+  return 0 2>/dev/null || exit 0
+fi
+
 CMD="${1:-up}"
 case "$CMD" in
   doctor)
