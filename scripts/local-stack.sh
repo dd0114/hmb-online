@@ -88,18 +88,54 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# url, 초, [헤더…] — 헤더는 `-H` 인자로 그대로 넘어간다.
+# 우리가 띄운 잡이 아직 살아 있나. bash 는 백그라운드 자식을 즉시 거둬 가므로(`set -m` 아래에서도
+# 실측 확인) 죽은 PID 에는 `kill -0` 이 실패한다 — 좀비를 살아있다고 읽는 문제는 없다.
+proc_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
+
+# 그 포트에서 듣고 있는 것이 **우리 잡**인가. `set -m` 이라 각 백그라운드 잡은 독립 프로세스
+# 그룹이고 그 PGID = 우리가 들고 있는 `$!` 다(손자 프로세스까지 그룹을 물려받는다 — npm→tsx→node
+# 로 실측). 그래서 리스너의 PGID 를 대조하면 "이 200 이 누구 것인가"가 갈린다.
+# ⚠️ 생존 확인(`kill -0`)만으로는 부족하다 — 고아는 **즉시** 200 을 주는데 우리 npm 은 EADDRINUSE
+#    로 죽기까지 몇 초 걸린다. 그 창에서 생존만 보면 남의 200 을 우리 것으로 읽는다(실측).
+port_owner_ok() { # port, 우리-잡-PID
+  local port="$1" pid="$2" lp
+  command -v lsof >/dev/null 2>&1 || return 0 # 확인 불가 → 막지 않는다(doctor 도 lsof 전제)
+  for lp in $(lsof -nP -iTCP:"$port" -sTCP:LISTEN -t 2>/dev/null); do
+    [ "$(ps -o pgid= -p "$lp" 2>/dev/null | tr -d ' ')" = "$pid" ] && return 0
+  done
+  return 1
+}
+
+# url, 초, 우리가-띄운-PID, [헤더…] — 헤더는 `-H` 인자로 그대로 넘어간다.
 # ⚠️ `/internal/**` 은 ServantTokenInterceptor 가 X-Servant-Token 을 요구한다(WebMvcConfig:79).
 #    헤더 없이 치면 서버가 정상 기동해도 401 이라 "안 뜬다"로 오판한다(실측 1회 겪음).
+# ⚠️ **200 은 "우리 프로세스가 떴다"를 뜻하지 않는다.** 이전 실행의 고아나 다른 세션의 스택이
+#    그 포트를 물고 있으면, 우리가 방금 띄운 java/러너/vite 는 포트 충돌로 죽고 헬스체크는
+#    **남의 프로세스**에게서 200 을 받는다 → 스택은 낡은 jar 를 문 채 "준비 완료"로 진행하고
+#    끝에 exit 0 으로 성공을 보고한다(#471 패널 S2 ②). 그래서 폴링마다 PID 생존을 같이 보고,
+#    죽었으면 **2**, 남이 그 포트를 물고 있으면 **3** 을 돌려 호출부가 "안 뜬다"(1)와 다른 말을
+#    하게 한다. 순서를 안 타는 판정이다 — 고아가 먼저 200 을 줘도 소유가 우리가 아니면 계속
+#    기다리고, 그 사이 우리 프로세스가 EADDRINUSE 로 죽으면 2 로 끝난다.
 wait_http() {
-  local url="$1" limit="${2:-60}" i=0
-  shift 2 2>/dev/null || shift $#
+  local url="$1" limit="${2:-60}" pid="${3:-}" i=0
+  shift 3 2>/dev/null || shift $#
   local hdr=()
   for h in "$@"; do hdr+=(-H "$h"); done
+  local port="${url##*:}"; port="${port%%/*}"
+  local foreign=0
   while [ $i -lt "$limit" ]; do
-    curl -sf ${hdr[@]+"${hdr[@]}"} "$url" >/dev/null 2>&1 && return 0
+    proc_alive "$pid" || return 2
+    if curl -sf ${hdr[@]+"${hdr[@]}"} "$url" >/dev/null 2>&1; then
+      # 200 을 받았다 ≠ 우리가 떴다. 그 포트의 리스너가 우리 잡이어야 비로소 준비 완료다.
+      if port_owner_ok "$port" "$pid"; then
+        proc_alive "$pid" || return 2
+        return 0
+      fi
+      foreign=1
+    fi
     sleep 1; i=$((i+1))
   done
+  [ "$foreign" -eq 1 ] && return 3
   return 1
 }
 
@@ -153,6 +189,31 @@ claude_state() {
   echo "probe-failed"
 }
 
+# 선점 검출 — 이전 실행의 잔재나 다른 세션의 스택이 물고 있으면 여기서 말한다.
+# (안 하면 java 가 "포트 사용 중"으로 조용히 죽고 원인이 로그 깊숙이 묻힌다.)
+# ⚠️ E2E_WEB_PORT 를 빠뜨리지 마라 — 그 포트에 낡은 vite 가 물려 있으면 playwright 가 그걸
+#    주워 쓰고(run_web_e2e 의 CI=1 주석), 그 vite 의 /api 프록시는 **이번 백엔드가 아니다**.
+#    다른 세 포트는 방어하면서 이 포트만 빠져 있어 사람에게 신호조차 안 갔다(#471 패널 S2).
+# 선점된 포트를 공백 구분으로 stdout 에. 없으면 아무것도 안 찍는다(호출부는 빈 문자열로 판정).
+ports_busy() {
+  local busy=()
+  for p in "$JAVA_PORT" "$RUNNER_PORT" "$WEB_PORT" "$E2E_WEB_PORT"; do
+    lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 && busy+=("$p")
+  done
+  [ ${#busy[@]} -eq 0 ] || echo "${busy[*]}"
+}
+
+# 판정 모드(smoke·e2e)에서 선점은 **치명**이다 — 거기서 나온 수치는 게이트로 읽히는데, 남의
+# 프로세스에게 물어본 수치일 수 있다(#471 패널 S2 ②). `up` 은 사람이 화면을 보고 판단하므로
+# 경고만 유지한다. 전제가 특수한 환경을 위해 탈출구는 남긴다.
+require_free_ports() {
+  local busy
+  busy="$(ports_busy)"
+  [ -n "$busy" ] || return 0
+  [ -z "${HMB_LOCAL_ALLOW_BUSY_PORTS:-}" ] || { warn "포트 선점 무시(HMB_LOCAL_ALLOW_BUSY_PORTS): $busy"; return 0; }
+  fail "포트 선점: $busy — 판정 모드는 남의 프로세스를 재면 안 된다. HMB_LOCAL_*_PORT 로 바꾸거나 그 프로세스를 끄고 다시 (무시하려면 HMB_LOCAL_ALLOW_BUSY_PORTS=1)"
+}
+
 doctor() {
   say "전제 점검"
   local bad=0
@@ -175,15 +236,10 @@ doctor() {
   info "포트: java ${JAVA_PORT} · runner ${RUNNER_PORT} · web ${WEB_PORT}  (HMB_LOCAL_*_PORT 로 변경)"
   # 선점 검출 — 이전 실행의 잔재나 다른 세션의 스택이 물고 있으면 여기서 말한다.
   # (안 하면 java 가 "포트 사용 중"으로 조용히 죽고 원인이 로그 깊숙이 묻힌다.)
-  local busy=()
-  # ⚠️ E2E_WEB_PORT 를 빠뜨리지 마라 — 그 포트에 낡은 vite 가 물려 있으면 playwright 가 그걸
-  #    주워 쓰고(아래 run_web_e2e 의 CI=1 주석), 그 vite 의 /api 프록시는 **이번 백엔드가 아니다**.
-  #    다른 세 포트는 방어하면서 이 포트만 빠져 있어 사람에게 신호조차 안 갔다(#471 패널 S2).
-  for p in "$JAVA_PORT" "$RUNNER_PORT" "$WEB_PORT" "$E2E_WEB_PORT"; do
-    lsof -nP -iTCP:"$p" -sTCP:LISTEN >/dev/null 2>&1 && busy+=("$p")
-  done
-  if [ ${#busy[@]} -gt 0 ]; then
-    warn "이미 물려 있는 포트: ${busy[*]} — HMB_LOCAL_*_PORT 로 바꾸거나 그 프로세스를 끄고 다시"
+  local busy
+  busy="$(ports_busy)"
+  if [ -n "$busy" ]; then
+    warn "이미 물려 있는 포트: $busy — HMB_LOCAL_*_PORT 로 바꾸거나 그 프로세스를 끄고 다시"
     bad=1
   fi
   [ $bad -eq 0 ] && ok "로컬 빌드 전제 충족" || warn "위 항목을 채우고 다시 실행하라"
@@ -195,7 +251,13 @@ start_runner() {
   say "엔진 러너 :$RUNNER_PORT"
   ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server >"$TMP/runner.log" 2>&1 ) &
   RUNNER_PID=$!
-  wait_http "http://localhost:$RUNNER_PORT/health" 90 || fail "러너가 안 뜬다 ($TMP/runner.log)"
+  wait_http "http://localhost:$RUNNER_PORT/health" 90 "$RUNNER_PID"
+  case $? in
+    0) ;;
+    2) fail "러너 프로세스가 죽었다 — :$RUNNER_PORT 선점이나 즉시 크래시다 ($TMP/runner.log)" ;;
+    3) fail "러너 프로세스가 죽었다 — :$RUNNER_PORT 를 남의 프로세스가 물고 있다(그 200 은 우리 것이 아니다)" ;;
+    *) fail "러너가 안 뜬다 ($TMP/runner.log)" ;;
+  esac
   ok "러너 준비"
 }
 
@@ -223,8 +285,13 @@ start_java() {
       ${extra[@]+"${extra[@]}"} \
       -jar "$jar" >"$TMP/java.log" 2>&1 ) &
   JAVA_PID=$!
-  wait_http "$BASE/internal/health" 120 "X-Servant-Token: $SERVANT_TOKEN_VALUE" \
-    || fail "java 가 안 뜬다 ($TMP/java.log)"
+  wait_http "$BASE/internal/health" 120 "$JAVA_PID" "X-Servant-Token: $SERVANT_TOKEN_VALUE"
+  case $? in
+    0) ;;
+    2) fail "java 프로세스가 죽었다 — :$JAVA_PORT 선점이나 즉시 크래시다 ($TMP/java.log)" ;;
+    3) fail "java 프로세스가 죽었다 — :$JAVA_PORT 를 남의 프로세스가 물고 있다(낡은 jar 를 잴 뻔했다)" ;;
+    *) fail "java 가 안 뜬다 ($TMP/java.log)" ;;
+  esac
   ok "권위 서버 준비 (DB $TMP/hmb.db)"
 }
 
@@ -237,6 +304,9 @@ start_executor() {
       npm run executor --workspace=@hmb/server >"$TMP/executor.log" 2>&1 ) &
   EXEC_PID=$!
   sleep 2
+  # 실행기는 헬스 포트가 없다(잡 폴링 데몬) — 그래서 "떴나"의 유일한 신호가 PID 생존이다.
+  # 안 보면 기동 직후 죽어도 show_ai_mode 가 30초를 기다린 끝에 "확인 중"으로 애매하게 죽는다.
+  proc_alive "$EXEC_PID" || fail "AI 실행기가 기동 직후 죽었다 ($TMP/executor.log)"
   ok "실행기 기동 (로그 $TMP/executor.log)"
 }
 
@@ -326,7 +396,15 @@ start_web() {
   ( cd "$ROOT/apps/web" && VITE_API_TARGET="$BASE" \
       npm run dev -- --port "$WEB_PORT" --strictPort >"$TMP/web.log" 2>&1 ) &
   WEB_PID=$!
-  wait_http "$WEB_URL" 120 || fail "web 이 안 뜬다 ($TMP/web.log)"
+  wait_http "$WEB_URL" 120 "$WEB_PID"
+  case $? in
+    0) ;;
+    # vite 는 `--strictPort` 라 포트가 물려 있으면 뜨지 않고 죽는다 — 그때 200 을 주는 것은
+    # **낡은 vite** 이고, 그 프록시는 이번 백엔드를 안 본다(e2e 쪽에서 이미 한 번 겪은 부류).
+    2) fail "web(vite) 이 죽었다 — :$WEB_PORT 선점이다(--strictPort) ($TMP/web.log)" ;;
+    3) fail "web(vite) 이 죽었다 — :$WEB_PORT 를 낡은 vite 가 물고 있다(그 프록시는 이번 백엔드가 아니다)" ;;
+    *) fail "web 이 안 뜬다 ($TMP/web.log)" ;;
+  esac
   ok "web 준비"
 }
 
@@ -429,6 +507,7 @@ case "$CMD" in
   smoke)
     # 판정 모드 — 결정론·오프라인이 기본(stub). 시계도 압축해 몇 초만에 완주를 본다.
     doctor || true
+    require_free_ports
     AI_MODE_WANTED="${AI_MODE_WANTED:-stub}"
     HALFTIME_MS="${HALFTIME_MS:-3000}"
     resolve_java || fail "JDK 21 이 필요하다 (doctor 참고)"
@@ -444,6 +523,7 @@ case "$CMD" in
     # 상시 회귀용 — hero 요구 "앞으로도 E2E 테스트로 사용할거임"(#471 AC4).
     # AI 는 stub 고정(결정론·오프라인). 라이브 AI 판정은 `up` 으로 사람이 본다.
     doctor || true
+    require_free_ports
     AI_MODE_WANTED="${AI_MODE_WANTED:-stub}"
     # ⚠️ **시계는 끈다**(`enabled=false` = 문서화된 롤백 스위치, application.yml:157).
     #    이 세 스펙은 하프타임 패널을 **90초** 안에 기다리는데 재생 창은 실측 **221초**다(AC1) —

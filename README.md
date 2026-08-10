@@ -169,6 +169,7 @@ HMB_LOCAL_JAVA_PORT=32080 HMB_LOCAL_WEB_PORT=32173 bash scripts/local-stack.sh u
 | `HMB_LOCAL_E2E_WEB_PORT` | 31199 | `e2e` 가 띄우는 vite(플레이 중에도 돌릴 수 있게 분리) |
 | `HMB_LOCAL_AI` | `up`=claude-code / `smoke`=stub | AI 실행기 모드 희망값(강등은 프리플라이트가 판단) |
 | `HMB_LOCAL_STATE_DIR` | 임시 디렉토리 | DB·로그 위치. 지정하면 재시작해도 진행이 남는다 |
+| `HMB_LOCAL_ALLOW_BUSY_PORTS` | (꺼짐) | `smoke`·`e2e` 는 포트가 물려 있으면 **멈춘다**(남의 프로세스를 재지 않으려고). 그걸 알면서 진행할 때만 `1` |
 
 ---
 

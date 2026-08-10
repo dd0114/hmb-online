@@ -166,6 +166,69 @@ describe("#471 AC1 — scripts/local-stack.sh 구조 계약", () => {
     }
   }, 30_000);
 
+  // ── #471 패널 3R 반려분 (S2 ②) ─────────────────────────────────────────
+  // 헬스체크 200 은 "우리 프로세스가 떴다"를 뜻하지 않는다. 실측(2026-08-10):
+  // 러너가 이미 물려 있는 포트에 `listen` 하면 `EADDRINUSE` 로 **즉시 죽는데**(exit 1),
+  // 그동안 curl 은 고아에게서 `{"ok":true}` 200 을 받는다 → 구 코드는 "러너 준비"로 통과하고
+  // 낡은 프로세스를 문 채 끝까지 가서 exit 0 으로 성공을 보고했다.
+
+  it("wait_http 호출부가 전부 우리가 띄운 PID 를 넘긴다", () => {
+    const code = codeLines(readScript());
+    const calls = code.filter((l) => /(^|[\s;(])wait_http\s+/.test(l));
+    expect(calls.length, "wait_http 호출을 못 찾았다 — 계약이 낡았다").toBeGreaterThanOrEqual(3);
+    // url, 초 다음 세 번째 인자가 `$..._PID` 여야 한다. 헤더만 넘기던 구 형태(start_java)가
+    // 정확히 이 자리에 토큰 헤더를 두고 있었다.
+    const noPid = calls.filter((l) => !/wait_http\s+\S+\s+\S+\s+"\$[A-Z_]*PID"/.test(l));
+    expect(
+      noPid,
+      `PID 없이 헬스체크만 하는 호출부:\n${noPid.join("\n")}\n` +
+        `— 고아 프로세스의 200 을 "준비 완료"로 오판한다(#471 패널 3R S2 ②).`,
+    ).toEqual([]);
+  });
+
+  it("포트를 문 고아가 200 을 줘도 '준비 완료'로 오판하지 않는다", async () => {
+    const { createServer } = await import("node:http");
+    const { execFile } = await import("node:child_process");
+    // 스크립트가 띄우는 러너와 **같은 방식**으로 바인드한다(host 미지정 = :: dual-stack).
+    // 127.0.0.1 로만 잡으면 러너가 그 위에 또 떠 버려(macOS 실측) 재현하려는 상태가 아니다.
+    const orphan = createServer((_q, s) => {
+      s.writeHead(200, { "content-type": "application/json" });
+      s.end('{"ok":true,"who":"orphan"}');
+    });
+    await new Promise<void>((res) => orphan.listen(0, res));
+    const port = (orphan.address() as { port: number }).port;
+    try {
+      const out = await new Promise<{ code: number; text: string }>((res) => {
+        execFile(
+          "bash",
+          [SCRIPT_PATH, "smoke"],
+          {
+            env: {
+              ...process.env,
+              HMB_LOCAL_RUNNER_PORT: String(port),
+              // 선점 게이트(require_free_ports)를 일부러 열어 **wait_http 경로**를 태운다.
+              // 안 열면 앞단에서 죽어서 이 계약이 검정하려는 코드에 도달조차 못 한다(동어반복).
+              HMB_LOCAL_ALLOW_BUSY_PORTS: "1",
+              HMB_LOCAL_AI: "stub",
+            },
+            timeout: 90_000,
+            maxBuffer: 8 << 20,
+          },
+          (err, stdout, stderr) =>
+            res({
+              code: err && typeof err.code === "number" ? err.code : 0,
+              text: `${stdout}${stderr}`,
+            }),
+        );
+      });
+      expect(out.code, `선점 상태인데 스택이 성공으로 끝났다:\n${out.text}`).not.toBe(0);
+      expect(out.text, "고아의 200 을 우리 러너로 오인했다").not.toContain("✓ 러너 준비");
+      expect(out.text).toContain("러너 프로세스가 죽었다");
+    } finally {
+      orphan.close();
+    }
+  }, 120_000);
+
   it("bash strict 모드로 돈다", () => {
     const src = readScript();
     expect(src.split("\n")[0]).toMatch(/^#!.*bash/);
