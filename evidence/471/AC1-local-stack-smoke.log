@@ -1,6 +1,6 @@
 # AC1 — 로컬 빌드 원커맨드 스택 콜드 실행 (클론 하나 → 매치 완주)
 # 커맨드: bash scripts/local-stack.sh smoke
-# 실행: 2026-08-10 09:18:25 KST · HEAD 895b72f4 · 워킹트리 변경 0 건(0=clean, AC2 로그 제외)
+# 실행: 2026-08-10 11:48:21 KST · HEAD 2d9ab8ab · 워킹트리 변경 0 건(0=clean, evidence 제외)
 # ⚠️ 헤더가 없으면 이 로그가 몇 세대 전 코드로 찍혔는지 아무도 모른다(#471 패널 S3 반려).
 
 
@@ -16,31 +16,32 @@
 [32m   ✓ 러너 준비[0m
 
 [1m== 권위 서버 빌드 + 기동 :31080[0m
-[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-4Fom/hmb.db)[0m
+[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-1jyf/hmb.db)[0m
 
 [1m== AI 실행기 (희망 모드: stub)[0m
-[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-4Fom/executor.log)[0m
+[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-1jyf/executor.log)[0m
 [33m   ! 실효 AI 모드: stub (not-wanted) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체[0m
 
 [1m== 가입 → 덱 → 매치[0m
-[32m   ✓ 가입 local1786321118[0m
+[32m   ✓ 가입 local1786330113[0m
 [32m   ✓ 덱 저장 (선발 11 + 벤치 2)[0m
-[32m   ✓ 킥오프 01KZMGJ9A3WBNGZMJZR0931VXQ[0m
+[32m   ✓ 킥오프 01KZMS4T2MDQV1D4W3FKANJF60[0m
 
 [1m== 관찰 (재생 창은 스킵 API 로 당긴다)[0m
    t+000s  GEN1
-   t+001s  FIRST_HALF
+   t+002s  FIRST_HALF
    ⏩ FIRST_HALF 재생 창 당김
    t+002s  HALFTIME
+   t+005s  GEN2
    t+006s  SECOND_HALF
    ⏩ SECOND_HALF 재생 창 당김
-   t+007s  FINISHED
-[32m   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME SECOND_HALF FINISHED[0m
+   t+006s  FINISHED
+[32m   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME GEN2 SECOND_HALF FINISHED[0m
 
 [32mPASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다[0m
-scripts/local-stack.sh: line 81: 19234 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
-scripts/local-stack.sh: line 81: 19596 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
-scripts/local-stack.sh: line 81: 21737 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
-로그: /tmp/hmb-local-stack-4Fom
+scripts/local-stack.sh: line 81:  5986 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81:  6547 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81:  7069 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-1jyf
 
-# 종료코드 0 · 소요 21초
+# 종료코드 0 · 소요 20초

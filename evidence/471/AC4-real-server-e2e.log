@@ -1,6 +1,6 @@
 # AC4 — 로컬 스택 실서버 web E2E (목킹 0 · 스킵 0)
 # 커맨드: bash scripts/local-stack.sh e2e
-# 실행: 2026-08-10 09:24:46 KST · HEAD 895b72f4 · 워킹트리 변경 0 건(0=clean, evidence 제외)
+# 실행: 2026-08-10 11:50:18 KST · HEAD 2d9ab8ab · 워킹트리 변경 0 건(0=clean, evidence 제외)
 # ⚠️ 헤더가 없으면 이 로그가 몇 세대 전 코드로 찍혔는지 아무도 모른다(#471 패널 S3 반려).
 
 
@@ -16,21 +16,21 @@
 [32m   ✓ 러너 준비[0m
 
 [1m== 권위 서버 빌드 + 기동 :31080[0m
-[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-fqdV/hmb.db)[0m
+[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-orKE/hmb.db)[0m
 
 [1m== AI 실행기 (희망 모드: stub)[0m
-[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-fqdV/executor.log)[0m
+[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-orKE/executor.log)[0m
 [33m   ! 실효 AI 모드: stub (not-wanted) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체[0m
 
 [1m== web E2E — 실서버 3스펙 (목킹 0, 프록시 → http://localhost:31080)[0m
      3 passed (1.1m)
-   실행 집계: pass=3 fail=0 skip=0 (로그 /tmp/hmb-local-stack-fqdV/e2e.log · JSON /tmp/hmb-local-stack-fqdV/e2e.json)
+   실행 집계: pass=3 fail=0 skip=0 (로그 /tmp/hmb-local-stack-orKE/e2e.log · JSON /tmp/hmb-local-stack-orKE/e2e.json)
 [32m   ✓ web E2E 3건 통과 · 스킵 0 (실서버 http://localhost:31080)[0m
 
 [32mPASS — 실서버 web E2E (목킹 0 · 스킵 0)[0m
-scripts/local-stack.sh: line 81: 85438 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
-scripts/local-stack.sh: line 81: 85685 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
-scripts/local-stack.sh: line 81: 87302 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
-로그: /tmp/hmb-local-stack-fqdV
+scripts/local-stack.sh: line 81: 14480 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81: 14603 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81: 14768 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-orKE
 
-# 종료코드 0 · 소요 83초
+# 종료코드 0 · 소요 80초
