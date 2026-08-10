@@ -1,0 +1,15 @@
+# AC10 게이트 콜드 실행 (2026-08-11 02:32:26)
+## cmd: npx vitest run apps/web
+ Test Files  171 passed | 2 skipped (173)
+      Tests  2471 passed | 9 skipped (2480)
+## cmd: npx tsc -p apps/web/tsconfig.json --noEmit
+TYPECHECK-OK
+## cmd: cd apps/web && npm run build
+✓ built in 2.18s
+## cmd: cd apps/web && CI=1 WEB_E2E_PORT=5493 npx playwright test e2e/p493-full-journey.spec.ts e2e/p493-guides.spec.ts e2e/p493-minigame.spec.ts e2e/p3-tutorial.spec.ts e2e/p4-starter-onboarding.spec.ts e2e/p386-notice-gate.spec.ts --reporter=line
+[52/52] [chromium] › e2e/p493-minigame.spec.ts:161:1 › ⑥ 390px — 가로 오버플로 0, 무대·CTA 가 화면 안
+  52 passed (1.3m)
+## cmd: cd server-java && ./gradlew test --rerun-tasks (전량 콜드)
+BUILD SUCCESSFUL in 1m 51s
+5 actionable tasks: 5 executed
+tests/failures/ignored: ['1203', '0', '1']
