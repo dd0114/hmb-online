@@ -44,3 +44,5 @@ public/chars/
 .p424/
 # #479 첫 진입 스플래시 실화면 캡처(`e2e/p479-splash.capture.ts` 산출) — 같은 관례.
 .p479/
+# #492 이벤트 보드 실화면 캡처·목 계약 덤프(`e2e/p492-event-board-mock.spec.ts` 산출) — 같은 관례.
+.p492/

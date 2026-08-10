@@ -10,7 +10,15 @@ import { createElement as h } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { AppNav, NAV_ITEMS, activeNavKey, navItemLocked } from "./AppNav";
+import {
+  ADMIN_NAV_ITEM,
+  AppNav,
+  EVENTS_NAV_ITEM,
+  NAV_ITEMS,
+  activeNavKey,
+  navItemLocked,
+  navItemsFor,
+} from "./AppNav";
 
 function renderNav(path: string) {
   return render(h(MemoryRouter, { initialEntries: [path] }, h(AppNav)));
@@ -34,6 +42,33 @@ describe("activeNavKey", () => {
     // 이게 없으면 순위표를 보는 동안 어느 탭에 있는지 알 수 없다(어떤 탭도 활성이 아님).
     expect(activeNavKey("/league")).toBe("game");
     expect(activeNavKey("/away")).toBe("game");
+  });
+});
+
+describe("navItemsFor — admin 전용 진입점 (#492)", () => {
+  it("비admin 에게는 운영·이벤트 항목이 아예 없다", () => {
+    const items = navItemsFor(false);
+    expect(items).toEqual(NAV_ITEMS);
+    expect(items.some((i) => i.key === "admin" || i.key === "events")).toBe(false);
+  });
+
+  it("admin 에게는 기본 6칸 뒤에 운영·이벤트가 붙는다", () => {
+    const items = navItemsFor(true);
+    expect(items).toHaveLength(NAV_ITEMS.length + 2);
+    expect(items.at(-2)).toEqual(ADMIN_NAV_ITEM);
+    expect(items.at(-1)).toEqual(EVENTS_NAV_ITEM);
+    expect(EVENTS_NAV_ITEM.to).toBe("/event-board");
+  });
+
+  it("이벤트 라벨은 3글자 이하 — 8칸 하단탭이 390px 에서 넘치지 않게", () => {
+    // `flex:1 1 0` 균등분할 + `white-space:nowrap` 이라 긴 라벨은 곧바로 가로 오버플로가 된다.
+    expect(EVENTS_NAV_ITEM.label.length).toBeLessThanOrEqual(3);
+  });
+
+  it("/event-board 는 이벤트 탭으로 활성 표시된다", () => {
+    expect(activeNavKey("/event-board", navItemsFor(true))).toBe("events");
+    // 비admin 항목 집합에서는 어느 탭도 활성이 아니다(그 화면에 갈 수 없다).
+    expect(activeNavKey("/event-board", navItemsFor(false))).toBeNull();
   });
 });
 
