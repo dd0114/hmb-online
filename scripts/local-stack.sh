@@ -291,6 +291,7 @@ start_runner() {
 
 start_java() {
   say "권위 서버 빌드 + 기동 :$JAVA_PORT"
+  # 빌드 **전에** 한 번 — 수 분짜리 gradle 을 돌리고 나서 "포트 물렸다"고 말하면 너무 늦다(UX).
   require_port_free "$JAVA_PORT" "권위 서버"
   ( cd "$ROOT/server-java" && ./gradlew bootJar -q ) || fail "bootJar 실패"
   local jar
@@ -302,6 +303,13 @@ start_java() {
   local extra=()
   # shellcheck disable=SC2206
   [ -n "${JAVA_EXTRA_OPTS:-}" ] && extra=($JAVA_EXTRA_OPTS)
+  # ⚠️ **여기가 하중을 받는 검사다.** 위의 빌드 전 검사만 두면 검사~바인드 창이
+  #    마이크로초가 아니라 **`gradlew bootJar` 통째**(콜드 빌드 수 분)가 된다 — 그 사이 다른
+  #    `local-stack.sh` 나 아무 프로세스가 이 포트를 잡으면, 우리 java 는 죽고 헬스체크는 남의
+  #    200 을 받는다. 2차 방어(`port_owner_ok`)는 lsof 가 있어야만 도는데 lsof 없는 환경이야말로
+  #    이번 수리의 대상이었다 = 그 창이 통째로 무방비였다(#471 패널 5R S2).
+  #    스폰 직전 재검사는 창을 다시 마이크로초로 줄인다.
+  require_port_free "$JAVA_PORT" "권위 서버"
   # cwd=server-java 가 필수다 — application.yml 의 데이터 경로가 `../data/...` 상대라
   # 리포 루트에서 띄우면 리포 밖을 본다.
   ( cd "$ROOT/server-java" && java \

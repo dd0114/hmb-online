@@ -186,6 +186,31 @@ describe("#471 AC1 — scripts/local-stack.sh 구조 계약", () => {
     ).toEqual([]);
   });
 
+  it("포트 검사는 스폰 **직전**에 한다 — 그 사이에 긴 빌드를 끼우지 않는다", () => {
+    // 왜: `require_port_free` 를 빌드 **앞**에만 두면 검사~바인드 창이 마이크로초가 아니라
+    // `gradlew bootJar` 통째(콜드 수 분)가 된다. 그 창의 유일한 방어인 `port_owner_ok` 는
+    // lsof 가 있어야만 도는데, lsof 없는 환경이야말로 이 방어가 존재하는 이유다
+    // = 가장 중요한 포트가 가장 넓은 창에서 무방비였다(#471 패널 5R S2).
+    const code = codeLines(readScript());
+    const start = code.findIndex((l) => /^start_java\(\)/.test(l));
+    expect(start, "start_java 를 못 찾았다 — 계약이 낡았다").toBeGreaterThanOrEqual(0);
+    const body = code.slice(start, start + 60);
+    const spawn = body.findIndex((l) => /cd "\$ROOT\/server-java" && java/.test(l));
+    const build = body.findIndex((l) => /gradlew bootJar/.test(l));
+    expect(build, "bootJar 호출을 못 찾았다").toBeGreaterThanOrEqual(0);
+    expect(spawn, "java 기동을 못 찾았다").toBeGreaterThan(build);
+    const guards = body
+      .map((l, i) => (/require_port_free\s+"\$JAVA_PORT"/.test(l) ? i : -1))
+      .filter((i) => i >= 0);
+    const afterBuild = guards.filter((i) => i > build && i < spawn);
+    expect(
+      afterBuild.length,
+      `require_port_free "$JAVA_PORT" 가 빌드(라인 +${build})와 기동(라인 +${spawn}) **사이**에 없다.\n` +
+        `발견한 위치: ${guards.map((i) => `+${i}`).join(", ") || "없음"}\n` +
+        `— 빌드 앞에서만 재면 검사~바인드 창이 빌드 시간 전체가 된다(#471 패널 5R S2).`,
+    ).toBeGreaterThanOrEqual(1);
+  });
+
   it("포트를 문 고아가 200 을 줘도 '준비 완료'로 오판하지 않는다", async () => {
     const { createServer } = await import("node:http");
     const { execFile } = await import("node:child_process");
