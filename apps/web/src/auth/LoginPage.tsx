@@ -5,7 +5,7 @@ import { ApiError, apiFetch } from "../api/client";
 import type { components } from "../api/schema";
 import { useToken } from "./TokenContext";
 import { isValidNickname } from "./validation";
-import { RETURN_TO_PARAM, resolveReturnTo } from "./return-to";
+import { LOBBY_PATH, RETURN_TO_PARAM, resolveReturnTo } from "./return-to";
 import {
   OAUTH_PROVIDERS,
   buildLoginBody,
@@ -149,10 +149,11 @@ export function LoginPage() {
 
   function handleStarterPackConfirm() {
     setStarterPackOpen(false);
-    // 신규 유저도 공유 링크로 왔다면 그 공지가 방문 목적이다(hero 확정) — 닫으면 홈으로 가고,
-    // 거기서 온보딩이 시작된다(#286: 코치마크 대상이 홈 타일이다). #248 의 "미룸"은
-    // **저절로 뜨는 팝업**에만 걸린다.
-    navigate(returnTo, { replace: true });
+    // #493 W1: 신규 가입의 기본 착지는 1분 미니게임(/welcome)이다 — 첫 골을 1분 안에 보여준다
+    // (hero C 하이브리드, 미니게임 CTA/건너뛰기가 홈으로 보내면 거기서 온보딩이 시작된다).
+    // 단, 신규 유저도 공유 링크로 왔다면 그 목적지가 방문 목적이다(#298/hero 확정) —
+    // returnTo 가 기본(홈)일 때만 미니게임을 끼운다. #248 의 "미룸"은 **저절로 뜨는 팝업**에만 걸린다.
+    navigate(returnTo === LOBBY_PATH ? "/welcome" : returnTo, { replace: true });
   }
 
   /**

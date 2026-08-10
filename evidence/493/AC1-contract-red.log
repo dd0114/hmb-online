@@ -1,0 +1,25 @@
+     43|   it("컷 창 안에 골 ≥2 이고 finalScore 가 컷 시점 스코어와 정합한다", …
+     44|     const log = MatchLog.parse(JSON.parse(readFileSync(ASSET, "utf8"))…
+       |                                           ^
+     45|     const last = log.tickSnapshots[log.tickSnapshots.length - 1].tick;
+     46|     for (const e of log.events) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+ FAIL  apps/web/src/minigame/minigame-log.test.ts > #493 미니게임 정적 로그 자산 > gzip ≤ 100KB (AC1 크기 상한)
+Error: ENOENT: no such file or directory, open '/Users/peter.park/spider20/hmb-online/apps/web/src/minigame/minigame-log.json'
+ ❯ apps/web/src/minigame/minigame-log.test.ts:58:17
+     56| 
+     57|   it("gzip ≤ 100KB (AC1 크기 상한)", () => {
+     58|     const raw = readFileSync(ASSET);
+       |                 ^
+     59|     const gz = gzipSync(raw).length;
+     60|     // eslint-disable-next-line no-console
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  00:49:43
+   Duration  600ms (transform 104ms, setup 0ms, collect 179ms, tests 7ms, environment 0ms, prepare 100ms)
+

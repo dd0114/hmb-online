@@ -1,0 +1,5 @@
+      Tests  2451 passed | 9 skipped (2460)
+   Start at  01:29:09
+   Duration  18.22s (transform 7.21s, setup 0ms, collect 37.10s, tests 16.04s, environment 41.93s, prepare 14.38s)
+
+TYPECHECK-OK

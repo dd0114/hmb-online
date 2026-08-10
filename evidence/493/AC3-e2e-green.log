@@ -1,0 +1,4 @@
+# cmd: cd apps/web && CI=1 WEB_E2E_PORT=5493 npx playwright test e2e/p493-minigame.spec.ts e2e/p4-starter-onboarding.spec.ts e2e/p386-notice-gate.spec.ts e2e/p3-tutorial.spec.ts --reporter=line
+[45/46] [chromium] › e2e/p493-minigame.spec.ts:155:1 › ⑤ 딥링크 가입은 미니게임을 건너뛴다(#298)
+[46/46] [chromium] › e2e/p493-minigame.spec.ts:161:1 › ⑥ 390px — 가로 오버플로 0, 무대·CTA 가 화면 안
+  46 passed (1.1m)

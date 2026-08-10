@@ -154,6 +154,9 @@ export async function registerNewUser(page: Page): Promise<void> {
   await page.getByTestId("local-submit").click();
   await page.getByTestId("starter-reveal-card").click();
   await page.getByTestId("starter-reveal-close").click();
+  // #493 W1: 신규 가입 착지가 미니게임(/welcome)이 됐다 — 건너뛰어 홈에 내린다(이 헬퍼의 호출부는
+  // 전부 "홈에 도착한 신규 유저"를 전제한다).
+  await page.getByTestId("minigame-skip").click();
 }
 
 /** 이미 토큰이 있는(=온보딩 마친) 유저로 바로 홈에 들어간다. */

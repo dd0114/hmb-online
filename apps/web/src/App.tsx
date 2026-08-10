@@ -12,6 +12,7 @@ import { LoginPage } from "./auth/LoginPage";
 import { loginPathWithReturn } from "./auth/return-to";
 import { ShareNoticePage } from "./share/ShareNoticePage";
 import { HomePage } from "./home/HomePage";
+import { MinigamePage } from "./minigame/MinigamePage";
 import { GamePage } from "./game/GamePage";
 import { AwayPage } from "./away/AwayPage";
 import { DeckPage } from "./deck/DeckPage";
@@ -85,6 +86,19 @@ function AppRoutes() {
       <UnauthorizedBridge />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+
+        {/* 신규 유저 첫 경험 — 1분 미니게임(#493 W1). LoginPage 가 신규 가입의 기본 착지로 보낸다.
+            MatchLockGate 없음: LOCKED_ROUTES 밖(신규 유저 전용 착지라 진행 중 매치와 겹칠 일이
+            없고, 겹쳐도 관전 정적 화면이라 잠글 이유가 없다). TutorialProvider 자동 시작 경로
+            (/home·/deck)도 아니라 코치마크와 다투지 않는다. */}
+        <Route
+          path="/welcome"
+          element={
+            <RequireAuth>
+              <MinigamePage />
+            </RequireAuth>
+          }
+        />
 
         {/* 홈도 MatchLockGate 를 쓴다 — 게이트가 `locked && !abandonable` 일 때만 되돌리므로
             재생 중에는 경기로 가고(#217 AC1), 회수 가능한 사고 매치에서는 홈이 열려 [경기 포기]에
