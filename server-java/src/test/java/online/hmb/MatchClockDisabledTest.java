@@ -77,4 +77,48 @@ class MatchClockDisabledTest extends MatchTestBase {
                 .param(matchId).query(String.class).single();
         assertThat(lastHash).isEqualTo(MatchClockFlowTest.FIXTURE_H1_LAST_HASH);
     }
+
+    /**
+     * <b>#492</b> — 롤백 경로에서도 {@code match_finish} 가 남는다.
+     *
+     * <p>이 경로는 후반 진입이 곧 종료라 정산이 {@code simulateAndStore} 의 트랜잭션 <b>안</b>에서
+     * 끝난다. 예전엔 그 자리에 커밋 후 훅이 없어 시계를 끄면 <b>이 이벤트만 조용히 사라졌고</b>,
+     * 퍼널은 {@code match_start} 까지만 찍힌 유저를 "경기를 끝내지 못한 사람"으로 그렸다.
+     * 시계가 켜진 경로({@code settleFinishedIfDue})와 <b>같은 props</b> 여야 하므로 값까지 본다 —
+     * 종류만 맞고 내용이 다르면 {@code mode} 필터·퍼널이 롤백 환경에서만 다르게 동작한다.
+     */
+    @Test
+    void matchFinishIsRecordedEvenWhenTheClockIsDisabled() {
+        String token = setupUserWithDeck("clk_off_ev");
+        String matchId = createMatch(token, "BOT_BAL");
+
+        authPost("/api/matches/" + matchId + "/kickoff", token, Map.of(), Map.class);
+        fakeServants.drain();
+        authPost("/api/matches/" + matchId + "/halftime", token,
+                Map.of("substitutions", List.of()), Map.class);
+        authPost("/api/matches/" + matchId + "/resume", token, Map.of(), Map.class);
+        fakeServants.drain();
+
+        assertThat(authGet("/api/matches/" + matchId, token, Map.class).getBody().get("state"))
+                .isEqualTo("FINISHED");
+
+        // 정확히 1건 — 재정산·중복 훅이 있으면 여기서 깨진다.
+        Integer finishes = jdbcClient.sql("""
+                        SELECT COUNT(*) FROM business_events
+                        WHERE event = 'match_finish' AND json_extract(props_json, '$.matchId') = ?
+                        """)
+                .param(matchId).query(Integer.class).single();
+        assertThat(finishes).isEqualTo(1);
+
+        Map<String, Object> props = jdbcClient.sql("""
+                        SELECT json_extract(props_json, '$.mode')   AS mode,
+                               json_extract(props_json, '$.result') AS result
+                        FROM business_events
+                        WHERE event = 'match_finish' AND json_extract(props_json, '$.matchId') = ?
+                        """)
+                .param(matchId).query((rs, n) -> Map.<String, Object>of(
+                        "mode", rs.getString("mode"), "result", rs.getString("result")))
+                .single();
+        assertThat(props).containsEntry("mode", "practice").containsEntry("result", "WIN");
+    }
 }

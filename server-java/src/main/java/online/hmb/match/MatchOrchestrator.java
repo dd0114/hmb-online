@@ -594,6 +594,10 @@ public class MatchOrchestrator {
         int scoreAway = finalScore.path("away").asInt();
         String engineVersion = result.matchLog().path("configVersion").asText("unknown");
 
+        // #492 match_finish — 시계가 꺼진 롤백 경로(hmb.match.clock.enabled=false)는 후반 진입이 곧
+        // 종료라 정산이 **이 트랜잭션 안**에서 끝난다. 기록은 커밋 뒤여야 하므로(같은 이유로
+        // settleFinishedIfDue 도 그렇게 한다) 값만 sink 로 받아 두고 아래에서 남긴다.
+        FinishOutcome[] finishSink = new FinishOutcome[1];
         Boolean stored = txRunner.run(() -> {
             try {
                 jdbcClient.sql("""
@@ -624,10 +628,15 @@ public class MatchOrchestrator {
             if (half == 1) {
                 enterFirstHalf(match.id(), scoreHome, scoreAway, engineVersion, result.playbackMs());
             } else {
-                enterSecondHalf(match, scoreHome, scoreAway, result.playbackMs());
+                enterSecondHalf(match, scoreHome, scoreAway, result.playbackMs(), finishSink);
             }
             return true;
         });
+
+        // 커밋 뒤. 시계가 켜져 있으면 sink 는 비어 있고(종료는 settleFinishedIfDue 가 한다) 이 줄은 no-op.
+        if (Boolean.TRUE.equals(stored) && finishSink[0] != null) {
+            recordMatchFinish(match, finishSink[0]);
+        }
 
         // h2 는 별도 A-잡이 없다(#95): h2 베이스 = h1 최종 인풋 → resolveSide 가 재사용(콜0) 또는
         // 하프타임 프롬프트가 있으면 B 패치로 태운다. 봇 h2 도 재사용(콜0)이라 프리페치할 콜이 없다.
@@ -732,9 +741,10 @@ public class MatchOrchestrator {
      * 끝날 때 한다({@link #settleFinishedIfDue}) — 라이브 모델 정합 + 재생 중 스포일러 방지(매니저 R2 결정).
      * 그 사이 후반 스코어는 score_h2_* 에만 보관하고 응답에는 싣지 않는다.
      */
-    private void enterSecondHalf(MatchService.MatchRow match, int scoreHome, int scoreAway, long playbackMs) {
+    private void enterSecondHalf(MatchService.MatchRow match, int scoreHome, int scoreAway, long playbackMs,
+                                 FinishOutcome[] finishSink) {
         if (!clockService.enabled()) {
-            finishMatch(match, scoreHome, scoreAway, MatchService.S_GEN2);
+            finishMatch(match, scoreHome, scoreAway, MatchService.S_GEN2, null, finishSink);
             return;
         }
         Instant start = clockService.now();
@@ -769,16 +779,26 @@ public class MatchOrchestrator {
                 finishMatch(match, nvl(match.scoreH2Home()), nvl(match.scoreH2Away()),
                         MatchService.S_SECOND_HALF, boundary, sink)));
         if (settled && sink[0] != null) {
-            FinishOutcome outcome = sink[0];
-            eventRecorder.record(BusinessEvent.MATCH_FINISH, match.userId(), () -> Map.of(
-                    "mode", outcome.mode(),
-                    "matchId", match.id(),
-                    "result", outcome.result(),
-                    "goalsFor", outcome.goalsFor(),
-                    "goalsAgainst", outcome.goalsAgainst(),
-                    "pointsAwarded", outcome.pointsAwarded()));
+            recordMatchFinish(match, sink[0]);
         }
         return settled;
+    }
+
+    /**
+     * {@code match_finish}(#492) 기록 — <b>정산 트랜잭션이 커밋된 뒤</b>에만 부른다.
+     *
+     * <p>호출부가 둘이라(시계 ON = {@link #settleFinishedIfDue} · 시계 OFF = {@link #simulateAndStore}
+     * 의 후반 저장) props 조립을 한 곳에 둔다 — 갈라 두면 두 경로가 서로 다른 필드를 싣고, 그러면
+     * 같은 이벤트인데 롤백 경로에서만 퍼널·필터가 다르게 동작한다.
+     */
+    private void recordMatchFinish(MatchService.MatchRow match, FinishOutcome outcome) {
+        eventRecorder.record(BusinessEvent.MATCH_FINISH, match.userId(), () -> Map.of(
+                "mode", outcome.mode(),
+                "matchId", match.id(),
+                "result", outcome.result(),
+                "goalsFor", outcome.goalsFor(),
+                "goalsAgainst", outcome.goalsAgainst(),
+                "pointsAwarded", outcome.pointsAwarded()));
     }
 
     /**

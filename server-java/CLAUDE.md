@@ -1118,10 +1118,17 @@ gain 이 큰 쪽은 **낮은 스탯**이라 화면이 유도하는 선택(gain �
 - **V42 는 CHECK·FK 를 일부러 안 건다** — 둘 다 "기록 실패 = 본 동작 실패"가 되는 경로다. append-only.
 - 실측 지연(콜드): 훅 1건 **0.12 ms** vs `POST /api/matches` 7.9~9.2 ms · 정산 5.2~5.3 ms
   → **시작 +1.3~1.6% · 종료 +2.3~2.4%**(계약 = `BusinessEventFlowTest` 가 매 실행 로그로 남긴다).
-- ⚠️ **알려진 갭**: `hmb.match.clock.enabled=false`(롤백 경로)에서는 정산이
-  `enterSecondHalf → finishMatch` 로 **tx 안**에서 끝나 `match_finish` 가 남지 않는다. 출하 기본은
-  `enabled: true` 라 라이브에는 영향이 없고, 시계를 끄고 운영할 일이 생기면 그 경로에 커밋 후 훅을
-  따로 내야 한다(그 자리는 `MatchClockService`/호출부이지 `finishMatch` 안이 아니다).
+- ✅ **롤백 경로(`hmb.match.clock.enabled=false`)도 `match_finish` 를 남긴다.** 이 경로는 후반 진입이
+  곧 종료라 정산이 `simulateAndStore` 의 **tx 안**에서 끝난다 — 한때 그 자리에 커밋 후 훅이 없어
+  **시계를 끄면 이 이벤트만 조용히 사라졌다**(퍼널이 `match_start` 까지만 찍힌 유저를 "경기를 끝내지
+  못한 사람"으로 그렸다). 훅은 예고대로 `finishMatch` **안**이 아니라 **호출부의 커밋 경계**에 있다:
+  `simulateAndStore` 가 `FinishOutcome[] finishSink` 를 `enterSecondHalf` 로 내려보내고,
+  `txRunner.run(...)` 이 **반환된 뒤** 기록한다(시계가 켜져 있으면 sink 가 비어 no-op).
+  props 조립은 `recordMatchFinish` **한 곳**이 소유한다 — 갈라 두면 같은 이벤트인데 롤백 경로에서만
+  `mode` 필터·퍼널이 다르게 동작한다.
+  ⚠️ 계약 = `MatchClockDisabledTest.matchFinishIsRecordedEvenWhenTheClockIsDisabled`
+  (**건수 1건 + props 값**까지 본다). **변이체 킬 확인** — sink 를 `null` 로 되돌리면 죽는다.
+  이 갭이 오래 살아남은 이유는 시계를 끈 채 **종료까지 태우는 계약이 없었기 때문**이다.
 
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).
