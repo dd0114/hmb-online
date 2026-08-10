@@ -1,0 +1,31 @@
+    2026-08-10T16:02:56.383+09:00  INFO 44820 --- [hmb-server] [    Test worker] o.f.core.internal.command.DbMigrate      : Migrating schema "main" to version "42 - business events"
+    2026-08-10T16:02:58.631+09:00  INFO 44820 --- [hmb-server] [    Test worker] o.f.core.internal.command.DbMigrate      : Migrating schema "main" to version "42 - business events"
+    [#492 AC3-3] match_start avg = 9.180 ms/req · match_finish avg = 5.309 ms/req · hook(insert) avg = 0.122 ms/event → 델타 = 시작 1.33% · 종료 2.30%
+    2026-08-10T16:03:00.153+09:00  INFO 44820 --- [hmb-server] [    Test worker] o.f.core.internal.command.DbMigrate      : Migrating schema "main" to version "42 - business events"
+    2026-08-10T16:03:00.305+09:00  WARN 44820 --- [hmb-server] [    Test worker] o.hmb.events.BusinessEventRecorder       : business event 기록 실패 event=user_signup user=no-such-user: org.springframework.jdbc.UncategorizedSQLException: PreparedStatementCallback; uncategorized SQLException for SQL [INSERT INTO business_events(id, event, user_id, occurred_at, props_json)
+    2026-08-10T16:03:00.306+09:00  WARN 44820 --- [hmb-server] [    Test worker] o.hmb.events.BusinessEventRecorder       : business event 기록 실패 event=user_signup user=no-such-user: java.lang.IllegalStateException: props 조회 실패
+    2026-08-10T16:03:00.309+09:00  WARN 44820 --- [hmb-server] [    Test worker] o.hmb.events.BusinessEventRecorder       : business event props 직렬화 실패 — 속성 없이 기록: com.fasterxml.jackson.databind.exc.InvalidDefinitionException: No serializer found for class java.lang.Object and no properties discovered to create BeanSerializer (to avoid exception, disable SerializationFeature.FAIL_ON_EMPTY_BEANS) (through reference chain: java.util.ImmutableCollections$Map1["bad"])
+    2026-08-10T16:03:00.309+09:00  WARN 44820 --- [hmb-server] [    Test worker] o.hmb.events.BusinessEventRecorder       : business event 사전 조회 실패 — 기본값 사용: java.lang.IllegalStateException: 사전 조회 실패
+    2026-08-10T16:03:00.343+09:00  WARN 44820 --- [hmb-server] [omcat-handler-3] o.hmb.events.BusinessEventRecorder       : business event 기록 실패 event=user_signup user=01KZN7PPFNZ944RW41X82JV7J3: org.springframework.jdbc.UncategorizedSQLException: PreparedStatementCallback; uncategorized SQLException for SQL [INSERT INTO business_events(id, event, user_id, occurred_at, props_json)
+    2026-08-10T16:03:00.351+09:00  WARN 44820 --- [hmb-server] [omcat-handler-5] o.hmb.events.BusinessEventRecorder       : business event 기록 실패 event=deck_save user=01KZN7PPFNZ944RW41X82JV7J3: org.springframework.jdbc.UncategorizedSQLException: PreparedStatementCallback; uncategorized SQLException for SQL [INSERT INTO business_events(id, event, user_id, occurred_at, props_json)
+    2026-08-10T16:03:00.357+09:00  WARN 44820 --- [hmb-server] [omcat-handler-6] o.hmb.events.BusinessEventRecorder       : business event 기록 실패 event=gacha_pull user=01KZN7PPFNZ944RW41X82JV7J3: org.springframework.jdbc.UncategorizedSQLException: PreparedStatementCallback; uncategorized SQLException for SQL [INSERT INTO business_events(id, event, user_id, occurred_at, props_json)
+    2026-08-10T16:03:00.364+09:00  WARN 44820 --- [hmb-server] [omcat-handler-7] o.hmb.events.BusinessEventRecorder       : business event 기록 실패 event=match_start user=01KZN7PPFNZ944RW41X82JV7J3: org.springframework.jdbc.UncategorizedSQLException: PreparedStatementCallback; uncategorized SQLException for SQL [INSERT INTO business_events(id, event, user_id, occurred_at, props_json)
+    2026-08-10T16:03:00.375+09:00  WARN 44820 --- [hmb-server] [    Test worker] o.hmb.events.BusinessEventRecorder       : business event 기록 실패 event=match_finish user=01KZN7PPFNZ944RW41X82JV7J3: org.springframework.jdbc.UncategorizedSQLException: PreparedStatementCallback; uncategorized SQLException for SQL [INSERT INTO business_events(id, event, user_id, occurred_at, props_json)
+    2026-08-10T16:03:00.382+09:00  WARN 44820 --- [hmb-server] [    Test worker] o.hmb.events.BusinessEventRecorder       : business event 'user_signup' 를 트랜잭션 안에서 기록하려 했다 — 건너뛴다(훅을 비-tx 경계로 옮겨야 한다: #492 무영향 규칙)
+BUILD SUCCESSFUL in 13s
+
+## 개별 테스트 결과 (같은 콜드 실행)
+  PASSED  online.hmb.AdminEventsApiTest.bothRoutesAreBehindTheAdminGate()  (0.739s)
+  PASSED  online.hmb.AdminEventsApiTest.funnelReportsHowFarEachUserGot()  (0.074s)
+  PASSED  online.hmb.AdminEventsApiTest.realHttpActivityShowsUpInBothViews()  (0.027s)
+  PASSED  online.hmb.AdminEventsApiTest.listFiltersPagesAndRejectsUnknownEventNames()  (0.071s)
+  PASSED  online.hmb.BusinessEventFlowTest.everyBusinessEventIsRecordedWithItsPropsAcrossTheRealHttpFlow()  (0.248s)
+  PASSED  online.hmb.BusinessEventFlowTest.deckSaveDistinguishesFirstCreationAndPresetApply()  (0.054s)
+  PASSED  online.hmb.BusinessEventFlowTest.signupIsRecordedOncePerAccountNotPerLogin()  (0.026s)
+  PASSED  online.hmb.BusinessEventFlowTest.measuresTheLatencyTheHooksAddToMatchStartAndFinish()  (0.25s)
+  PASSED  online.hmb.BusinessEventHookPlacementTest.everyExpectedHookSiteStillHasItsHook()  (0.107s)
+  PASSED  online.hmb.BusinessEventHookPlacementTest.theScannerActuallyDetectsAHookPlacedInsideATransaction()  (0.002s)
+  PASSED  online.hmb.BusinessEventHookPlacementTest.noEventHookSitsInsideATransactionLambda()  (0.098s)
+  PASSED  online.hmb.BusinessEventNoImpactTest.recorderNeverThrowsEvenWhenTheTableIsGone()  (0.017s)
+  PASSED  online.hmb.BusinessEventNoImpactTest.gameKeepsWorkingWhenEveryEventWriteFails()  (0.067s)
+  PASSED  online.hmb.BusinessEventNoImpactTest.recordingIsSkippedInsideATransactionSoItCanNeverRollBackTheCaller()  (0.004s)
