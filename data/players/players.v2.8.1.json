@@ -1,0 +1,3642 @@
+[
+  {
+    "id": "P001",
+    "name": "오톤 크리벨",
+    "position": "GK",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 71,
+      "mental": 78,
+      "physical": 72,
+      "passing": 76,
+      "shooting": 76,
+      "tackling": 73,
+      "pace": 68,
+      "stamina": 68,
+      "positioning": 78
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "크리벨"
+  },
+  {
+    "id": "P002",
+    "name": "빌헬름 로덴",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 74,
+      "mental": 71,
+      "physical": 74,
+      "passing": 78,
+      "shooting": 76,
+      "tackling": 78,
+      "pace": 73,
+      "stamina": 69,
+      "positioning": 78
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "로덴"
+  },
+  {
+    "id": "P003",
+    "name": "엔리코 발마르",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 74,
+      "mental": 75,
+      "physical": 68,
+      "passing": 76,
+      "shooting": 78,
+      "tackling": 78,
+      "pace": 76,
+      "stamina": 71,
+      "positioning": 78
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "발마르"
+  },
+  {
+    "id": "P004",
+    "name": "조르당 페스카",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 71,
+      "mental": 76,
+      "physical": 77,
+      "passing": 76,
+      "shooting": 75,
+      "tackling": 78,
+      "pace": 71,
+      "stamina": 71,
+      "positioning": 73
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "페스카"
+  },
+  {
+    "id": "P005",
+    "name": "다리오 벤투리",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 76,
+      "mental": 78,
+      "physical": 76,
+      "passing": 76,
+      "shooting": 78,
+      "tackling": 72,
+      "pace": 77,
+      "stamina": 78,
+      "positioning": 74
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "벤투리"
+  },
+  {
+    "id": "P006",
+    "name": "에밀리앙 카르보",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 78,
+      "mental": 78,
+      "physical": 73,
+      "passing": 76,
+      "shooting": 77,
+      "tackling": 71,
+      "pace": 68,
+      "stamina": 73,
+      "positioning": 69
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "카르보"
+  },
+  {
+    "id": "P007",
+    "name": "아나톨 몽테",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 77,
+      "mental": 75,
+      "physical": 70,
+      "passing": 78,
+      "shooting": 77,
+      "tackling": 76,
+      "pace": 75,
+      "stamina": 78,
+      "positioning": 77
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "몽테"
+  },
+  {
+    "id": "P008",
+    "name": "구스타프 슈타델",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 72,
+      "mental": 73,
+      "physical": 77,
+      "passing": 78,
+      "shooting": 75,
+      "tackling": 74,
+      "pace": 70,
+      "stamina": 75,
+      "positioning": 77
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "슈타델"
+  },
+  {
+    "id": "P009",
+    "name": "엘리오 살리노",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 74,
+      "mental": 75,
+      "physical": 74,
+      "passing": 75,
+      "shooting": 78,
+      "tackling": 72,
+      "pace": 74,
+      "stamina": 77,
+      "positioning": 77
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "살리노"
+  },
+  {
+    "id": "P010",
+    "name": "티노 델가르",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 71,
+      "mental": 78,
+      "physical": 69,
+      "passing": 68,
+      "shooting": 78,
+      "tackling": 77,
+      "pace": 78,
+      "stamina": 70,
+      "positioning": 75
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "델가르"
+  },
+  {
+    "id": "P011",
+    "name": "예룬 발커",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 78,
+      "mental": 74,
+      "physical": 74,
+      "passing": 78,
+      "shooting": 74,
+      "tackling": 72,
+      "pace": 74,
+      "stamina": 71,
+      "positioning": 74
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "발커"
+  },
+  {
+    "id": "P012",
+    "name": "스텐 노르베리",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 75,
+      "mental": 75,
+      "physical": 78,
+      "passing": 71,
+      "shooting": 78,
+      "tackling": 78,
+      "pace": 78,
+      "stamina": 75,
+      "positioning": 78
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "노르베리"
+  },
+  {
+    "id": "P013",
+    "name": "마르첼 벤티",
+    "position": "GK",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 65,
+      "mental": 69,
+      "physical": 60,
+      "passing": 62,
+      "shooting": 68,
+      "tackling": 64,
+      "pace": 60,
+      "stamina": 66,
+      "positioning": 66
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "벤티"
+  },
+  {
+    "id": "P014",
+    "name": "요나스 브리크",
+    "position": "GK",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 60,
+      "mental": 62,
+      "physical": 69,
+      "passing": 64,
+      "shooting": 68,
+      "tackling": 62,
+      "pace": 59,
+      "stamina": 63,
+      "positioning": 66
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "브리크"
+  },
+  {
+    "id": "P015",
+    "name": "에릭 발딘",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 61,
+      "mental": 69,
+      "physical": 69,
+      "passing": 65,
+      "shooting": 66,
+      "tackling": 66,
+      "pace": 66,
+      "stamina": 66,
+      "positioning": 63
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "발딘"
+  },
+  {
+    "id": "P016",
+    "name": "이보 카브랄",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 65,
+      "mental": 69,
+      "physical": 69,
+      "passing": 66,
+      "shooting": 62,
+      "tackling": 68,
+      "pace": 65,
+      "stamina": 63,
+      "positioning": 68
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "카브랄"
+  },
+  {
+    "id": "P017",
+    "name": "셀림 아르잔",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 68,
+      "mental": 69,
+      "physical": 67,
+      "passing": 59,
+      "shooting": 63,
+      "tackling": 67,
+      "pace": 69,
+      "stamina": 67,
+      "positioning": 65
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "아르잔"
+  },
+  {
+    "id": "P018",
+    "name": "밀로 켄트베르",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 65,
+      "mental": 65,
+      "physical": 63,
+      "passing": 69,
+      "shooting": 68,
+      "tackling": 69,
+      "pace": 64,
+      "stamina": 68,
+      "positioning": 69
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "켄트베르"
+  },
+  {
+    "id": "P019",
+    "name": "도미닉 라이헬",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 60,
+      "mental": 64,
+      "physical": 69,
+      "passing": 69,
+      "shooting": 60,
+      "tackling": 69,
+      "pace": 59,
+      "stamina": 68,
+      "positioning": 63
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "라이헬"
+  },
+  {
+    "id": "P020",
+    "name": "닐스 두란테",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 69,
+      "mental": 67,
+      "physical": 65,
+      "passing": 62,
+      "shooting": 63,
+      "tackling": 69,
+      "pace": 68,
+      "stamina": 66,
+      "positioning": 69
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "두란테"
+  },
+  {
+    "id": "P021",
+    "name": "레안드로 카벨",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 66,
+      "mental": 69,
+      "physical": 69,
+      "passing": 59,
+      "shooting": 69,
+      "tackling": 69,
+      "pace": 69,
+      "stamina": 68,
+      "positioning": 69
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "카벨"
+  },
+  {
+    "id": "P022",
+    "name": "다니엘 오르베",
+    "position": "DF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 68,
+      "mental": 63,
+      "physical": 65,
+      "passing": 63,
+      "shooting": 59,
+      "tackling": 69,
+      "pace": 69,
+      "stamina": 67,
+      "positioning": 62
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "오르베"
+  },
+  {
+    "id": "P023",
+    "name": "발렌 도르체",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 65,
+      "mental": 67,
+      "physical": 69,
+      "passing": 69,
+      "shooting": 59,
+      "tackling": 61,
+      "pace": 66,
+      "stamina": 66,
+      "positioning": 67
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "도르체"
+  },
+  {
+    "id": "P024",
+    "name": "안톤 그레츠",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 63,
+      "mental": 67,
+      "physical": 63,
+      "passing": 69,
+      "shooting": 65,
+      "tackling": 69,
+      "pace": 66,
+      "stamina": 67,
+      "positioning": 63
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "그레츠"
+  },
+  {
+    "id": "P025",
+    "name": "티모 라스코",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 59,
+      "mental": 65,
+      "physical": 69,
+      "passing": 67,
+      "shooting": 69,
+      "tackling": 68,
+      "pace": 67,
+      "stamina": 64,
+      "positioning": 67
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "라스코"
+  },
+  {
+    "id": "P026",
+    "name": "요아킴 베리만",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 61,
+      "mental": 66,
+      "physical": 69,
+      "passing": 69,
+      "shooting": 68,
+      "tackling": 65,
+      "pace": 59,
+      "stamina": 69,
+      "positioning": 68
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "베리만"
+  },
+  {
+    "id": "P027",
+    "name": "야쿱 세베린",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 69,
+      "mental": 61,
+      "physical": 68,
+      "passing": 69,
+      "shooting": 68,
+      "tackling": 62,
+      "pace": 65,
+      "stamina": 68,
+      "positioning": 59
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "세베린"
+  },
+  {
+    "id": "P028",
+    "name": "라세 헬름",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 60,
+      "mental": 67,
+      "physical": 65,
+      "passing": 69,
+      "shooting": 67,
+      "tackling": 59,
+      "pace": 60,
+      "stamina": 66,
+      "positioning": 68
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "헬름"
+  },
+  {
+    "id": "P029",
+    "name": "유리안 델라노",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 69,
+      "mental": 63,
+      "physical": 64,
+      "passing": 67,
+      "shooting": 67,
+      "tackling": 61,
+      "pace": 65,
+      "stamina": 63,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "델라노"
+  },
+  {
+    "id": "P030",
+    "name": "파블로 시몬티",
+    "position": "MF",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 65,
+      "mental": 67,
+      "physical": 61,
+      "passing": 67,
+      "shooting": 67,
+      "tackling": 68,
+      "pace": 61,
+      "stamina": 68,
+      "positioning": 68
+    },
+    "personality": "GLASS",
+    "active": true,
+    "shortName": "시몬티"
+  },
+  {
+    "id": "P031",
+    "name": "밀란 코발디",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 69,
+      "mental": 65,
+      "physical": 69,
+      "passing": 59,
+      "shooting": 66,
+      "tackling": 61,
+      "pace": 62,
+      "stamina": 64,
+      "positioning": 64
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "코발디"
+  },
+  {
+    "id": "P032",
+    "name": "마리우스 셀랑",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 60,
+      "mental": 63,
+      "physical": 59,
+      "passing": 64,
+      "shooting": 69,
+      "tackling": 69,
+      "pace": 69,
+      "stamina": 60,
+      "positioning": 65
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "셀랑"
+  },
+  {
+    "id": "P033",
+    "name": "이반 모리안",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 69,
+      "mental": 67,
+      "physical": 68,
+      "passing": 61,
+      "shooting": 66,
+      "tackling": 69,
+      "pace": 69,
+      "stamina": 66,
+      "positioning": 61
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "모리안"
+  },
+  {
+    "id": "P034",
+    "name": "올리버 렉스톤",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 68,
+      "mental": 61,
+      "physical": 61,
+      "passing": 69,
+      "shooting": 69,
+      "tackling": 62,
+      "pace": 68,
+      "stamina": 60,
+      "positioning": 63
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "렉스톤"
+  },
+  {
+    "id": "P035",
+    "name": "파리드 젤라니",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 65,
+      "mental": 63,
+      "physical": 59,
+      "passing": 59,
+      "shooting": 69,
+      "tackling": 61,
+      "pace": 69,
+      "stamina": 60,
+      "positioning": 66
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "젤라니"
+  },
+  {
+    "id": "P036",
+    "name": "마테오 산티노",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 65,
+      "mental": 67,
+      "physical": 69,
+      "passing": 62,
+      "shooting": 69,
+      "tackling": 65,
+      "pace": 69,
+      "stamina": 66,
+      "positioning": 63
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "산티노"
+  },
+  {
+    "id": "P037",
+    "name": "류하준",
+    "position": "FW",
+    "grade": "DIA",
+    "attributes": {
+      "technical": 64,
+      "mental": 68,
+      "physical": 66,
+      "passing": 60,
+      "shooting": 69,
+      "tackling": 63,
+      "pace": 69,
+      "stamina": 65,
+      "positioning": 64
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "류하준"
+  },
+  {
+    "id": "P038",
+    "name": "아르민 하벨",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 55,
+      "mental": 59,
+      "physical": 60,
+      "passing": 54,
+      "shooting": 52,
+      "tackling": 55,
+      "pace": 54,
+      "stamina": 60,
+      "positioning": 57
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "하벨"
+  },
+  {
+    "id": "P039",
+    "name": "마시모 그란디",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 56,
+      "mental": 58,
+      "physical": 56,
+      "passing": 55,
+      "shooting": 51,
+      "tackling": 59,
+      "pace": 52,
+      "stamina": 51,
+      "positioning": 60
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "그란디"
+  },
+  {
+    "id": "P040",
+    "name": "레온 오스텐",
+    "position": "GK",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 51,
+      "mental": 60,
+      "physical": 52,
+      "passing": 51,
+      "shooting": 50,
+      "tackling": 53,
+      "pace": 51,
+      "stamina": 52,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "오스텐"
+  },
+  {
+    "id": "P041",
+    "name": "콜린 애슈본",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 58,
+      "mental": 56,
+      "physical": 60,
+      "passing": 60,
+      "shooting": 60,
+      "tackling": 60,
+      "pace": 60,
+      "stamina": 55,
+      "positioning": 58
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "애슈본"
+  },
+  {
+    "id": "P042",
+    "name": "덱스 홀브룩",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 59,
+      "mental": 59,
+      "physical": 60,
+      "passing": 56,
+      "shooting": 51,
+      "tackling": 58,
+      "pace": 54,
+      "stamina": 60,
+      "positioning": 53
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "홀브룩"
+  },
+  {
+    "id": "P043",
+    "name": "로만 팔코니",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 54,
+      "mental": 54,
+      "physical": 57,
+      "passing": 59,
+      "shooting": 53,
+      "tackling": 60,
+      "pace": 56,
+      "stamina": 50,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "팔코니"
+  },
+  {
+    "id": "P044",
+    "name": "질베르투 마샤두",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 58,
+      "mental": 58,
+      "physical": 60,
+      "passing": 58,
+      "shooting": 56,
+      "tackling": 60,
+      "pace": 55,
+      "stamina": 52,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "마샤두"
+  },
+  {
+    "id": "P045",
+    "name": "에르난 로시니",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 51,
+      "mental": 50,
+      "physical": 56,
+      "passing": 59,
+      "shooting": 51,
+      "tackling": 60,
+      "pace": 56,
+      "stamina": 53,
+      "positioning": 59
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "로시니"
+  },
+  {
+    "id": "P046",
+    "name": "토미슬라 베크텐",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 50,
+      "mental": 56,
+      "physical": 60,
+      "passing": 50,
+      "shooting": 56,
+      "tackling": 60,
+      "pace": 58,
+      "stamina": 55,
+      "positioning": 55
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "베크텐"
+  },
+  {
+    "id": "P047",
+    "name": "아망 뒤부아",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 56,
+      "mental": 57,
+      "physical": 59,
+      "passing": 51,
+      "shooting": 57,
+      "tackling": 60,
+      "pace": 60,
+      "stamina": 60,
+      "positioning": 55
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "뒤부아"
+  },
+  {
+    "id": "P048",
+    "name": "에이든 코널리",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 51,
+      "mental": 55,
+      "physical": 56,
+      "passing": 59,
+      "shooting": 60,
+      "tackling": 53,
+      "pace": 54,
+      "stamina": 55,
+      "positioning": 60
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "코널리"
+  },
+  {
+    "id": "P049",
+    "name": "제카 바레투",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 52,
+      "physical": 55,
+      "passing": 60,
+      "shooting": 55,
+      "tackling": 56,
+      "pace": 58,
+      "stamina": 51,
+      "positioning": 56
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "바레투"
+  },
+  {
+    "id": "P050",
+    "name": "세드릭 마르텔",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 60,
+      "physical": 59,
+      "passing": 58,
+      "shooting": 54,
+      "tackling": 60,
+      "pace": 60,
+      "stamina": 52,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "마르텔"
+  },
+  {
+    "id": "P051",
+    "name": "톤 베르스텍",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 57,
+      "mental": 58,
+      "physical": 60,
+      "passing": 51,
+      "shooting": 59,
+      "tackling": 60,
+      "pace": 55,
+      "stamina": 59,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "베르스텍"
+  },
+  {
+    "id": "P052",
+    "name": "던컨 케이드",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 52,
+      "mental": 50,
+      "physical": 57,
+      "passing": 59,
+      "shooting": 50,
+      "tackling": 57,
+      "pace": 54,
+      "stamina": 60,
+      "positioning": 60
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "케이드"
+  },
+  {
+    "id": "P053",
+    "name": "엔히크 마르톨",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 52,
+      "mental": 56,
+      "physical": 51,
+      "passing": 60,
+      "shooting": 60,
+      "tackling": 59,
+      "pace": 56,
+      "stamina": 60,
+      "positioning": 50
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "마르톨"
+  },
+  {
+    "id": "P054",
+    "name": "시몬 알베르티",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 58,
+      "mental": 58,
+      "physical": 57,
+      "passing": 59,
+      "shooting": 53,
+      "tackling": 58,
+      "pace": 59,
+      "stamina": 60,
+      "positioning": 50
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "알베르티"
+  },
+  {
+    "id": "P055",
+    "name": "미첼 아르보",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 57,
+      "mental": 53,
+      "physical": 56,
+      "passing": 60,
+      "shooting": 54,
+      "tackling": 59,
+      "pace": 59,
+      "stamina": 59,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "아르보"
+  },
+  {
+    "id": "P056",
+    "name": "스텔란 렌초",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 50,
+      "mental": 56,
+      "physical": 58,
+      "passing": 59,
+      "shooting": 52,
+      "tackling": 60,
+      "pace": 56,
+      "stamina": 59,
+      "positioning": 58
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "렌초"
+  },
+  {
+    "id": "P057",
+    "name": "에민 카라괴즈",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 52,
+      "physical": 55,
+      "passing": 59,
+      "shooting": 57,
+      "tackling": 56,
+      "pace": 57,
+      "stamina": 59,
+      "positioning": 57
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "카라괴즈"
+  },
+  {
+    "id": "P058",
+    "name": "잔카를로 페트리",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 52,
+      "mental": 57,
+      "physical": 50,
+      "passing": 59,
+      "shooting": 52,
+      "tackling": 53,
+      "pace": 58,
+      "stamina": 60,
+      "positioning": 50
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "페트리"
+  },
+  {
+    "id": "P059",
+    "name": "라스 베크만",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 51,
+      "physical": 50,
+      "passing": 59,
+      "shooting": 59,
+      "tackling": 50,
+      "pace": 60,
+      "stamina": 54,
+      "positioning": 51
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "베크만"
+  },
+  {
+    "id": "P060",
+    "name": "아우구스토 리날",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 53,
+      "mental": 60,
+      "physical": 51,
+      "passing": 60,
+      "shooting": 54,
+      "tackling": 52,
+      "pace": 52,
+      "stamina": 60,
+      "positioning": 53
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "리날"
+  },
+  {
+    "id": "P061",
+    "name": "티에보 모랑",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 59,
+      "mental": 56,
+      "physical": 56,
+      "passing": 60,
+      "shooting": 53,
+      "tackling": 59,
+      "pace": 53,
+      "stamina": 57,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "모랑"
+  },
+  {
+    "id": "P062",
+    "name": "헤나투 코스텔",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 52,
+      "mental": 53,
+      "physical": 58,
+      "passing": 59,
+      "shooting": 57,
+      "tackling": 59,
+      "pace": 50,
+      "stamina": 60,
+      "positioning": 52
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "코스텔"
+  },
+  {
+    "id": "P063",
+    "name": "요나탄 슈트룸",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 51,
+      "mental": 57,
+      "physical": 57,
+      "passing": 60,
+      "shooting": 54,
+      "tackling": 58,
+      "pace": 60,
+      "stamina": 60,
+      "positioning": 53
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "슈트룸"
+  },
+  {
+    "id": "P064",
+    "name": "코리 램버트",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 58,
+      "mental": 53,
+      "physical": 60,
+      "passing": 60,
+      "shooting": 56,
+      "tackling": 56,
+      "pace": 56,
+      "stamina": 60,
+      "positioning": 50
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "램버트"
+  },
+  {
+    "id": "P065",
+    "name": "요엘 카르니",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 52,
+      "mental": 60,
+      "physical": 58,
+      "passing": 60,
+      "shooting": 56,
+      "tackling": 56,
+      "pace": 58,
+      "stamina": 60,
+      "positioning": 54
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "카르니"
+  },
+  {
+    "id": "P066",
+    "name": "아드리 소렌토",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 55,
+      "physical": 52,
+      "passing": 60,
+      "shooting": 59,
+      "tackling": 58,
+      "pace": 60,
+      "stamina": 54,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "소렌토"
+  },
+  {
+    "id": "P067",
+    "name": "디니스 파벨루",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 56,
+      "physical": 60,
+      "passing": 58,
+      "shooting": 59,
+      "tackling": 59,
+      "pace": 58,
+      "stamina": 56,
+      "positioning": 56
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "파벨루"
+  },
+  {
+    "id": "P068",
+    "name": "에밀리오 콘타디",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 57,
+      "mental": 59,
+      "physical": 55,
+      "passing": 57,
+      "shooting": 60,
+      "tackling": 52,
+      "pace": 56,
+      "stamina": 60,
+      "positioning": 50
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "콘타디"
+  },
+  {
+    "id": "P069",
+    "name": "치디 오콘조",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 54,
+      "mental": 54,
+      "physical": 52,
+      "passing": 57,
+      "shooting": 60,
+      "tackling": 60,
+      "pace": 60,
+      "stamina": 54,
+      "positioning": 55
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "오콘조"
+  },
+  {
+    "id": "P070",
+    "name": "테런스 하이드",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 56,
+      "physical": 50,
+      "passing": 52,
+      "shooting": 60,
+      "tackling": 59,
+      "pace": 60,
+      "stamina": 59,
+      "positioning": 51
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "하이드"
+  },
+  {
+    "id": "P071",
+    "name": "파블로 세라노",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 57,
+      "mental": 54,
+      "physical": 58,
+      "passing": 50,
+      "shooting": 56,
+      "tackling": 60,
+      "pace": 60,
+      "stamina": 52,
+      "positioning": 57
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "세라노"
+  },
+  {
+    "id": "P072",
+    "name": "레반 나탈제",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 52,
+      "physical": 52,
+      "passing": 60,
+      "shooting": 55,
+      "tackling": 55,
+      "pace": 60,
+      "stamina": 53,
+      "positioning": 53
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "나탈제"
+  },
+  {
+    "id": "P073",
+    "name": "엘리안 조반티",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 51,
+      "mental": 55,
+      "physical": 60,
+      "passing": 54,
+      "shooting": 57,
+      "tackling": 53,
+      "pace": 60,
+      "stamina": 53,
+      "positioning": 60
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "조반티"
+  },
+  {
+    "id": "P074",
+    "name": "루카스 페롤",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 41,
+      "mental": 49,
+      "physical": 46,
+      "passing": 51,
+      "shooting": 45,
+      "tackling": 50,
+      "pace": 47,
+      "stamina": 49,
+      "positioning": 49
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "페롤"
+  },
+  {
+    "id": "P075",
+    "name": "카스텐 뮐베르",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 49,
+      "physical": 47,
+      "passing": 47,
+      "shooting": 48,
+      "tackling": 42,
+      "pace": 48,
+      "stamina": 47,
+      "positioning": 51
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "뮐베르"
+  },
+  {
+    "id": "P076",
+    "name": "빅토르 렘케",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 41,
+      "mental": 48,
+      "physical": 51,
+      "passing": 50,
+      "shooting": 46,
+      "tackling": 47,
+      "pace": 45,
+      "stamina": 42,
+      "positioning": 51
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "렘케"
+  },
+  {
+    "id": "P077",
+    "name": "필리프 메릴",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 42,
+      "mental": 45,
+      "physical": 47,
+      "passing": 48,
+      "shooting": 50,
+      "tackling": 51,
+      "pace": 48,
+      "stamina": 41,
+      "positioning": 49
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "메릴"
+  },
+  {
+    "id": "P078",
+    "name": "얀코 브루센",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 50,
+      "physical": 45,
+      "passing": 48,
+      "shooting": 50,
+      "tackling": 51,
+      "pace": 51,
+      "stamina": 46,
+      "positioning": 45
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "브루센"
+  },
+  {
+    "id": "P079",
+    "name": "비토 라이덴",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 51,
+      "physical": 49,
+      "passing": 45,
+      "shooting": 51,
+      "tackling": 51,
+      "pace": 49,
+      "stamina": 48,
+      "positioning": 49
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "라이덴"
+  },
+  {
+    "id": "P080",
+    "name": "오스카르 코르비",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 50,
+      "physical": 51,
+      "passing": 48,
+      "shooting": 41,
+      "tackling": 48,
+      "pace": 45,
+      "stamina": 44,
+      "positioning": 51
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "코르비"
+  },
+  {
+    "id": "P081",
+    "name": "에드윈 콜스터",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 41,
+      "physical": 47,
+      "passing": 51,
+      "shooting": 48,
+      "tackling": 51,
+      "pace": 51,
+      "stamina": 48,
+      "positioning": 47
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "콜스터"
+  },
+  {
+    "id": "P082",
+    "name": "제로니 바르셀",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 49,
+      "physical": 50,
+      "passing": 51,
+      "shooting": 42,
+      "tackling": 49,
+      "pace": 51,
+      "stamina": 49,
+      "positioning": 48
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "바르셀"
+  },
+  {
+    "id": "P083",
+    "name": "미카 반후텐",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 41,
+      "mental": 42,
+      "physical": 45,
+      "passing": 50,
+      "shooting": 50,
+      "tackling": 48,
+      "pace": 51,
+      "stamina": 43,
+      "positioning": 50
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "반후텐"
+  },
+  {
+    "id": "P084",
+    "name": "실반 마흘러",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 43,
+      "mental": 41,
+      "physical": 46,
+      "passing": 47,
+      "shooting": 43,
+      "tackling": 51,
+      "pace": 44,
+      "stamina": 41,
+      "positioning": 49
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "마흘러"
+  },
+  {
+    "id": "P085",
+    "name": "다비데 코르셀",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 43,
+      "mental": 51,
+      "physical": 48,
+      "passing": 46,
+      "shooting": 51,
+      "tackling": 51,
+      "pace": 43,
+      "stamina": 51,
+      "positioning": 51
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "코르셀"
+  },
+  {
+    "id": "P086",
+    "name": "로렌초 비아니",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 49,
+      "physical": 43,
+      "passing": 49,
+      "shooting": 49,
+      "tackling": 45,
+      "pace": 41,
+      "stamina": 50,
+      "positioning": 51
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "비아니"
+  },
+  {
+    "id": "P087",
+    "name": "오비 에케네",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 49,
+      "mental": 48,
+      "physical": 50,
+      "passing": 44,
+      "shooting": 46,
+      "tackling": 51,
+      "pace": 51,
+      "stamina": 48,
+      "positioning": 48
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "에케네"
+  },
+  {
+    "id": "P088",
+    "name": "아리엘 몬토야",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 48,
+      "physical": 41,
+      "passing": 44,
+      "shooting": 42,
+      "tackling": 51,
+      "pace": 50,
+      "stamina": 51,
+      "positioning": 51
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "몬토야"
+  },
+  {
+    "id": "P089",
+    "name": "윔 데스탱",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 49,
+      "mental": 49,
+      "physical": 51,
+      "passing": 51,
+      "shooting": 50,
+      "tackling": 47,
+      "pace": 48,
+      "stamina": 45,
+      "positioning": 45
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "데스탱"
+  },
+  {
+    "id": "P090",
+    "name": "제럴드 핀치",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 43,
+      "physical": 44,
+      "passing": 51,
+      "shooting": 49,
+      "tackling": 51,
+      "pace": 43,
+      "stamina": 48,
+      "positioning": 44
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "핀치"
+  },
+  {
+    "id": "P091",
+    "name": "누엘 마르비",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 49,
+      "mental": 51,
+      "physical": 43,
+      "passing": 51,
+      "shooting": 46,
+      "tackling": 50,
+      "pace": 48,
+      "stamina": 46,
+      "positioning": 47
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "마르비"
+  },
+  {
+    "id": "P092",
+    "name": "오웬 브래드쇼",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 44,
+      "physical": 49,
+      "passing": 51,
+      "shooting": 48,
+      "tackling": 49,
+      "pace": 46,
+      "stamina": 51,
+      "positioning": 46
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "브래드쇼"
+  },
+  {
+    "id": "P093",
+    "name": "다미르 에스칼",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 45,
+      "physical": 51,
+      "passing": 47,
+      "shooting": 51,
+      "tackling": 43,
+      "pace": 50,
+      "stamina": 51,
+      "positioning": 51
+    },
+    "personality": "GLASS",
+    "active": true,
+    "shortName": "에스칼"
+  },
+  {
+    "id": "P094",
+    "name": "알도 티라네",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 49,
+      "mental": 43,
+      "physical": 43,
+      "passing": 51,
+      "shooting": 49,
+      "tackling": 51,
+      "pace": 44,
+      "stamina": 49,
+      "positioning": 45
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "티라네"
+  },
+  {
+    "id": "P095",
+    "name": "호르헤 미샤크",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 41,
+      "mental": 42,
+      "physical": 44,
+      "passing": 44,
+      "shooting": 47,
+      "tackling": 47,
+      "pace": 42,
+      "stamina": 51,
+      "positioning": 45
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "미샤크"
+  },
+  {
+    "id": "P096",
+    "name": "네스토르 페르잔",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 42,
+      "mental": 47,
+      "physical": 48,
+      "passing": 51,
+      "shooting": 51,
+      "tackling": 48,
+      "pace": 41,
+      "stamina": 51,
+      "positioning": 44
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "페르잔"
+  },
+  {
+    "id": "P097",
+    "name": "요스트 반에이크",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 51,
+      "physical": 48,
+      "passing": 51,
+      "shooting": 48,
+      "tackling": 49,
+      "pace": 48,
+      "stamina": 45,
+      "positioning": 48
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "반에이크"
+  },
+  {
+    "id": "P098",
+    "name": "엘리아 몬디니",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 48,
+      "physical": 50,
+      "passing": 51,
+      "shooting": 41,
+      "tackling": 48,
+      "pace": 51,
+      "stamina": 46,
+      "positioning": 42
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "몬디니"
+  },
+  {
+    "id": "P099",
+    "name": "아마라 실레",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 41,
+      "mental": 46,
+      "physical": 47,
+      "passing": 44,
+      "shooting": 42,
+      "tackling": 51,
+      "pace": 47,
+      "stamina": 48,
+      "positioning": 47
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "실레"
+  },
+  {
+    "id": "P100",
+    "name": "시브렌 하위스",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 51,
+      "physical": 50,
+      "passing": 47,
+      "shooting": 43,
+      "tackling": 47,
+      "pace": 49,
+      "stamina": 51,
+      "positioning": 45
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "하위스"
+  },
+  {
+    "id": "P101",
+    "name": "하이메 오르텐",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 45,
+      "physical": 45,
+      "passing": 51,
+      "shooting": 43,
+      "tackling": 42,
+      "pace": 50,
+      "stamina": 51,
+      "positioning": 51
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "오르텐"
+  },
+  {
+    "id": "P102",
+    "name": "바스 데커",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 47,
+      "physical": 41,
+      "passing": 51,
+      "shooting": 50,
+      "tackling": 44,
+      "pace": 42,
+      "stamina": 46,
+      "positioning": 51
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "데커"
+  },
+  {
+    "id": "P103",
+    "name": "웨이드 코빈",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 49,
+      "physical": 48,
+      "passing": 51,
+      "shooting": 45,
+      "tackling": 42,
+      "pace": 47,
+      "stamina": 51,
+      "positioning": 50
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "코빈"
+  },
+  {
+    "id": "P104",
+    "name": "오누르 셀림지",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 49,
+      "mental": 46,
+      "physical": 50,
+      "passing": 51,
+      "shooting": 46,
+      "tackling": 45,
+      "pace": 49,
+      "stamina": 44,
+      "positioning": 50
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "셀림지"
+  },
+  {
+    "id": "P105",
+    "name": "무사 다코",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 43,
+      "physical": 50,
+      "passing": 47,
+      "shooting": 42,
+      "tackling": 46,
+      "pace": 41,
+      "stamina": 45,
+      "positioning": 50
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "다코"
+  },
+  {
+    "id": "P106",
+    "name": "실뱅 도르만",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 43,
+      "physical": 48,
+      "passing": 50,
+      "shooting": 50,
+      "tackling": 47,
+      "pace": 51,
+      "stamina": 45,
+      "positioning": 51
+    },
+    "personality": "GLASS",
+    "active": true,
+    "shortName": "도르만"
+  },
+  {
+    "id": "P107",
+    "name": "아르노 첼리니",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 43,
+      "physical": 47,
+      "passing": 48,
+      "shooting": 44,
+      "tackling": 48,
+      "pace": 51,
+      "stamina": 46,
+      "positioning": 46
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "첼리니"
+  },
+  {
+    "id": "P108",
+    "name": "파울 무라토",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 41,
+      "physical": 47,
+      "passing": 49,
+      "shooting": 46,
+      "tackling": 50,
+      "pace": 51,
+      "stamina": 42,
+      "positioning": 45
+    },
+    "personality": "GLASS",
+    "active": true,
+    "shortName": "무라토"
+  },
+  {
+    "id": "P109",
+    "name": "로맹 뒤셰르",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 46,
+      "mental": 48,
+      "physical": 51,
+      "passing": 41,
+      "shooting": 51,
+      "tackling": 51,
+      "pace": 51,
+      "stamina": 49,
+      "positioning": 46
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "뒤셰르"
+  },
+  {
+    "id": "P110",
+    "name": "티스 로버스",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 45,
+      "physical": 43,
+      "passing": 44,
+      "shooting": 48,
+      "tackling": 51,
+      "pace": 51,
+      "stamina": 48,
+      "positioning": 46
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "로버스"
+  },
+  {
+    "id": "P111",
+    "name": "에드 홀리스",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 41,
+      "mental": 48,
+      "physical": 48,
+      "passing": 50,
+      "shooting": 51,
+      "tackling": 45,
+      "pace": 50,
+      "stamina": 46,
+      "positioning": 41
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "홀리스"
+  },
+  {
+    "id": "P112",
+    "name": "에스펜 뉘고르",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 45,
+      "physical": 50,
+      "passing": 51,
+      "shooting": 51,
+      "tackling": 44,
+      "pace": 45,
+      "stamina": 49,
+      "positioning": 42
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "뉘고르"
+  },
+  {
+    "id": "P113",
+    "name": "보얀 페트코프",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 44,
+      "physical": 47,
+      "passing": 46,
+      "shooting": 48,
+      "tackling": 42,
+      "pace": 44,
+      "stamina": 50,
+      "positioning": 46
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "페트코프"
+  },
+  {
+    "id": "P114",
+    "name": "콰메 아둠",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 48,
+      "mental": 47,
+      "physical": 44,
+      "passing": 44,
+      "shooting": 51,
+      "tackling": 48,
+      "pace": 51,
+      "stamina": 51,
+      "positioning": 50
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "아둠"
+  },
+  {
+    "id": "P115",
+    "name": "세쿠 만데",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 48,
+      "mental": 51,
+      "physical": 51,
+      "passing": 47,
+      "shooting": 51,
+      "tackling": 49,
+      "pace": 51,
+      "stamina": 46,
+      "positioning": 41
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "만데"
+  },
+  {
+    "id": "P116",
+    "name": "에밀 그라노",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 35,
+      "mental": 40,
+      "physical": 40,
+      "passing": 40,
+      "shooting": 37,
+      "tackling": 38,
+      "pace": 41,
+      "stamina": 41,
+      "positioning": 42
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "그라노"
+  },
+  {
+    "id": "P117",
+    "name": "체사레 폰티",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 39,
+      "physical": 39,
+      "passing": 41,
+      "shooting": 35,
+      "tackling": 33,
+      "pace": 42,
+      "stamina": 42,
+      "positioning": 42
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "폰티"
+  },
+  {
+    "id": "P118",
+    "name": "딜런 애커드",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 39,
+      "mental": 39,
+      "physical": 32,
+      "passing": 39,
+      "shooting": 35,
+      "tackling": 41,
+      "pace": 32,
+      "stamina": 39,
+      "positioning": 40
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "애커드"
+  },
+  {
+    "id": "P119",
+    "name": "케이든 마시",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 39,
+      "physical": 39,
+      "passing": 41,
+      "shooting": 39,
+      "tackling": 39,
+      "pace": 40,
+      "stamina": 34,
+      "positioning": 37
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "마시"
+  },
+  {
+    "id": "P120",
+    "name": "알빈 로카스",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 37,
+      "mental": 33,
+      "physical": 42,
+      "passing": 42,
+      "shooting": 40,
+      "tackling": 40,
+      "pace": 34,
+      "stamina": 42,
+      "positioning": 37
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "로카스"
+  },
+  {
+    "id": "P121",
+    "name": "바르트 아델로",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 37,
+      "mental": 39,
+      "physical": 38,
+      "passing": 37,
+      "shooting": 38,
+      "tackling": 41,
+      "pace": 40,
+      "stamina": 40,
+      "positioning": 35
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "아델로"
+  },
+  {
+    "id": "P122",
+    "name": "마린 카센",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 38,
+      "mental": 42,
+      "physical": 42,
+      "passing": 40,
+      "shooting": 38,
+      "tackling": 42,
+      "pace": 42,
+      "stamina": 36,
+      "positioning": 41
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "카센"
+  },
+  {
+    "id": "P123",
+    "name": "니코데모 살바티",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 34,
+      "mental": 42,
+      "physical": 41,
+      "passing": 41,
+      "shooting": 36,
+      "tackling": 40,
+      "pace": 41,
+      "stamina": 41,
+      "positioning": 35
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "살바티"
+  },
+  {
+    "id": "P124",
+    "name": "피에로 살가리",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 35,
+      "physical": 42,
+      "passing": 38,
+      "shooting": 41,
+      "tackling": 42,
+      "pace": 32,
+      "stamina": 39,
+      "positioning": 36
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "살가리"
+  },
+  {
+    "id": "P125",
+    "name": "루디 실베르",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 35,
+      "mental": 37,
+      "physical": 36,
+      "passing": 37,
+      "shooting": 39,
+      "tackling": 41,
+      "pace": 33,
+      "stamina": 34,
+      "positioning": 36
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "실베르"
+  },
+  {
+    "id": "P126",
+    "name": "룰 판메이런",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 35,
+      "mental": 38,
+      "physical": 42,
+      "passing": 38,
+      "shooting": 34,
+      "tackling": 42,
+      "pace": 36,
+      "stamina": 33,
+      "positioning": 36
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "판메이런"
+  },
+  {
+    "id": "P127",
+    "name": "엘리 반데르",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 42,
+      "physical": 35,
+      "passing": 42,
+      "shooting": 41,
+      "tackling": 42,
+      "pace": 36,
+      "stamina": 40,
+      "positioning": 39
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "반데르"
+  },
+  {
+    "id": "P128",
+    "name": "오마리 벨포드",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 36,
+      "mental": 42,
+      "physical": 35,
+      "passing": 38,
+      "shooting": 32,
+      "tackling": 42,
+      "pace": 38,
+      "stamina": 38,
+      "positioning": 41
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "벨포드"
+  },
+  {
+    "id": "P129",
+    "name": "오넬 카라조",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 32,
+      "physical": 39,
+      "passing": 42,
+      "shooting": 38,
+      "tackling": 37,
+      "pace": 38,
+      "stamina": 42,
+      "positioning": 36
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "카라조"
+  },
+  {
+    "id": "P130",
+    "name": "케난 알탄",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 39,
+      "physical": 34,
+      "passing": 39,
+      "shooting": 42,
+      "tackling": 40,
+      "pace": 39,
+      "stamina": 37,
+      "positioning": 32
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "알탄"
+  },
+  {
+    "id": "P131",
+    "name": "비고 안토닌",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 40,
+      "physical": 39,
+      "passing": 36,
+      "shooting": 32,
+      "tackling": 37,
+      "pace": 41,
+      "stamina": 40,
+      "positioning": 34
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "안토닌"
+  },
+  {
+    "id": "P132",
+    "name": "프레디 워슬리",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 38,
+      "mental": 42,
+      "physical": 37,
+      "passing": 42,
+      "shooting": 35,
+      "tackling": 33,
+      "pace": 39,
+      "stamina": 42,
+      "positioning": 32
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "워슬리"
+  },
+  {
+    "id": "P133",
+    "name": "엘리아스 페소아",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 34,
+      "physical": 40,
+      "passing": 42,
+      "shooting": 42,
+      "tackling": 38,
+      "pace": 33,
+      "stamina": 42,
+      "positioning": 34
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "페소아"
+  },
+  {
+    "id": "P134",
+    "name": "얀토 텔란",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 34,
+      "physical": 36,
+      "passing": 42,
+      "shooting": 32,
+      "tackling": 35,
+      "pace": 33,
+      "stamina": 42,
+      "positioning": 41
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "텔란"
+  },
+  {
+    "id": "P135",
+    "name": "엘리안 킨타",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 32,
+      "physical": 35,
+      "passing": 42,
+      "shooting": 37,
+      "tackling": 39,
+      "pace": 40,
+      "stamina": 42,
+      "positioning": 38
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "킨타"
+  },
+  {
+    "id": "P136",
+    "name": "핌 질베르",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 37,
+      "mental": 33,
+      "physical": 33,
+      "passing": 35,
+      "shooting": 40,
+      "tackling": 41,
+      "pace": 42,
+      "stamina": 35,
+      "positioning": 33
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "질베르"
+  },
+  {
+    "id": "P137",
+    "name": "로뱅 되르트",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 39,
+      "physical": 33,
+      "passing": 42,
+      "shooting": 35,
+      "tackling": 33,
+      "pace": 40,
+      "stamina": 38,
+      "positioning": 34
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "되르트"
+  },
+  {
+    "id": "P138",
+    "name": "미하 자브렉",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 38,
+      "mental": 37,
+      "physical": 42,
+      "passing": 35,
+      "shooting": 42,
+      "tackling": 41,
+      "pace": 41,
+      "stamina": 35,
+      "positioning": 42
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "자브렉"
+  },
+  {
+    "id": "P139",
+    "name": "오토 이반코",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 42,
+      "physical": 41,
+      "passing": 33,
+      "shooting": 38,
+      "tackling": 34,
+      "pace": 42,
+      "stamina": 41,
+      "positioning": 32
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "이반코"
+  },
+  {
+    "id": "P140",
+    "name": "유수프 다니오",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 33,
+      "physical": 35,
+      "passing": 36,
+      "shooting": 41,
+      "tackling": 34,
+      "pace": 42,
+      "stamina": 39,
+      "positioning": 40
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "다니오"
+  },
+  {
+    "id": "P141",
+    "name": "뤼도 마르샹",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 36,
+      "physical": 39,
+      "passing": 42,
+      "shooting": 42,
+      "tackling": 36,
+      "pace": 41,
+      "stamina": 37,
+      "positioning": 35
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "마르샹"
+  },
+  {
+    "id": "P142",
+    "name": "이그나시오 벨트",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 34,
+      "physical": 37,
+      "passing": 40,
+      "shooting": 42,
+      "tackling": 39,
+      "pace": 42,
+      "stamina": 33,
+      "positioning": 42
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "벨트"
+  },
+  {
+    "id": "P143",
+    "name": "남도윤",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 72,
+      "mental": 72,
+      "physical": 78,
+      "passing": 72,
+      "shooting": 68,
+      "tackling": 76,
+      "pace": 77,
+      "stamina": 78,
+      "positioning": 69
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "남도윤"
+  },
+  {
+    "id": "P144",
+    "name": "도서준",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 72,
+      "mental": 76,
+      "physical": 78,
+      "passing": 69,
+      "shooting": 78,
+      "tackling": 73,
+      "pace": 76,
+      "stamina": 76,
+      "positioning": 77
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "도서준"
+  },
+  {
+    "id": "P145",
+    "name": "위재훈",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 59,
+      "mental": 54,
+      "physical": 55,
+      "passing": 60,
+      "shooting": 52,
+      "tackling": 56,
+      "pace": 59,
+      "stamina": 60,
+      "positioning": 53
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "위재훈"
+  },
+  {
+    "id": "P146",
+    "name": "문준서",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 56,
+      "mental": 54,
+      "physical": 56,
+      "passing": 60,
+      "shooting": 60,
+      "tackling": 60,
+      "pace": 55,
+      "stamina": 58,
+      "positioning": 54
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "문준서"
+  },
+  {
+    "id": "P147",
+    "name": "한태겸",
+    "position": "MF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 53,
+      "mental": 52,
+      "physical": 60,
+      "passing": 55,
+      "shooting": 54,
+      "tackling": 52,
+      "pace": 50,
+      "stamina": 53,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "한태겸"
+  },
+  {
+    "id": "P148",
+    "name": "노시운",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 56,
+      "mental": 50,
+      "physical": 55,
+      "passing": 59,
+      "shooting": 54,
+      "tackling": 59,
+      "pace": 54,
+      "stamina": 55,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "노시운"
+  },
+  {
+    "id": "P149",
+    "name": "민세호",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 54,
+      "mental": 60,
+      "physical": 50,
+      "passing": 52,
+      "shooting": 60,
+      "tackling": 56,
+      "pace": 56,
+      "stamina": 60,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "민세호"
+  },
+  {
+    "id": "P150",
+    "name": "표유안",
+    "position": "DF",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 60,
+      "mental": 53,
+      "physical": 55,
+      "passing": 54,
+      "shooting": 52,
+      "tackling": 59,
+      "pace": 50,
+      "stamina": 50,
+      "positioning": 54
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "표유안"
+  },
+  {
+    "id": "P151",
+    "name": "곽재율",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 55,
+      "mental": 56,
+      "physical": 57,
+      "passing": 54,
+      "shooting": 54,
+      "tackling": 51,
+      "pace": 57,
+      "stamina": 50,
+      "positioning": 50
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "곽재율"
+  },
+  {
+    "id": "P152",
+    "name": "방태윤",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 59,
+      "mental": 60,
+      "physical": 56,
+      "passing": 54,
+      "shooting": 60,
+      "tackling": 56,
+      "pace": 60,
+      "stamina": 54,
+      "positioning": 58
+    },
+    "personality": "FIERY",
+    "active": false,
+    "shortName": "방태윤"
+  },
+  {
+    "id": "P153",
+    "name": "서건우",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 50,
+      "mental": 52,
+      "physical": 58,
+      "passing": 52,
+      "shooting": 60,
+      "tackling": 56,
+      "pace": 54,
+      "stamina": 59,
+      "positioning": 60
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "서건우"
+  },
+  {
+    "id": "P154",
+    "name": "선태오",
+    "position": "FW",
+    "grade": "GOLD",
+    "attributes": {
+      "technical": 50,
+      "mental": 60,
+      "physical": 60,
+      "passing": 60,
+      "shooting": 60,
+      "tackling": 54,
+      "pace": 54,
+      "stamina": 51,
+      "positioning": 53
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "선태오"
+  },
+  {
+    "id": "P155",
+    "name": "송재우",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 43,
+      "mental": 45,
+      "physical": 41,
+      "passing": 51,
+      "shooting": 47,
+      "tackling": 44,
+      "pace": 49,
+      "stamina": 51,
+      "positioning": 49
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "송재우"
+  },
+  {
+    "id": "P156",
+    "name": "신도훈",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 51,
+      "mental": 45,
+      "physical": 44,
+      "passing": 51,
+      "shooting": 42,
+      "tackling": 47,
+      "pace": 50,
+      "stamina": 45,
+      "positioning": 49
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "신도훈"
+  },
+  {
+    "id": "P157",
+    "name": "심우진",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 47,
+      "physical": 50,
+      "passing": 51,
+      "shooting": 48,
+      "tackling": 49,
+      "pace": 44,
+      "stamina": 49,
+      "positioning": 45
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "심우진"
+  },
+  {
+    "id": "P158",
+    "name": "연시완",
+    "position": "MF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 48,
+      "physical": 42,
+      "passing": 51,
+      "shooting": 48,
+      "tackling": 46,
+      "pace": 41,
+      "stamina": 51,
+      "positioning": 44
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "연시완"
+  },
+  {
+    "id": "P159",
+    "name": "예찬형",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 50,
+      "physical": 45,
+      "passing": 42,
+      "shooting": 46,
+      "tackling": 49,
+      "pace": 43,
+      "stamina": 42,
+      "positioning": 51
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "예찬형"
+  },
+  {
+    "id": "P160",
+    "name": "우다온",
+    "position": "DF",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 50,
+      "mental": 47,
+      "physical": 49,
+      "passing": 49,
+      "shooting": 41,
+      "tackling": 45,
+      "pace": 48,
+      "stamina": 51,
+      "positioning": 50
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "우다온"
+  },
+  {
+    "id": "P161",
+    "name": "탁서온",
+    "position": "GK",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 41,
+      "mental": 51,
+      "physical": 49,
+      "passing": 41,
+      "shooting": 48,
+      "tackling": 46,
+      "pace": 42,
+      "stamina": 51,
+      "positioning": 48
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "탁서온"
+  },
+  {
+    "id": "P162",
+    "name": "원지후",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 48,
+      "mental": 42,
+      "physical": 41,
+      "passing": 49,
+      "shooting": 51,
+      "tackling": 50,
+      "pace": 46,
+      "stamina": 50,
+      "positioning": 49
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "원지후"
+  },
+  {
+    "id": "P163",
+    "name": "임세온",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 44,
+      "mental": 45,
+      "physical": 51,
+      "passing": 42,
+      "shooting": 51,
+      "tackling": 49,
+      "pace": 51,
+      "stamina": 41,
+      "positioning": 50
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "임세온"
+  },
+  {
+    "id": "P164",
+    "name": "장하율",
+    "position": "FW",
+    "grade": "SILVER",
+    "attributes": {
+      "technical": 47,
+      "mental": 46,
+      "physical": 50,
+      "passing": 49,
+      "shooting": 51,
+      "tackling": 49,
+      "pace": 50,
+      "stamina": 47,
+      "positioning": 50
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "장하율"
+  },
+  {
+    "id": "P165",
+    "name": "전주완",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 37,
+      "mental": 32,
+      "physical": 40,
+      "passing": 39,
+      "shooting": 42,
+      "tackling": 33,
+      "pace": 42,
+      "stamina": 40,
+      "positioning": 42
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "전주완"
+  },
+  {
+    "id": "P166",
+    "name": "정라온",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 37,
+      "mental": 39,
+      "physical": 33,
+      "passing": 42,
+      "shooting": 41,
+      "tackling": 33,
+      "pace": 38,
+      "stamina": 42,
+      "positioning": 42
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "정라온"
+  },
+  {
+    "id": "P167",
+    "name": "주선호",
+    "position": "MF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 39,
+      "physical": 35,
+      "passing": 42,
+      "shooting": 38,
+      "tackling": 38,
+      "pace": 40,
+      "stamina": 40,
+      "positioning": 34
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "주선호"
+  },
+  {
+    "id": "P168",
+    "name": "채이현",
+    "position": "DF",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 37,
+      "mental": 33,
+      "physical": 39,
+      "passing": 40,
+      "shooting": 41,
+      "tackling": 42,
+      "pace": 40,
+      "stamina": 41,
+      "positioning": 41
+    },
+    "personality": "CALM",
+    "active": false,
+    "shortName": "채이현"
+  },
+  {
+    "id": "P169",
+    "name": "진하람",
+    "position": "GK",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 41,
+      "mental": 42,
+      "physical": 39,
+      "passing": 33,
+      "shooting": 41,
+      "tackling": 35,
+      "pace": 33,
+      "stamina": 42,
+      "positioning": 42
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "진하람"
+  },
+  {
+    "id": "P170",
+    "name": "천유겸",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 35,
+      "physical": 38,
+      "passing": 32,
+      "shooting": 39,
+      "tackling": 40,
+      "pace": 42,
+      "stamina": 32,
+      "positioning": 33
+    },
+    "personality": "AMBITIOUS",
+    "active": false,
+    "shortName": "천유겸"
+  },
+  {
+    "id": "P171",
+    "name": "여은결",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 42,
+      "mental": 38,
+      "physical": 41,
+      "passing": 39,
+      "shooting": 42,
+      "tackling": 36,
+      "pace": 42,
+      "stamina": 39,
+      "positioning": 40
+    },
+    "personality": "GLASS",
+    "active": true,
+    "shortName": "여은결"
+  },
+  {
+    "id": "P172",
+    "name": "하리안",
+    "position": "FW",
+    "grade": "BRONZE",
+    "attributes": {
+      "technical": 40,
+      "mental": 35,
+      "physical": 38,
+      "passing": 32,
+      "shooting": 42,
+      "tackling": 40,
+      "pace": 41,
+      "stamina": 36,
+      "positioning": 35
+    },
+    "personality": "GLASS",
+    "active": false,
+    "shortName": "하리안"
+  },
+  {
+    "id": "P173",
+    "name": "보날두",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 72,
+      "mental": 71,
+      "physical": 78,
+      "passing": 77,
+      "shooting": 78,
+      "tackling": 77,
+      "pace": 75,
+      "stamina": 69,
+      "positioning": 70
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "보날두"
+  },
+  {
+    "id": "P174",
+    "name": "권씨",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 76,
+      "mental": 78,
+      "physical": 70,
+      "passing": 75,
+      "shooting": 78,
+      "tackling": 72,
+      "pace": 73,
+      "stamina": 72,
+      "positioning": 74
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "권씨"
+  },
+  {
+    "id": "P175",
+    "name": "열라도나",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 78,
+      "mental": 78,
+      "physical": 75,
+      "passing": 73,
+      "shooting": 76,
+      "tackling": 71,
+      "pace": 74,
+      "stamina": 73,
+      "positioning": 75
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "열라도나"
+  },
+  {
+    "id": "P176",
+    "name": "춘바페",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 73,
+      "mental": 75,
+      "physical": 68,
+      "passing": 76,
+      "shooting": 78,
+      "tackling": 70,
+      "pace": 78,
+      "stamina": 78,
+      "positioning": 77
+    },
+    "personality": "AMBITIOUS",
+    "active": true,
+    "shortName": "춘바페"
+  },
+  {
+    "id": "P177",
+    "name": "덕브라이너",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 72,
+      "mental": 78,
+      "physical": 74,
+      "passing": 77,
+      "shooting": 72,
+      "tackling": 71,
+      "pace": 75,
+      "stamina": 75,
+      "positioning": 78
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "덕브라"
+  },
+  {
+    "id": "P178",
+    "name": "석신",
+    "position": "GK",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 73,
+      "mental": 78,
+      "physical": 74,
+      "passing": 70,
+      "shooting": 68,
+      "tackling": 75,
+      "pace": 70,
+      "stamina": 69,
+      "positioning": 78
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "석신"
+  },
+  {
+    "id": "P179",
+    "name": "욱링엄",
+    "position": "MF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 73,
+      "mental": 68,
+      "physical": 74,
+      "passing": 78,
+      "shooting": 78,
+      "tackling": 70,
+      "pace": 69,
+      "stamina": 77,
+      "positioning": 72
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "욱링엄"
+  },
+  {
+    "id": "P180",
+    "name": "경니시우스",
+    "position": "FW",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 73,
+      "mental": 76,
+      "physical": 78,
+      "passing": 77,
+      "shooting": 74,
+      "tackling": 75,
+      "pace": 77,
+      "stamina": 71,
+      "positioning": 68
+    },
+    "personality": "FIERY",
+    "active": true,
+    "shortName": "경니시"
+  },
+  {
+    "id": "P181",
+    "name": "석다이크",
+    "position": "DF",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 72,
+      "mental": 74,
+      "physical": 74,
+      "passing": 73,
+      "shooting": 77,
+      "tackling": 78,
+      "pace": 78,
+      "stamina": 74,
+      "positioning": 73
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "석다이크"
+  },
+  {
+    "id": "P182",
+    "name": "오시야스",
+    "position": "GK",
+    "grade": "LEGEND",
+    "attributes": {
+      "technical": 74,
+      "mental": 73,
+      "physical": 78,
+      "passing": 73,
+      "shooting": 77,
+      "tackling": 77,
+      "pace": 76,
+      "stamina": 74,
+      "positioning": 78
+    },
+    "personality": "CALM",
+    "active": true,
+    "shortName": "오시야스"
+  }
+]

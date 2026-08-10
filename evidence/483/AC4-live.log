@@ -1,0 +1,61 @@
+# AC4 evidence — 라이브 반영 (#483 v2.8)
+
+배포 = infra/docker-compose.yml `docker compose build java` + `up -d java` (web·runner·executor 무접촉)
+
+| 축 | 재기동 전(v2.7) | 재기동 후(v2.8) |
+|---|---|---|
+| meta_kv.players_version | v2.7 | **v2.8** |
+| players 행 | 182 | 182 |
+| active / inactive | 62 / 120 | 62 / 120 |
+| user_players 행 | 3535 | **3535** |
+| users | 210 | 210 |
+| admin_locked | 0 | 0 |
+| 실명(v2.6 축 301종) 잔존 | **120건** | **0건** |
+| 은퇴카드 보유 유저/행 | 207 / 726 | 207 / 726 |
+| 전역 중복 표시명 / shortName | — | 0 / 0 |
+| 이름 빈칸 행 | — | 0 |
+
+노출 최대 두 종(스타터팩, 각 206명 보유):
+```
+P081  벤 화이트      → 에드윈 콜스터  (콜스터)
+P092  메이슨 마운트  → 오웬 브래드쇼  (브래드쇼)
+P143  박지성        → 남도윤  (남도윤)
+P037  손흥민        → 류하준  (류하준)
+```
+
+## E2E — 라이브 HTTP (터널 경유, 실제 유저 경로)
+
+```
+POST /api/auth/register  (신규 계정 qa483e2e)
+GET  /api/players        Authorization: Bearer <token>
+  → rows 62 (신규 유저는 활성만 — active=1 OR 보유수>0)
+  → 실명 잔존 0건
+  → sample: P013 마르첼 벤티 / 벤티 · P014 요나스 브리크 / 브리크
+```
+
+⚠️ **정정(#483 스켑틱 패널 blocker B, 2026-08-10)** — 이 자리에 원래 *"이름의 다른 출처가
+없다"* 고 적혀 있었다. **거짓이다.** 위 표가 증명하는 것은 **`players` 카탈로그 테이블 축 하나**다.
+
+보유 은퇴카드의 **도감·덱 표시명**은 맞다 — `CatalogController` 가 `players.name` 을 그대로 읽으므로
+DB 축 검증이 그 경로의 증명이다. 그러나 **이름을 박제해 내보내는 두 번째 경로가 있다**:
+
+- `GrowthService.java:1585` 의 `playerName(row.playerId())` 가 매치 종료 시점에 이름을 **한 번 읽어
+  `reward_bundles.sections_json` 에 굳힌다**. 이후 조회(`RewardBundleService.ofMatch/byId`)는 저장된
+  JSON 을 역직렬화할 뿐 **재조인이 없고**, 그 값이 `GET /api/matches/{id}/result` 의 `rewardBundle`
+  로 실제 노출된다.
+- 라이브 사본 실측(v2.8 재기동 후): `sections_json` 에 구실명 박제 **15/21행**, 미확인 **7/10행**.
+- web 의 `usePlayerNames()` 폴백은 **그 유저가 해당 카드를 보유할 때만** 가려 준다(카탈로그 쿼리가
+  유저 스코프). 트레이드로 전량 처분하면 사다리가 "저장된 구명 그대로"로 떨어진다.
+- 현재 그 최악 조건에 해당하는 유저는 **0명**(직접 조인 확인) — 발현 중인 사고는 아니지만
+  **구조적 방지가 아니라 우연한 부재**다. → 후속 이슈로 분리(server-java 소관).
+
+부수 확인: `match_halves.select_data_json` 에도 박제돼 있으나 **어떤 엔드포인트도 SELECT 하지
+않는다**(죽은 데이터). 그 외 `mail_campaigns`·`notices`·`decks`·`team_presets`·`matches.*_json`·
+`trade_log`·`bots.deck_json` = **전부 0건**.
+
+즉 이 파일의 검증 스코프는 **"`players` 테이블 축에서 실명 잔존 0"** 이다. 그 이상을 주장하지 않는다.
+
+## 재기동 안전성
+
+재기동 직전 진행 중 매치(state ∉ {FINISHED, FAILED, ABANDONED}) = **0건** (매니저 지시 조건).
+web(Pages)·runner·executor 무접촉 — `docker compose up -d java` 만.

@@ -792,6 +792,57 @@ export type PlayerSeedV27 = PlayerSeedV26;
  */
 export type PlayerSeedV28 = PlayerSeedV27;
 
+/**
+ * players.v2.8.1 = v2.8 위의 **작명 수리 레이어**(#483 스켑틱 패널 blocker A).
+ *
+ * ⚠️ **왜 v2.8 을 고치지 않고 레이어를 하나 더 얹나** — v2.8 은 이미 발행·배포돼 라이브
+ * `meta_kv.players_version` 이 그 문자열을 가리킨다. 같은 버전 이름이 서로 다른 내용을 가리키면
+ * "언제 무엇이 떠 있었나"를 되짚을 수 없고(`docs/deploy-log.md`), 발행물 동결 계약도 깨진다.
+ * v2.1~v2.8 이 지켜 온 **레이어 규율**을 그대로 한 칸 더 간다.
+ *
+ * ### 무엇이 틀렸었나 — 눈 대조가 자기 카테고리에서 뚫렸다
+ * `naming-log.md` §2 부류④(**given-name 연상**)가 정확히 겨냥한 축에서 1건이 통과해 출하됐다:
+ * **P135 앙헬 고메스 → "앙헬로 킨타"** — 성만 바뀌고 이름은 `앙헬` → `앙헬로` 로 **한 음절만** 붙었다.
+ * 기계 계약(토큰 **완전일치** 금지 · denylist · 형식 · 전역유일)은 전부 통과하는 값이라
+ * **원리적으로 못 잡았고**, 유일한 방어선이 사람 눈이었는데 그게 뚫렸다.
+ *
+ * ### 그래서 눈을 계약으로 옮긴다 — `assertNoSelfNameCarryover`
+ * 새 이름의 어떤 토큰도 **그 행이 대체하는 실명의 토큰과 접두 관계**(같거나, 한쪽이 다른 쪽으로
+ * 시작)면 안 된다. "완전 일치"보다 넓고, **전역 부분문자열 금지보다 좁다**:
+ * 전역 금지는 `라스`(⊂ 라스무스) `알렉`(⊂ 알렉산더) 처럼 무해한 범용 이름 20건을 걸어 작명 풀을
+ * 못 쓰게 만든다. **자기 원본과의 캐리오버**만 보면 182행 전량에서 위반이 **정확히 2건**이고,
+ * 그 2건이 실제 결함이다 — 검정력이 있는 자리에만 임계를 건다.
+ *
+ * ### ⚠️ 그 계약이 프리즈된 v2.7 에서 같은 부류를 하나 더 잡았다
+ * **P096 알렉시스 맥 알리스터 → "알렉 페르잔"**(#450 W1, **활성** 카드) — 성은 바꿨지만 given 이
+ * `알렉시스` → `알렉` 로 **잘라낸 것뿐**이다. 은퇴 120종에만 계약을 걸고 이 행을 예외로 두면
+ * 그 계약은 **동어반복**이 된다("내가 이번에 고른 값들은 내 규칙을 지킨다"). 그래서 스코프를
+ * 넓혀 **같이 고친다** — 표시명 축이라 보유·성장·전적은 무영향이고(#483 F8), 되돌림 비용은
+ * 레이어 하나다. 이 결정으로 v2.8.1 은 **활성 62 바이트 동일 계약을 의도적으로 1행 깬다**.
+ *
+ * 나머지 2건은 패널 minor(부류③ 근접) 동반 수리다: P084 `실반 로이터`(≈ Stefan Reuter — ⚠️ 내가
+ * `실반 뷔르키` 충돌을 고치며 만든 **2차 충돌**을 재검증하지 않은 것) · P082 `아리츠 바르셀`(≈ Aritz Aduriz).
+ */
+export const PLAYERS_V281_VERSION = "v2.8.1";
+
+/**
+ * `from` = **v2.8 발행물의 현재 표시명**(앵커). 원본 실명은 주석의 `orig` — 캐리오버 계약이
+ * 그 실명을 상대로 검정한다(`V28_RETIRED_CARDS`/`V27_ACTIVE_CARDS` 에서 자동으로 끌어온다).
+ */
+export const V281_FIX_CARDS: readonly { id: string; from: string; to: string; short: string }[] = [
+  // 부류④ given-name 캐리오버 — 패널 blocker A. (orig: 앙헬 고메스)
+  { id: "P135", from: "앙헬로 킨타", to: "엘리안 킨타", short: "킨타" }, // BRONZE MF
+  // 부류④ 같은 축, 프리즈된 v2.7 활성에서 계약이 잡아냄. (orig: 알렉시스 맥 알리스터)
+  { id: "P096", from: "알렉 페르잔", to: "네스토르 페르잔", short: "페르잔" }, // SILVER MF · 활성
+  // 부류③ 근접 — 2차 충돌(Stefan Reuter). (orig: 마누엘 아칸지)
+  { id: "P084", from: "실반 로이터", to: "실반 마흘러", short: "마흘러" }, // SILVER DF
+  // 부류③ 근접 (Aritz Aduriz). (orig: 파우 토레스)
+  { id: "P082", from: "아리츠 바르셀", to: "제로니 바르셀", short: "바르셀" }, // SILVER DF
+] as const;
+
+/** v2.8.1 은 v2.8 과 **스키마 동일**(표시명 값만 4행 다르다). */
+export type PlayerSeedV281 = PlayerSeedV28;
+
 const ATTR_KEYS: readonly (keyof PlayerAttributes)[] = [
   "technical",
   "mental",
@@ -1306,6 +1357,7 @@ export interface GeneratedData {
   playersV27: PlayerSeedV27[];
   /** players.v2.8.json — v2.7 + 은퇴 120종 표시명 가상화 (#483). **최신 발행본**. */
   playersV28: PlayerSeedV28[];
+  playersV281: PlayerSeedV281[];
   economy: EconomySeed;
   /**
    * economy.v3.json — v2 + starterTop 블록 (#209).
@@ -1836,6 +1888,119 @@ function buildPlayersV28(playersV27: PlayerSeedV27[]): PlayerSeedV28[] {
       throw new Error(`v2.8 이 활성 유닛 ${before.id} 의 표시명을 바꿨다 — 스코프 밖이다(#483)`);
     }
   }
+  return out;
+}
+
+/**
+ * **개명이 자기 원본을 물고 오지 않았는가** — #483 패널 blocker A 를 계약으로 옮긴 것.
+ *
+ * 판정: 최종 표시명의 어떤 토큰도, **그 행이 대체한 실명**의 어떤 토큰과 접두 관계(같거나 한쪽이
+ * 다른 쪽으로 시작)면 안 된다. 1글자 토큰은 한글 성씨(김·이·박)라 접두 판정이 무의미해 제외한다.
+ *
+ * ⚠️ **왜 전역 부분문자열이 아니라 "자기 원본"인가** — 전역(모든 v2.6 실명 토큰 상대)으로 걸면
+ * `라스`(⊂ 라스무스) `알렉`(⊂ 알렉산더) `바스`(⊂ 바스토니) 같은 **범용 유럽 이름 20건**이 걸려
+ * 작명 풀이 사실상 닫힌다 — 임계가 결함이 아니라 언어를 검정하게 된다. 자기 원본으로 좁히면
+ * 182행 전량에서 **정확히 2건**이 걸리고 그 2건이 실제 결함이다(P135·P096).
+ *
+ * 패러디 10종은 `from == to` 인 **의도된 항등 행**이라 정의상 전건이므로 제외한다.
+ */
+function assertNoSelfNameCarryover(
+  finalById: Map<string, { name: string; shortName: string }>,
+  originalRealName: Map<string, string>,
+): void {
+  const parody = new Set(V26_PARODY_UNIT_IDS);
+  const toks = (s: string) => s.split(" ").filter((t) => t.length >= 2);
+  const violations: string[] = [];
+  for (const [id, orig] of originalRealName) {
+    if (parody.has(id)) continue;
+    const row = finalById.get(id);
+    if (!row) throw new Error(`캐리오버 검정 대상 ${id} 가 최종 발행물에 없다`);
+    for (const ft of toks(orig)) {
+      for (const tt of new Set([...toks(row.name), ...toks(row.shortName)])) {
+        if (tt === ft || tt.startsWith(ft) || ft.startsWith(tt)) {
+          violations.push(`${id} "${orig}" → "${row.name}" (토큰 "${tt}" ~ 원본 "${ft}")`);
+        }
+      }
+    }
+  }
+  if (violations.length > 0) {
+    throw new Error(
+      `개명이 원본 실명의 토큰을 물고 왔다 — 성을 바꿔도 이름이 남으면 실존 인물이 그대로 특정된다(#483):\n` +
+        violations.map((v) => `  - ${v}`).join("\n"),
+    );
+  }
+}
+
+/**
+ * players.v2.8 → v2.8.1 (#483 패널 수리). v2.8 과 같은 모양의 **표시명 레이어**이고, 검사도 같다.
+ *
+ * ⚠️ **v2.8 과 다른 계약이 하나 있다**: v2.8 은 "활성 62종 바이트 동일"을 걸었지만 v2.8.1 은
+ * **P096(활성)을 의도적으로 바꾼다**(위 상수 주석의 근거). 그래서 그 계약을 "표에 있는 행만
+ * 다르고 나머지는 전부 동일"로 재정의한다 — 느슨해진 게 아니라 **표를 기준으로 정확해진 것**이다.
+ */
+function buildPlayersV281(playersV28: PlayerSeedV28[]): PlayerSeedV281[] {
+  const byId = new Map(playersV28.map((p) => [p.id, p]));
+  const card = new Map<string, (typeof V281_FIX_CARDS)[number]>();
+  for (const c of V281_FIX_CARDS) {
+    if (card.has(c.id)) throw new Error(`v2.8.1 수리 표에 ${c.id} 가 두 번 있다`);
+    const src = byId.get(c.id);
+    if (!src) throw new Error(`v2.8.1 수리 표의 ${c.id} 가 v2.8 카탈로그에 없다`);
+    if (src.name !== c.from) {
+      throw new Error(
+        `${c.id} 의 v2.8 이름이 "${c.from}" 이어야 하는데 "${src.name}" 이다 — ` +
+          `v2.8 은 발행 후 수정 금지다. 표시명 변경은 V281_FIX_CARDS 에서만 한다.`,
+      );
+    }
+    if (!c.to || !HANGUL_ONLY.test(c.to) || !c.short || !HANGUL_ONLY.test(c.short)) {
+      throw new Error(`${c.id} 새 이름이 한글 전용이 아니다: "${c.to}" / "${c.short}"`);
+    }
+    if (c.to.length > V27_MAX_NAME_LEN || c.short.length > V27_MAX_SHORT_LEN) {
+      throw new Error(`${c.id} 새 이름 "${c.to}" 이 길이 상한을 넘는다`);
+    }
+    if (c.short !== c.to && !c.to.split(" ").includes(c.short)) {
+      throw new Error(`${c.id} shortName "${c.short}" 이 풀네임 "${c.to}" 의 토큰이 아니다`);
+    }
+    card.set(c.id, c);
+  }
+
+  const out: PlayerSeedV281[] = playersV28.map((p) => {
+    const c = card.get(p.id);
+    return c ? { ...p, name: c.to, shortName: c.short } : p;
+  });
+
+  if (new Set(out.map((p) => p.name)).size !== out.length) {
+    throw new Error("v2.8.1 표시명 충돌 — 수리명이 기존 이름과 겹친다");
+  }
+  if (new Set(out.map((p) => p.shortName)).size !== out.length) {
+    throw new Error("v2.8.1 shortName 충돌");
+  }
+  const activeRows = out.filter((p) => p.active);
+  if (activeRows.length !== 62 || out.length - activeRows.length !== 120) {
+    throw new Error(`v2.8.1 활성 62 / 비활성 120 격자가 깨졌다`);
+  }
+  // 표에 있는 행만 표시명이 다르고, 그 밖의 축은 전부 v2.8 과 완전 동일하다.
+  for (let i = 0; i < playersV28.length; i++) {
+    const before = playersV28[i]!;
+    const after = out[i]!;
+    const { name: _n, shortName: _s, ...restBefore } = before;
+    const { name: _m, shortName: _t, ...restAfter } = after;
+    if (JSON.stringify(restBefore) !== JSON.stringify(restAfter)) {
+      throw new Error(`v2.8.1 레이어가 ${before.id} 의 표시명 밖 축을 건드렸다`);
+    }
+    const changed = before.name !== after.name || before.shortName !== after.shortName;
+    if (changed !== card.has(before.id)) {
+      throw new Error(`v2.8.1 이 표에 없는 ${before.id} 의 표시명을 바꿨다(또는 표의 행을 안 바꿨다)`);
+    }
+  }
+
+  // 🔴 이 레이어의 존재 이유 — 개명이 원본 실명을 물고 오지 않는다(182행 전량).
+  const originalRealName = new Map<string, string>();
+  for (const c of V27_ACTIVE_CARDS) originalRealName.set(c.id, c.from);
+  for (const c of V28_RETIRED_CARDS) originalRealName.set(c.id, c.from);
+  assertNoSelfNameCarryover(
+    new Map(out.map((p) => [p.id, { name: p.name, shortName: p.shortName }])),
+    originalRealName,
+  );
   return out;
 }
 
@@ -2445,6 +2610,8 @@ export function generateAll(): GeneratedData {
   const playersV27 = buildPlayersV27(playersV26);
   // #483: v2.8 은 v2.7 위에 얹는 **표시명 레이어**(RNG 미사용, 행 추가 0, `active` 무접촉).
   const playersV28 = buildPlayersV28(playersV27);
+  // #483 패널 수리: v2.8.1 은 v2.8 위의 **작명 수리 레이어**(4행) + 캐리오버 계약.
+  const playersV281 = buildPlayersV281(playersV28);
   const league = buildLeague();
 
   // economy v3(#209) = v2 그대로 + starterTop 블록. v2 객체는 건드리지 않는다(발행물 불변).
@@ -2497,7 +2664,7 @@ export function generateAll(): GeneratedData {
 
   return {
     players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-    playersV27, playersV28,
+    playersV27, playersV28, playersV281,
     economy, economyV3, economyV4, bots, league,
     leagueV2: buildLeagueV2(league),
     botsV3,
@@ -2517,7 +2684,7 @@ const isMain = (() => {
 if (isMain) {
   const {
     players, playersV2, playersV21, playersV22, playersV23, playersV24, playersV25, playersV26,
-    playersV27, playersV28, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
+    playersV27, playersV28, playersV281, economy, economyV3, economyV4, bots, league, leagueV2, botsV3, botsV4,
   } = generateAll();
   const here = dirname(fileURLToPath(import.meta.url));
   writeFileSync(join(here, `players.${DATA_VERSION}.json`), JSON.stringify(playersV2, null, 2) + "\n");
@@ -2553,6 +2720,10 @@ if (isMain) {
     join(here, `players.${PLAYERS_V28_VERSION}.json`),
     JSON.stringify(playersV28, null, 2) + "\n",
   );
+  writeFileSync(
+    join(here, `players.${PLAYERS_V281_VERSION}.json`),
+    JSON.stringify(playersV281, null, 2) + "\n",
+  );
   writeFileSync(join(here, `economy.${DATA_VERSION}.json`), JSON.stringify(economy, null, 2) + "\n");
   // ⚠️ **`economy.v3.json` 은 더 이상 쓰지 않는다**(#450 W1 발견).
   // 발행 후 세 웨이브(#251 시즌 다이아 · #368 리그 데일리 18칸 · #408 원정 미션)가 이 **발행물 JSON 을
@@ -2582,7 +2753,8 @@ if (isMain) {
       `active=${playersV25.filter((p) => p.active).length}, ` +
       `v2.6 ${playersV26.length} ko-names+shortName, ` +
       `v2.7 ${playersV27.length} fictional names active=${playersV27.filter((p) => p.active).length}, ` +
-      `v2.8 ${playersV28.length} all-fictional names active=${playersV28.filter((p) => p.active).length}), ` +
+      `v2.8 ${playersV28.length} all-fictional names active=${playersV28.filter((p) => p.active).length}, ` +
+      `v2.8.1 ${playersV281.length} carryover-fixed ${V281_FIX_CARDS.length} rows), ` +
       // ⚠️ v3 는 더 이상 쓰지 않는다(#453). 로그에 남겨 두면 다음 사람이 "재생성된다"고 오판한다.
       `economy.${DATA_VERSION}.json + economy.${ECONOMY_V4_VERSION}.json(starter v4, v3 승계·v3 무기록), ` +
       `${bots.length} bots + bots.${BOTS_V4_VERSION}.json, league.${LEAGUE_VERSION}.json -> data/players/`,
