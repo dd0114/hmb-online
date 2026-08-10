@@ -1,0 +1,39 @@
+# 모의 이사 리허설 오버레이 (#472 W3) — **라이브와 한 톨도 겹치지 않게** 이름을 전부 갈아끼운다.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.rehearsal.yml up -d java runner
+#   (실제로는 infra/rehearse-move.sh 가 부른다 — 손으로 치지 마라, 격리 가드가 빠진다)
+#
+# ⚠️ 왜 오버레이가 필요한가: 기본 compose 는 `container_name` 과 볼륨 `name:` 을 **고정**한다
+#    (`hmb-java` / `hmb-p3-db`). compose **프로젝트 이름만** 바꿔서는 그 둘이 안 갈린다 —
+#    같은 이름을 다시 잡으려다 **라이브 컨테이너를 재생성**하거나 **라이브 볼륨을 붙든다**.
+#    실이사 전 리허설이 라이브를 죽이면 그건 리허설이 아니라 사고다. 그래서 셋 다 갈아끼운다:
+#      ① 프로젝트 이름  ② container_name  ③ 볼륨 실이름  ④ 호스트 포트
+#
+# 겹치면 안 되는 것(2026-08-09 실측):
+#   라이브   hmb-java(18080) · hmb-runner(18790) · 볼륨 hmb-p3-db
+#   growth   hmb-growth-java(19080) · hmb-growth-runner(19790) · 볼륨 hmb-growth-db
+#   데모     8080 / 8790
+#   리허설   28080 / 28790 · 볼륨 hmb-rehearsal-db      ← 이 파일
+
+name: hmb-rehearsal
+
+# ⚠️ **포트는 여기서 정의하지 않는다.** compose 의 `ports:` 는 오버레이에서 **덮어쓰기가 아니라
+#    병합(append)** 이다 — 여기에 28790 을 적으면 베이스의 18790 이 **남은 채로** 둘 다 바인딩된다.
+#    실제로 그렇게 돼서 리허설 컨테이너가 **라이브 포트 18790 을 물려다** 실패했다(2026-08-09 실측).
+#    라이브가 내려가 있었다면 리허설이 라이브 포트를 점유했을 것이다 = 리허설이 아니라 사고다.
+#    `!override` 태그는 compose 2.24+ 인데 이 머신은 2.19.1 이라 못 쓴다.
+#    → 베이스가 이미 `${JAVA_HOST_PORT}`/`${RUNNER_HOST_PORT}` 로 파라미터화돼 있으므로
+#      **환경변수로 준다**(rehearse-move.sh 가 그렇게 부른다). 셸 env 가 .env 파일보다 우선한다.
+services:
+  java:
+    container_name: hmb-rehearsal-java
+  runner:
+    container_name: hmb-rehearsal-runner
+  # 리허설은 java/runner 만 띄우지만, 서비스 인자 없이 `up -d` 를 치는 순간
+  # 이 이름이 **라이브 hmb-executor 와 충돌**한다. 이름을 안 갈아두면 그 한 번이 사고다.
+  executor:
+    container_name: hmb-rehearsal-executor
+
+volumes:
+  hmb-db:
+    name: hmb-rehearsal-db

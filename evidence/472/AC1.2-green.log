@@ -1,0 +1,43 @@
+=== AC1.2 env 키셋 계약 ===
+
+[T0] 계약 파일 존재·파싱
+  ✓ infra/env-contract.txt 존재
+  ✓ 키 14 개 파싱(≥11)
+  ✓ 모든 키에 등급(req|opt|carry)
+
+[T1] 이사 치명 키 3종 등재
+  ✓ HMB_ADMIN_NICKNAME 등재
+  ✓ HMB_ADMIN_PASSWORD 등재
+  ✓ HMB_MATCH_AIJOBTIMEOUTSEC 등재
+  ✓ HMB_MATCH_AIJOBTIMEOUTSEC=carry (값까지 이관 대상)
+
+[T2] .env.example 이름 드리프트
+  ✓ 잘못된 HMB_ADMIN_USERNAME= 처방 0건
+  ✓ HMB_ADMIN_NICKNAME 문서화됨
+
+[T3] 계약의 모든 키가 .env.example 에 문서화(주석 자리표시자 허용)
+  ✓ 누락 0
+
+[T4] docker-compose 의 ${VAR} 전부 계약에 등재
+  ✓ 미등재 0
+
+[T5] 검사기 — 정상 .env 통과
+  ✓ infra/check-env-contract.sh 존재
+  ✓ exit 0
+
+[T6] 검사기 — 계약 밖 키 검출
+  ✓ exit≠0
+  ✓ 키 이름을 보고
+
+[T7] 검사기 — 값 비노출(카나리아)
+  ✓ 카나리아 값 출력 0건
+  ✓ 값 없이 키 이름은 보고
+
+[T8] 계약·예시에 실 시크릿 0
+  ✓ hex 시크릿 패턴 0건
+
+[T9] 스크립트 문법
+  ✓ check-env-contract.sh: syntax ok
+  ✓ env-contract.test.sh: syntax ok
+
+=== 결과: PASS=20 FAIL=0 ===

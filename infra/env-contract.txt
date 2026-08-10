@@ -1,0 +1,44 @@
+# infra/env-contract.txt — 백엔드가 실제로 먹는 env 키의 **권위 목록** (#472 AC1.2)
+#
+# ⚠️ 값은 여기 적지 않는다. **키 이름만.** 값은 infra/.env(gitignore)에만 산다.
+#    이 파일은 커밋되고, 이사(#472)에서 "무엇을 옮겨야 하나" 의 단일 출처다.
+#
+# 왜 필요한가: 이사는 코드가 아니라 **키를 옮기는 일**인데, 지금까지 그 목록이 어디에도 없었다.
+#   - .env.example 은 코드와 어긋나 있었다(`HMB_ADMIN_USERNAME` → 실제는 `HMB_ADMIN_NICKNAME`).
+#   - Spring relaxed binding 키(`HMB_MATCH_*` → `hmb.match.*`)는 application.yml 을
+#     `grep '${HMB_'` 해도 **안 나온다**. 즉 코드를 뒤져도 목록을 복원할 수 없다.
+#   그래서 사람이 기억으로 옮기는 대신 `bash infra/check-env-contract.sh` 가 기계로 대조한다.
+#
+# 형식:  KEY <공백> 등급 <공백> 소비처 <공백> 설명
+#   req    없으면 기동/핵심기능이 깨진다. 검사기 FAIL.
+#   carry  코드에 기본값이 있으나 **라이브가 다른 값으로 운영 중**이라 이사 시 값까지 옮겨야 한다.
+#          누락은 조용한 성능·기능 퇴화라 검사기 WARN(=사람이 봐야 하는 줄).
+#   opt    기본값으로 충분. 참고용 등재(계약 밖 키 검출이 오탐 내지 않도록).
+
+# ── 필수 ──────────────────────────────────────────────────────────────────────
+SERVANT_TOKEN            req    java+executor  /internal/** 게이트. 양쪽이 같은 값이어야 한다(compose 가 :? 로 강제)
+WEB_ORIGINS              req    java           CORS 허용 오리진. 이사 후 새 터널 URL 로 바꾸지 않으면 테스터는 흰 화면
+
+# ── 이사 시 값까지 이관 (carry) ───────────────────────────────────────────────
+# admin 2종은 **짝**이다 — application.yml:110 "하나만 채우면 부팅 실패".
+# 둘 다 비면 admin 0명(안전 기본)이고 부팅 시 잔존 is_admin 을 회수한다.
+HMB_ADMIN_NICKNAME       carry  java           admin 계정 닉네임. HMB_ADMIN_PASSWORD 와 반드시 함께
+HMB_ADMIN_PASSWORD       carry  java           admin 비번(평문 목업). 값은 .env 와 ~/.local/state/hmb 에만 — 로그·이슈 금지
+# ⚠️ 코드 기본 240s ↔ 라이브 600s. #166(sonnet 전술생성 90~180s)의 완화값이라 떨어지면 매치 FAILED 재발.
+HMB_MATCH_AIJOBTIMEOUTSEC carry java           hmb.match.ai-job-timeout-sec (relaxed binding — grep 으로 안 보인다)
+
+# ── 선택 (기본값으로 충분) ────────────────────────────────────────────────────
+JAVA_HOST_PORT           opt    compose        기본 18080. 데모 8080 무접촉용 대체 포트
+RUNNER_HOST_PORT         opt    compose        기본 18790
+AI_EXECUTOR              opt    executor       stub | claude-code
+AI_CONCURRENCY           opt    executor       기본 2
+AI_MODEL                 opt    executor       기본 sonnet
+CLOUDFLARE_API_TOKEN     opt    deploy-pages   전역 ~/.config/hmb/deploy.env 에 있으면 .env 에는 불필요
+CLOUDFLARE_ACCOUNT_ID    opt    deploy-pages   위와 동일
+CLAUDE_HOME              opt    executor       모드 B 전용. 호스트 구독 세션 디렉토리(기본 ~/.claude)
+# 코드 기본값(application.yml:247)이 이미 300 이라 라이브 override 300 은 현재 무의미하다.
+# 지우지는 않는다 — 라이브 .env 에 실제로 있고, 계약 밖 키로 오탐되면 안 된다.
+HMB_MATCH_LEASESEC       opt    java           hmb.match.lease-sec. 코드 기본 300 과 동일 → 이관 불필요
+
+# ⚠️ ANTHROPIC_API_KEY 는 **의도적으로 계약에 없다** — 넣으면 구독이 아니라 종량 과금이 된다.
+#    executor 가 기동 시 강제 삭제한다(executor-main.ts prepareExecutorEnv). 여기 추가하지 마라.

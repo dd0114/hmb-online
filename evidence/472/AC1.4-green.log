@@ -1,0 +1,84 @@
+=== AC1.4 이송 팩 ===
+
+[Q0] 스크립트 존재·문법
+  ✓ pack-move.sh: syntax ok
+  ✓ unpack-move.sh: syntax ok
+
+[Q1] --dry-run 이 이송 목록 6종 전부 보고
+  ✓ 전부 존재 → exit 0
+  ✓ 목록에 infra/.env
+  ✓ 목록에 deploy.env
+  ✓ 목록에 dist-current
+  ✓ 목록에 dist-current.functions
+  ✓ 목록에 dist-current.meta
+  ✓ 목록에 state/hmb
+  ✓ 목록에 .claude
+  ✓ 목록에 economy.override.json
+
+[Q2] 누락 fail-fast (6종 각각)
+  ✓ infra/.env 누락 → exit 1 + 이름 지목
+  ✓ deploy.env 누락 → exit 1 + 이름 지목
+  ✓ dist-current 누락 → exit 1 + 이름 지목
+  ✓ dist-current.functions 누락 → exit 1 + 이름 지목
+  ✓ state/hmb 누락 → exit 1 + 이름 지목
+  ✓ ~/.claude 누락 → exit 1 + 이름 지목
+  ✓ economy.override.json 누락 → exit 1 + 이름 지목
+
+[Q3] --no-claude = 기록되는 의도적 제외
+  ✓ 명시 제외 시 통과
+  ✓ 제외 사실을 출력에 남김
+
+[Q4] 팩 산출물 · 매니페스트 shasum
+  ✓ 팩 exit 0
+  ✓ tar 생성
+  ✓ 매니페스트 생성
+  ✓ shasum 항목 10 개(≥6)
+  ✓ 매니페스트에 economy 포함
+
+[Q5] 시크릿 비노출(카나리아) · 권한 600
+  ✓ 카나리아 값 출력 0건
+  ✓ 산출물 권한 600
+
+[Q6] 리포 내부 출력 거부
+  ✓ 리포 안 경로 거부(exit 3)
+  ✓ 리포에 파일 미생성
+  ✓ 별칭 경로로도 거부(exit 3)
+  ✓ 별칭 경유 파일 미생성
+
+[Q7] DB 볼륨 read-only 접근
+  ✓ 볼륨 접근 시도 기록됨
+  ✓ 전부 :ro 마운트
+
+[Q8] pack → unpack 왕복 동일성
+  ✓ unpack exit 0
+  ✓ 복원 일치: .config/hmb/deploy.env
+  ✓ 복원 일치: .cache/hmb/dist-current/index.html
+  ✓ 복원 일치: .cache/hmb/dist-current.functions/og.js
+  ✓ 복원 일치: .cache/hmb/dist-current.meta
+  ✓ 복원 일치: .local/state/hmb/admin-pw-v8.txt
+  ✓ 복원 일치: .claude/projects/p.jsonl
+  ✓ admin-pw 권한 600 보존
+  ✓ unpack 카나리아 0건
+
+[Q9] 변조 감지 · 부분복원 방지
+  ✓ 변조 주입 확인(계약 자체가 유효)
+  ✓ 변조 매니페스트 거부(exit 1)
+  ✓ 거부 시 아무것도 안 썼다(부분복원 0)
+
+[Q10] 기존 파일 덮어쓰기 보호
+  ✓ 이미 있는 HOME 에 무조건 덮어쓰지 않음(exit 2)
+  ✓ --force 로는 진행
+
+[Q11] 실 HOME · 실 도커 무접촉
+  ✓ 실 HOME 에 산출물 없음
+  ✓ docker 미호출
+
+[Q12] db-backups 기본 제외(기록되는 제외)
+  ✓ 팩 exit 0
+  ✓ 제외 사실을 출력에 알림
+  ✓ 매니페스트에 제외 기록
+  ✓ 실제로 팩에 미포함
+  ✓ --with-db-backups 로는 포함
+
+=== 결과: PASS=54 FAIL=0 ===
+exit=0

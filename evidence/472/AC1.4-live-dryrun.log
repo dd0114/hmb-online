@@ -1,0 +1,29 @@
+### 라이브 머신 실 상태 --dry-run (읽기 전용, 값 미출력)
+════════ 이송 팩 (#472) ════════
+모드: --dry-run (아무것도 만들지 않는다)
+
+── 호스트 상태 ──
+  ✓ infra/.env  (4KB)
+  ✓ ~/.config/hmb/deploy.env  (4KB)
+  ✓ ~/.cache/hmb/dist-current  (5164KB)
+  ✓ ~/.cache/hmb/dist-current.functions  (16KB)
+  ✓ ~/.cache/hmb/dist-current.meta  (4KB)
+  ! ~/.local/state/hmb 의 db-backups/ 8GB 는 **제외**한다(구 머신에 남는다. 포함: --with-db-backups)
+  ✓ ~/.local/state/hmb  (1660KB)
+  ✓ ~/.claude  (3514656KB)
+
+── DB 볼륨(hmb-p3-db) 안 ──
+  ✓ economy.override.json  (38561B)
+  ! DB 본체(hmb.db)는 이 팩에 없다 — 런북 P2 의 정지 창 안 `.backup` 소관이다(WAL 일관성).
+
+  전송량(압축 전) 약 3438 MB
+OK  이송 목록 전부 존재. 만들려면: bash infra/pack-move.sh --out ~/hmb-move.tar.gz
+exit=0
+
+### --no-claude (EC2 AI 모드가 모드 A 가 아닐 때)
+── DB 볼륨(hmb-p3-db) 안 ──
+  ✓ economy.override.json  (38561B)
+  ! DB 본체(hmb.db)는 이 팩에 없다 — 런북 P2 의 정지 창 안 `.backup` 소관이다(WAL 일관성).
+
+  전송량(압축 전) 약 6 MB
+OK  이송 목록 전부 존재. 만들려면: bash infra/pack-move.sh --out ~/hmb-move.tar.gz

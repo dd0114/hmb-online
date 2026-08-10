@@ -15,6 +15,7 @@
 
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+. infra/lib/portable.sh   # sed_i 등 OS 분기 (#472 AC1.1) — BSD/GNU sed 차이 흡수
 
 # 토큰/계정ID 로드 (export). 우선순위: ① 전역(~/.config/hmb/deploy.env, 모든 워크트리 공유)
 # → ② 로컬 infra/.env(override). 전역이 있으면 어느 spider* 워크트리에서든 로그인 없이 배포된다.
@@ -64,7 +65,7 @@ case ",$CUR," in
   *) NEW="$CUR,$PAGES_URL";;                            # 콤마 추가(기존 quick-tunnel 오리진 유지)
 esac
 # --force-recreate: `up -d` 만으론 env 변경(WEB_ORIGINS)이 실행 컨테이너에 반영 안 될 때가 있다(실측).
-( cd infra && sed -i '' "s|^WEB_ORIGINS=.*|WEB_ORIGINS=$NEW|" .env && docker compose up -d --force-recreate java >/dev/null )
+( cd infra && sed_i "s|^WEB_ORIGINS=.*|WEB_ORIGINS=$NEW|" .env && docker compose up -d --force-recreate java >/dev/null )
 until [ "$(docker inspect -f '{{.State.Health.Status}}' hmb-java 2>/dev/null)" = healthy ]; do sleep 3; done
 echo "[pages]    WEB_ORIGINS=$NEW"
 

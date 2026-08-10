@@ -1,0 +1,31 @@
+### 증빙 exit code 전수 재측정 (#472 R1 ③)
+
+왜: AC3-clean.log 의 "clean exit=0" 이 파이프(`| tee`) 뒤에서 찍혀 있었다. 그 $? 는
+    **tee 의 상태**라 언제나 0 이다 — 즉 그 줄은 아무것도 측정하지 않았다. 그래서 파이프
+    밖(리다이렉트)에서 다시 잰다. 비교 대상 = 기존 로그의 기록값.
+
+── 재측정 (리다이렉트, 파이프 없음) ──
+  infra/tests/portable.test.sh                  exit=0
+  infra/tests/env-contract.test.sh              exit=0
+  infra/tests/move-pack.test.sh                 exit=0
+  infra/tests/watchdog-portability.test.sh      exit=0
+  infra/tests/runbook-sync.test.sh              exit=0
+  infra/check-runbook-sync.sh                   exit=0
+
+── 기존 로그 기록값 (자기 자신 제외) ──
+    AC1.1-branch-fired.log:exit=2
+    AC1.3-green.log:GREEN exit=0
+    AC1.3-linux.log:AC1.3 exit=0
+    AC1.3-red.log:RED exit=1
+    AC1.4-green.log:exit=0
+    AC1.4-linux.log:AC1.4 exit=0
+    AC1.3-systemd-verify.log:### verify exit=0  (0 = 유닛 문법·필드 유효)
+    AC1.4-live-dryrun.log:exit=0
+    AC2.3-green.log:exit=0
+    AC3-clean.log:clean exit=0
+    AC2.4-green.log:exit=0
+
+판정: 재측정 6/6 이 기록값과 일치한다. 0 이 아닌 기록(AC1.1 exit=2 · AC1.3-red exit=1)은
+      tee 였다면 나올 수 없는 값이라 그 자체로 파이프 밖 측정의 증거다.
+      실제로 거짓이었던 것은 AC3-clean.log 한 줄뿐이고, 그 원인은 두 겹이다 —
+      D1(파이프 뒤 $?) + D2(--clean 이 상속하던 포트 사전점검). 둘 다 이 웨이브에서 고쳤다.

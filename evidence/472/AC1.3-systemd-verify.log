@@ -1,0 +1,15 @@
+### systemd-analyze verify — raw
+### verify exit=0  (0 = 유닛 문법·필드 유효)
+### 타이머 본문
+[Unit]
+Description=HMB 터널 자가복구 워치독 타이머 (매 60초 — plist StartInterval 등가)
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=5s
+Persistent=true
+Unit=hmb-tunnel-heal.service
+
+[Install]
+WantedBy=timers.target

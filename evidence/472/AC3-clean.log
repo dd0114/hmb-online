@@ -1,0 +1,19 @@
+
+[1m0) 격리 기준선[0m
+   hmb-java 1565d8b4f817bc0ca1b353e2871508e511dc23b59f9e2719bbe52a9465617f1d 2026-08-09T17:37:20.872266179Z running
+   hmb-runner 8c5ccafef73538599711d70bb6829518e996fa0db8d12aac3d0c6f1837cbf533 2026-08-04T20:37:41.636390839Z running
+   hmb-growth-java 6411315f3ef90bb516c9f421411bef4daeb8617b1e0542273015c21c28be8b72 2026-08-04T20:26:01.625705334Z running
+   hmb-growth-runner 12c9c4579eba13a1e8803e82d9def9e19ae1705bf765677bc043a97e88684645 2026-08-04T20:26:01.598322709Z running
+   hmb-growth-executor 8dc9c3a8da19250881ca38f787594b08dd236a7faf91dc02d6be8a9f269c5845 2026-08-04T20:26:01.523672376Z running
+   hmb-p3-db 2026-07-21T08:51:57Z
+  [32m✓[0m 6 항목 기록
+  [32m✓[0m 볼륨 분리(hmb-rehearsal-db ≠ hmb-p3-db)
+
+[1m리허설 잔재 제거 (라이브 무접촉)[0m
+  [32m✓[0m 볼륨 hmb-rehearsal-db 삭제
+  [32m✓[0m 작업 디렉토리 정리
+
+[1m격리 재확인[0m
+  [32m✓[0m 라이브·growth 컨테이너 ID·기동시각 **완전 동일** · 라이브 볼륨 무변경
+
+clean exit=0   (파이프 밖에서 측정)

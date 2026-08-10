@@ -1,0 +1,82 @@
+
+[1m0) 격리 기준선[0m
+   hmb-java 1565d8b4f817bc0ca1b353e2871508e511dc23b59f9e2719bbe52a9465617f1d 2026-08-09T17:37:20.872266179Z running
+   hmb-runner 8c5ccafef73538599711d70bb6829518e996fa0db8d12aac3d0c6f1837cbf533 2026-08-04T20:37:41.636390839Z running
+   hmb-growth-java 6411315f3ef90bb516c9f421411bef4daeb8617b1e0542273015c21c28be8b72 2026-08-04T20:26:01.625705334Z running
+   hmb-growth-runner 12c9c4579eba13a1e8803e82d9def9e19ae1705bf765677bc043a97e88684645 2026-08-04T20:26:01.598322709Z running
+   hmb-growth-executor 8dc9c3a8da19250881ca38f787594b08dd236a7faf91dc02d6be8a9f269c5845 2026-08-04T20:26:01.523672376Z running
+   hmb-p3-db 2026-07-21T08:51:57Z
+  [32m✓[0m 6 항목 기록
+  [32m✓[0m 볼륨 분리(hmb-rehearsal-db ≠ hmb-p3-db)
+  [32m✓[0m 리허설 포트 28080 비어 있음
+  [32m✓[0m 리허설 포트 28790 비어 있음
+
+[1m1) 라이브 DB 백업 (:ro — 런북 P2-12)[0m
+  [32m✓[0m 백업 생성 (689MB)
+
+[1m2) 자산 + economy tar (런북 P2-13)[0m
+(일부 자산 없음)
+  [32m✓[0m 자산 tar
+
+[1m3) 백업 검증 (런북 P2-14)[0m
+  [32m✓[0m integrity_check = ok
+  [32m✓[0m flyway 최대 버전 = 9
+  [32m✓[0m 표본 행수(users=213 matches=124)
+  [32m✓[0m 백업 sha256 = a4233e1da314a7da…
+
+[1m4) 리허설 볼륨 적재 (런북 P2-16 — chown 디렉토리까지)[0m
+  [32m✓[0m 적재 + chown -R 10001:999 /data
+  [32m✓[0m 이송 sha256 일치 — 백업시점 = 볼륨적재후 (a4233e1da314a7da…)
+  [32m✓[0m 행수 일치 — 백업(users=213 matches=124) = 볼륨적재후
+
+[1m5) 리허설 스택 기동 (런북 P3-17, 포트 28080/28790)[0m
+ Network hmb-rehearsal_default  Creating
+ Network hmb-rehearsal_default  Created
+time="2026-08-10T08:47:56+09:00" level=warning msg="volume \"hmb-rehearsal-db\" already exists but was not created by Docker Compose. Use `external: true` to use an existing volume"
+ Container hmb-rehearsal-runner  Creating
+ Container hmb-rehearsal-java  Creating
+ Container hmb-rehearsal-java  Created
+ Container hmb-rehearsal-executor  Creating
+ Container hmb-rehearsal-runner  Created
+ Container hmb-rehearsal-executor  Created
+ Container hmb-rehearsal-runner  Starting
+ Container hmb-rehearsal-java  Starting
+ Container hmb-rehearsal-runner  Started
+ Container hmb-rehearsal-java  Started
+ Container hmb-rehearsal-java  Waiting
+ Container hmb-rehearsal-java  Healthy
+ Container hmb-rehearsal-executor  Starting
+ Container hmb-rehearsal-executor  Started
+  [32m✓[0m hmb-rehearsal-java healthy
+
+[1m6) 기동 검증 (런북 P3-18/19/21)[0m
+  [32m✓[0m AdminBootstrap admins=1
+  [32m✓[0m /internal/health 토큰없이 401(경로 생존)
+  [32m✓[0m /internal/health 토큰있이 200(토큰 결선 정상)
+  [32m✓[0m runner /health 200
+
+[1m6b) 스모크 — 로그인 → /api/me → 덱 → 매치 1판 완주 (런북 P5-28 **전부**)[0m
+  [32m✓[0m 로그인 성공 (토큰 발급 · isNew=false)
+  [32m✓[0m /api/me 200 (닉네임=deploy-smoke)
+  [32m✓[0m GET /api/deck 200 (포메이션=4-4-2)
+  [32m✓[0m 매치 생성 201 (id=01KZMETE…)
+  [32m✓[0m 킥오프 → 전반 재생 진입(GEN1 소비됨 = executor·runner 결선 정상)
+  [32m✓[0m 전반 스킵 200
+  [32m✓[0m 감독시간 → 후반 재생 진입(GEN2 소비됨)
+  [32m✓[0m **매치 1판 완주** → FINISHED
+  [32m✓[0m 결과 200 (스코어 2:2 · DRAW)
+
+[1m6c) economy override 실효 확인 (파일 존재가 아니라 서버가 그 값을 쓰는가)[0m
+  [32m✓[0m GET /api/admin/economy → source=OVERRIDE
+  [32m✓[0m overrideFilePresent=true
+
+[1m7) 이송 자산 확인 (런북 P5 상당)[0m
+  [32m✓[0m economy.override.json 파일 이송됨 (38562B — 실효 판정은 6c)
+
+[1m격리 재확인[0m
+  [32m✓[0m 라이브·growth 컨테이너 ID·기동시각 **완전 동일** · 라이브 볼륨 무변경
+
+[1m결과[0m
+[32mOK[0m  런북 P2~P3 가 같은 머신에서 재현됐다. 정리: bash infra/rehearse-move.sh --clean
+
+go exit=0   (파이프 밖에서 측정 — tee 의 상태가 아니다)

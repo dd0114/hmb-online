@@ -298,10 +298,11 @@ bash infra/status.sh
 ## 2. 처음부터 띄우기 / 머신 재부팅 후
 
 ```bash
-cd ~/spider10/hmb-online/infra
+cd "$(git rev-parse --show-toplevel)/infra"   # ⚠️ 체크아웃 경로를 박지 않는다(#472 — 새 머신엔 ~/spider10 이 없다)
 
 # 1) 시크릿 (최초 1회만 — .env 없으면)
-cp -n .env.example .env && sed -i '' "s/^SERVANT_TOKEN=.*/SERVANT_TOKEN=$(openssl rand -hex 32)/" .env
+. lib/portable.sh   # sed_i — `sed -i ''` 는 BSD 전용이라 리눅스에서 첫 표현식을 삼킨다(#472 AC1.1)
+cp -n .env.example .env && sed_i "s/^SERVANT_TOKEN=.*/SERVANT_TOKEN=$(openssl rand -hex 32)/" .env
 
 # 2) 백엔드 3프로세스 중 도커 2개 (java + runner)
 docker compose up -d --build java runner
@@ -310,7 +311,7 @@ until [ "$(docker inspect -f '{{.State.Health.Status}}' hmb-java)" = healthy ]; 
 # 3) AI 실행기 (모드 A — 호스트 구독 CLI). 백그라운드로.
 #    ⚠️ AI_CONCURRENCY=1 + AI_JOB_TIMEOUT_MS=240000 권장 — concurrency=2 는 SQLite lease 경합으로
 #       매치 FAILED 유발(#166/#72 실측), 전술생성이 120s 넘어 타임아웃되기도. (근본해결은 #166 도메인.)
-cd ~/spider10/hmb-online
+cd "$(git rev-parse --show-toplevel)"
 source infra/.env
 JAVA_URL=http://localhost:18080 SERVANT_TOKEN="$SERVANT_TOKEN" AI_EXECUTOR=claude-code AI_MODEL=sonnet \
   AI_CONCURRENCY=1 AI_JOB_TIMEOUT_MS=240000 \
@@ -439,7 +440,7 @@ rm ~/.local/state/hmb/heal.conf                                     # 회선 안
 # 백엔드 허용 오리진 확인
 docker exec hmb-java sh -c 'echo $HMB_CORS_ALLOWEDORIGINS'   # → https://hmb-online.pages.dev 여야 함
 # 바꿔야 하면
-cd infra && sed -i '' 's|^WEB_ORIGINS=.*|WEB_ORIGINS=https://hmb-online.pages.dev|' .env && docker compose up -d java
+cd infra && . lib/portable.sh && sed_i 's|^WEB_ORIGINS=.*|WEB_ORIGINS=https://hmb-online.pages.dev|' .env && docker compose up -d java
 ```
 
 ---
@@ -618,11 +619,11 @@ docker tag "$(docker inspect hmb-runner --format '{{.Image}}')" hmb/servants:pre
 ```bash
 # 업로드 자산 백업(있을 때만 — 없으면 빈 tar 가 나온다)
 docker run --rm -v hmb-p3-db:/data:ro -v "$HOME/.local/state/hmb/db-backups:/backup" alpine:3.20 \
-  sh -c "tar czf /backup/assets-<태그>-$TS.tgz -C /data notice-assets char-bundles 2>/dev/null || echo '(자산 없음)'"
+  sh -c "tar czf /backup/assets-<태그>-$TS.tgz -C /data notice-assets char-bundles economy.override.json 2>/dev/null || echo '(자산 없음)'"
 
 # 복원
 docker run --rm -v hmb-p3-db:/data -v "$HOME/.local/state/hmb/db-backups:/backup:ro" alpine:3.20 \
-  sh -c "tar xzf /backup/assets-<태그>-$TS.tgz -C /data && chown -R 10001:999 /data/notice-assets /data/char-bundles"
+  sh -c "tar xzf /backup/assets-<태그>-$TS.tgz -C /data && chown -R 10001:999 /data/notice-assets /data/char-bundles /data/economy.override.json"
 ```
 
 **마이그레이션만 있는 일상 배포에는 필요 없다** — 그 배포는 볼륨을 유지하므로 파일이 그대로 있다.
