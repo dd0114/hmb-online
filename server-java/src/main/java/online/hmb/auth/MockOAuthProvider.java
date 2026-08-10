@@ -1,8 +1,11 @@
 package online.hmb.auth;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import online.hmb.common.ApiException;
+import online.hmb.events.BusinessEvent;
+import online.hmb.events.BusinessEventRecorder;
 import online.hmb.common.SqliteErrors;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
@@ -31,11 +34,14 @@ public class MockOAuthProvider implements AuthProvider {
     private final UserOnboardingService onboarding;
     private final AccountLookup accounts;
     private final CredentialGate gate;
+    private final BusinessEventRecorder events;
 
-    public MockOAuthProvider(UserOnboardingService onboarding, AccountLookup accounts, CredentialGate gate) {
+    public MockOAuthProvider(UserOnboardingService onboarding, AccountLookup accounts, CredentialGate gate,
+                             BusinessEventRecorder events) {
         this.onboarding = onboarding;
         this.accounts = accounts;
         this.gate = gate;
+        this.events = events;
     }
 
     @Override
@@ -65,6 +71,11 @@ public class MockOAuthProvider implements AuthProvider {
             // sealed 타입이라 두 경우를 모두 다뤄야 한다. 경합에서 졌으면(다른 요청이 먼저 커밋)
             // 기존 계정 수용은 반드시 관문을 거친다 — 예전엔 이 경로가 검사 없이 통과했다.
             if (result instanceof UserOnboardingService.OnboardingResult.Created created) {
+                // #492: 계정이 **실제로 만들어진** 분기에서만 기록한다 — 아래 경합 패자(AlreadyExists)와
+                // 위 재로그인(existing.isPresent)은 가입이 아니다. 그리고 여기는 createUser 의
+                // 트랜잭션이 **커밋된 뒤**다(그 메서드는 전체가 tx 라 안에 넣으면 가입이 롤백된다).
+                events.record(BusinessEvent.USER_SIGNUP, created.userId(),
+                        () -> Map.of("provider", provider, "nickname", nickname));
                 return new AuthResult(created.userId(), nickname, true);
             }
             AccountLookup.Account raced =

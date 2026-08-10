@@ -18,10 +18,13 @@ public class LeagueController {
 
     private final LeagueService leagueService;
     private final MatchOrchestrator orchestrator;
+    private final online.hmb.events.BusinessEventRecorder events;
 
-    public LeagueController(LeagueService leagueService, MatchOrchestrator orchestrator) {
+    public LeagueController(LeagueService leagueService, MatchOrchestrator orchestrator,
+                            online.hmb.events.BusinessEventRecorder events) {
         this.leagueService = leagueService;
         this.orchestrator = orchestrator;
+        this.events = events;
     }
 
     /**
@@ -38,7 +41,22 @@ public class LeagueController {
      */
     @PostMapping("/api/league/start")
     public LeagueService.LeagueResponse start(@RequestAttribute("userId") String userId) {
+        // #492: 시즌이 **새로 생겼는지**는 호출 전 상태로만 알 수 있다(startSeason 은 멱등이라
+        // 재진입도 같은 모양의 응답을 준다). 맨몸 조회는 계측이 시즌 시작을 실패시킬 수 있으므로
+        // probe 로 감싼다 — 실패하면 "이미 있었다"로 보수적으로 판단해 이벤트를 남기지 않는다.
+        String activeBefore = events.probe(() -> leagueService.activeSeasonIdOrNull(userId), null);
         LeagueService.LeagueResponse response = leagueService.startSeason(userId);
+        // ⚠️ **재진입 분기에서는 기록하지 않는다**(LeagueService:235) — 시즌 화면을 열 때마다
+        //    'league_season_start' 가 쌓이면 "몇 번째 시즌인가"가 이벤트 수로 답해지지 않는다.
+        //    훅이 컨트롤러인 이유는 startSeason 이 **메서드 전체가 트랜잭션**이기 때문이다.
+        LeagueService.LeagueSeason season = response.season();
+        if (season != null && !season.id().equals(activeBefore)) {
+            events.record(online.hmb.events.BusinessEvent.LEAGUE_SEASON_START, userId,
+                    () -> java.util.Map.of(
+                            "seasonId", season.id(),
+                            "seasonNo", season.seasonNo(),
+                            "division", season.division()));
+        }
         orchestrator.prefetchBotBaseInputs(opponentTeamIds(response));
         return response;
     }
@@ -77,9 +95,26 @@ public class LeagueController {
     @PostMapping("/api/league/next-match")
     public ResponseEntity<LeagueService.LeagueNextMatchResponse> nextMatch(
             @RequestAttribute("userId") String userId) {
+        // ⚠️ **픽스처 재사용 분기는 이벤트가 아니다**(LeagueService:300) — 진행 중이던 매치로
+        //    돌아가는 것은 재입장이지 매치 생성이 아니다. 그걸 세면 "몇 판 시작했나"가 새로고침
+        //    횟수를 센다. 생성 여부는 응답 상태(BRIEFING 이면서 처음 만들어진 것)로는 알 수 없으므로
+        //    **호출 전 그 픽스처에 살아 있는 매치가 있었는가**로 가른다.
+        String reusedMatchId = events.probe(() -> leagueService.activeNextFixtureMatchIdOrNull(userId), "?");
         LeagueService.LeagueNextMatchResponse response = leagueService.nextMatch(userId);
         // A 프리페치(#95): 유저팀 A + 봇 A 를 브리핑 진입 즉시 크로스매치 캐시로 enqueue(매치 플로우와 동일).
         orchestrator.prefetchBaseInputs(response.match().id());
+        if (!response.match().id().equals(reusedMatchId)) {
+            LeagueService.LeagueFixture fixture = response.fixture();
+            // 봇 팀 = 픽스처의 유저 팀이 아닌 쪽. 판정 리터럴을 다시 적지 않는다(SoT = LeagueService 상수).
+            String botTeamId = LeagueService.USER_TEAM_ID.equals(fixture.homeTeam())
+                    ? fixture.awayTeam() : fixture.homeTeam();
+            events.record(online.hmb.events.BusinessEvent.MATCH_START, userId, () -> java.util.Map.of(
+                    "mode", online.hmb.events.BusinessEvent.MODE_LEAGUE,
+                    "matchId", response.match().id(),
+                    "botId", botTeamId,
+                    "leagueFixtureId", fixture.id(),
+                    "round", fixture.round()));
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 }

@@ -17,6 +17,8 @@ import online.hmb.common.Hashes;
 import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
 import online.hmb.engine.EngineRunnerClient;
+import online.hmb.events.BusinessEvent;
+import online.hmb.events.BusinessEventRecorder;
 import online.hmb.jobs.AiJobQueue;
 import online.hmb.meta.WalletService;
 import org.slf4j.Logger;
@@ -63,6 +65,8 @@ public class MatchOrchestrator {
     private final RewardBundleService rewardBundleService;
     private final online.hmb.mission.MissionService missionService;
     private final MatchClockService clockService;
+    /** #492 비즈니스 이벤트 — match_finish 는 정산 커밋 **후**에만 기록한다. */
+    private final BusinessEventRecorder eventRecorder;
     private final ObjectMapper objectMapper;
     /** #193 라운드2 — 지시 델타 라우팅 노브(전부 config, 하드코딩 금지). */
     private final boolean deltaEnabled;
@@ -90,6 +94,7 @@ public class MatchOrchestrator {
                              online.hmb.mission.MissionService missionService,
                              MatchClockService clockService,
                              DeckPrewarmService prewarmService,
+                             BusinessEventRecorder eventRecorder,
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
                              @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
@@ -98,6 +103,7 @@ public class MatchOrchestrator {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.prewarmService = prewarmService;
+        this.eventRecorder = eventRecorder;
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
         this.botService = botService;
@@ -753,14 +759,47 @@ public class MatchOrchestrator {
         if (match == null || !MatchService.S_SECOND_HALF.equals(match.state())) {
             return false;
         }
-        return Boolean.TRUE.equals(txRunner.run(() ->
+        // #492 match_finish — 결과·득점·지급 포인트는 **트랜잭션 안에서만** 정해지므로 값을 sink 로
+        // 받아 두고, 기록은 커밋이 끝난 <b>뒤</b>에 한다. 이게 이 웨이브에서 유일한 "커밋 후" 훅이다
+        // (다른 6종은 전부 비-tx 경계에 있다).
+        // ⚠️ 여기서 events.record 를 람다 **안**으로 옮기면 기록 실패가 정산을 통째로 롤백시킨다 —
+        //    보상·리그 픽스처·레이팅·성장까지 같이 되돌아간다. 계약 = BusinessEventHookPlacementTest.
+        FinishOutcome[] sink = new FinishOutcome[1];
+        boolean settled = Boolean.TRUE.equals(txRunner.run(() ->
                 finishMatch(match, nvl(match.scoreH2Home()), nvl(match.scoreH2Away()),
-                        MatchService.S_SECOND_HALF, boundary)));
+                        MatchService.S_SECOND_HALF, boundary, sink)));
+        if (settled && sink[0] != null) {
+            FinishOutcome outcome = sink[0];
+            eventRecorder.record(BusinessEvent.MATCH_FINISH, match.userId(), () -> Map.of(
+                    "mode", outcome.mode(),
+                    "matchId", match.id(),
+                    "result", outcome.result(),
+                    "goalsFor", outcome.goalsFor(),
+                    "goalsAgainst", outcome.goalsAgainst(),
+                    "pointsAwarded", outcome.pointsAwarded()));
+        }
+        return settled;
+    }
+
+    /**
+     * 정산이 <b>실제로 일어났을 때</b>의 결과 — {@code match_finish} 이벤트(#492)의 재료.
+     *
+     * <p>왜 스냅샷을 따로 나르나: 이 값들은 CAS 를 통과한 트랜잭션 안에서만 확정되는데, 기록은
+     * 커밋 후에 해야 한다(위 참조). 커밋 후 DB 를 다시 읽는 방법도 있지만 지급 포인트는 행이 아니라
+     * 원장에 흩어져 있어 재조회가 정산 규칙을 <b>두 번째로 구현</b>하게 된다.
+     */
+    private record FinishOutcome(String mode, String result, int goalsFor, int goalsAgainst,
+                                 long pointsAwarded) {
     }
 
     private boolean finishMatch(MatchService.MatchRow match, int h2ScoreHome, int h2ScoreAway,
                                 String fromState) {
         return finishMatch(match, h2ScoreHome, h2ScoreAway, fromState, null);
+    }
+
+    private boolean finishMatch(MatchService.MatchRow match, int h2ScoreHome, int h2ScoreAway,
+                                String fromState, String boundary) {
+        return finishMatch(match, h2ScoreHome, h2ScoreAway, fromState, boundary, null);
     }
 
     /**
@@ -771,7 +810,7 @@ public class MatchOrchestrator {
      * 후자는 {@code boundary}(그 창의 phase_ends_at)까지 CAS 조건에 넣어 경계 재현·경합 안전을 지킨다.
      */
     private boolean finishMatch(MatchService.MatchRow match, int h2ScoreHome, int h2ScoreAway,
-                                String fromState, String boundary) {
+                                String fromState, String boundary, FinishOutcome[] sink) {
         // totalHome/totalAway = 엔진(=픽스처) home/away 관점. score_home/away 컬럼도 이 관점으로 저장.
         int totalHome = nvl(match.scoreH1Home()) + h2ScoreHome;
         int totalAway = nvl(match.scoreH1Away()) + h2ScoreAway;
@@ -849,6 +888,10 @@ public class MatchOrchestrator {
         // #405 W2b §2.9: 보상 봉투 — 정산이 <b>끝난 뒤</b> 그 결과를 한 장으로 묶는다(멱등).
         // 표시용이므로 실패해도 정산을 되돌리지 않는다(RewardBundleService 내부에서 삼킨다).
         createRewardBundle(match, awarded[0]);
+        // #492: 값만 담아 나간다(쓰기 없음). 실제 기록은 settleFinishedIfDue 가 커밋 후에 한다.
+        if (sink != null) {
+            sink[0] = new FinishOutcome(modeOf(match), result, userGoals, oppGoals, awarded[0]);
+        }
         return true;
     }
 

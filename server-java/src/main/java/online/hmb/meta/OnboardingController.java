@@ -20,11 +20,14 @@ public class OnboardingController {
 
     private final OnboardingService onboardingService;
     private final online.hmb.match.DeckPrewarmService prewarmService;
+    private final online.hmb.events.BusinessEventRecorder events;
 
     public OnboardingController(OnboardingService onboardingService,
-                                online.hmb.match.DeckPrewarmService prewarmService) {
+                                online.hmb.match.DeckPrewarmService prewarmService,
+                                online.hmb.events.BusinessEventRecorder events) {
         this.onboardingService = onboardingService;
         this.prewarmService = prewarmService;
+        this.events = events;
     }
 
     @GetMapping("/api/me/starter-grant")
@@ -37,6 +40,13 @@ public class OnboardingController {
     @PostMapping("/api/me/tutorial-complete")
     public OnboardingService.Result completeTutorial(@RequestAttribute("userId") String userId) {
         OnboardingService.Result result = onboardingService.complete(userId);
+        // #492: 훅이 **컨트롤러**인 이유 = OnboardingService.complete 는 메서드 전체가 트랜잭션이라
+        // (덱 지급이 그 안에서 일어난다) 안에 넣으면 기록 실패가 덱 지급을 롤백시킨다.
+        // ⚠️ 이 엔드포인트는 멱등이라 여러 번 불릴 수 있고, 그때마다 1행을 남긴다 —
+        //    "완료를 눌렀다"는 사실 자체가 이벤트이고, 덱이 실제로 생겼는지는 grantedDeck 이 말한다.
+        //    퍼널의 tutorial 칸은 "1건 이상"이라 재호출에 영향받지 않는다.
+        events.record(online.hmb.events.BusinessEvent.TUTORIAL_COMPLETE, userId,
+                () -> java.util.Map.of("grantedDeck", result.deckGranted()));
         if (result.deckGranted()) {
             // 가입 직후 첫 경기가 곧바로 이어지는 경로다 — 덱을 받은 그 순간 A 를 돌려두지 않으면
             // 신규 유저는 항상 풀생성 폴백을 본다(#215 W1 의 오픈베타 테스터 케이스).

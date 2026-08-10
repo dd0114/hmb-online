@@ -16,13 +16,16 @@ public class DeckController {
     private final DeckService deckService;
     private final MatchLockService lockService;
     private final online.hmb.match.DeckPrewarmService prewarmService;
+    private final online.hmb.events.BusinessEventRecorder events;
 
     public DeckController(DeckService deckService,
                           MatchLockService lockService,
-                          online.hmb.match.DeckPrewarmService prewarmService) {
+                          online.hmb.match.DeckPrewarmService prewarmService,
+                          online.hmb.events.BusinessEventRecorder events) {
         this.deckService = deckService;
         this.lockService = lockService;
         this.prewarmService = prewarmService;
+        this.events = events;
     }
 
     /**
@@ -55,7 +58,18 @@ public class DeckController {
         // 원장이라, 진행 중에 바꾸면 화면(현재 덱)과 매치 스냅샷이 소리 없이 어긋난다.
         // BRIEFING 은 잠그지 않는다 — 킥오프 재캡처(AC-B2)가 명시적으로 지원하는 창이다.
         lockService.assertNotLocked(userId, "deck.replace");
+        // #492: "이번에 새로 만든 덱인가"는 저장 **전**에만 알 수 있다. 맨몸으로 조회하면 계측이
+        // 본 저장을 실패시킬 수 있으므로 recorder.probe 로 감싼다(실패·계측 off 면 기본값).
+        boolean existedBefore = events.probe(() -> deckService.hasActiveDeck(userId), true);
         DeckResponse saved = deckService.replaceDeck(userId, request);
+        // 훅이 **컨트롤러**인 이유 = DeckService.replaceDeck 은 OnboardingService.complete 의
+        // 트랜잭션 안에서도 불린다(튜토리얼 덱 지급). 서비스 안에 훅을 두면 그 경로에서 기록이
+        // tx 안으로 들어가 실패 시 덱 지급이 롤백된다. 여기라면 어느 경로에서도 tx 밖이다.
+        events.record(online.hmb.events.BusinessEvent.DECK_SAVE, userId, () -> java.util.Map.of(
+                "source", "deck",
+                "formation", saved.formation(),
+                "slotCount", saved.slots() == null ? 0 : saved.slots().size(),
+                "created", !existedBefore));
         // 저장이 커밋된 뒤 AI 인풋을 미리 돌린다(#215 W2) — 응답을 막지 않도록 큐잉만 하고 끝낸다.
         // 컨트롤러에서 부르는 건 MatchController 의 prefetchBaseInputs 와 같은 자리·같은 이유다.
         prewarmService.onDeckSaved(userId);

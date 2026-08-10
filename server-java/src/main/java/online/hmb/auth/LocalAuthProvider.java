@@ -2,7 +2,10 @@ package online.hmb.auth;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.Map;
 import online.hmb.common.ApiException;
+import online.hmb.events.BusinessEvent;
+import online.hmb.events.BusinessEventRecorder;
 import online.hmb.common.SqliteErrors;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
@@ -38,16 +41,19 @@ public class LocalAuthProvider implements AuthProvider {
 
     private final UserOnboardingService onboarding;
     private final AccountLookup accounts;
+    private final BusinessEventRecorder events;
     private final int passwordMinLength;
     private final int passwordMaxLength;
 
     // 기본값(:4 / :64)을 둬서 키 누락 배포에도 컨텍스트가 뜬다 — 운영 값은 application.yml 이 SoT.
     public LocalAuthProvider(UserOnboardingService onboarding,
                              AccountLookup accounts,
+                             BusinessEventRecorder events,
                              @Value("${hmb.auth.local.password-min-length:4}") int passwordMinLength,
                              @Value("${hmb.auth.local.password-max-length:64}") int passwordMaxLength) {
         this.onboarding = onboarding;
         this.accounts = accounts;
+        this.events = events;
         this.passwordMinLength = passwordMinLength;
         this.passwordMaxLength = passwordMaxLength;
     }
@@ -104,6 +110,11 @@ public class LocalAuthProvider implements AuthProvider {
         // 이 요청이 실제로 만든 계정만 토큰을 받는다. 경합 패자(AlreadyExists)는 남의 계정이므로 409 —
         // sealed 타입이라 "기존 계정을 성공으로 반환"하는 선택지가 아예 없다.
         if (result instanceof UserOnboardingService.OnboardingResult.Created created) {
+            // #492: 계정이 **실제로 만들어진** 이 자리에서만 기록한다(경합 패자·재로그인은 가입이 아니다).
+            // ⚠️ 훅이 여기인 이유 = UserOnboardingService.createUser 는 **메서드 전체가 트랜잭션**이라
+            //    그 안에 넣으면 기록 실패가 가입을 롤백시킨다. 이 줄은 이미 커밋된 뒤다.
+            events.record(BusinessEvent.USER_SIGNUP, created.userId(),
+                    () -> Map.of("provider", PROVIDER, "nickname", nickname));
             return new AuthResult(created.userId(), nickname, true);
         }
         throw AuthErrors.duplicateNickname();
