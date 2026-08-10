@@ -29,9 +29,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ConfigController {
 
     private final EconomyService economyService;
+    private final AiModeService aiModeService;
 
-    public ConfigController(EconomyService economyService) {
+    public ConfigController(EconomyService economyService, AiModeService aiModeService) {
         this.economyService = economyService;
+        this.aiModeService = aiModeService;
     }
 
     @GetMapping("/api/config")
@@ -40,7 +42,8 @@ public class ConfigController {
         Economy economy = economyService.snapshot().economy().orElse(null);
         return new ConfigResponse(currencies,
                 economy == null ? null : shopOf(economy),
-                economy == null ? null : new Grants(economy.initialPoints(), economy.initialGems()));
+                economy == null ? null : new Grants(economy.initialPoints(), economy.initialGems()),
+                aiModeService.current());
     }
 
     private static ShopConfig shopOf(Economy e) {
@@ -63,7 +66,13 @@ public class ConfigController {
         return new ShopConfig(gacha, dice, topup);
     }
 
-    public record ConfigResponse(List<Currency> currencies, ShopConfig shop, Grants grants) {
+    /**
+     * {@code ai} 는 <b>additive</b> 다 (#471 AC3) — 구 클라이언트는 모르는 필드를 무시하고 그대로 돈다.
+     * 이 엔드포인트는 인증 예외(공개)라 <b>로그인 전 시작 화면</b>에서도 읽힌다: hero 요구의
+     * "게임시작할때 안내말만" 이 성립하는 자리가 여기다.
+     */
+    public record ConfigResponse(List<Currency> currencies, ShopConfig shop, Grants grants,
+            AiModeService.AiModeView ai) {
     }
 
     /**

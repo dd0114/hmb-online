@@ -82,4 +82,31 @@ export class JavaClient {
       throw new Error(`complete 실패(job=${jobId}): HTTP ${res.status} ${(await res.text()).slice(0, 200)}`);
     }
   }
+
+  /**
+   * 실효 AI 모드 자기신고(#471 AC3) — 기동 직후 1회 + 주기 하트비트.
+   * **던지지 않는다**: 신고 실패는 안내 배너 하나가 늦는 일이고, 그걸로 실행기가 죽으면 게임이 죽는다.
+   * 성공 여부만 돌려주고 로그는 호출부가 한다.
+   */
+  async reportAiMode(body: AiModeReport): Promise<boolean> {
+    try {
+      const res = await this.fetchImpl(`${this.baseUrl}/internal/ai-mode`, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ ...body, workerId: this.workerId }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** `/internal/ai-mode` 요청 바디. 사유 어휘 = executor 의 `AI_MODE_REASONS` 단일 출처. */
+export interface AiModeReport {
+  /** "live" | "stub" — 서버는 이 값을 그대로 `/api/config` 로 노출한다(executor kind 이름을 모른다). */
+  mode: string;
+  reason: string;
+  wanted: string;
+  effective: string;
 }

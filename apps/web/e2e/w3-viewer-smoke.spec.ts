@@ -1,6 +1,7 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { loginGuestAndSettleStarter } from "./starter-login";
+import { passFlowBridge } from "./flow-bridge";
 import { mkdirSync } from "node:fs";
-import { skipSplash } from "./splash-mock";
 
 /**
  * W3 뷰어 통합 스모크 (AC-W5) — 실동작 증적용. 풀스택(server-java + ts-servants) 이 떠 있을 때만
@@ -70,7 +71,7 @@ async function assertViewerRendered(page: Page, half: 1 | 2): Promise<{ score: s
   return { score, tick: info.cur.tick };
 }
 
-test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + 스크린샷", async ({ page, request }) => {
+test("W3 smoke: 시각 재생 탭이 감독시간에 실제 렌더 + 종료화면까지 완주 · 스크린샷", async ({ page, request }) => {
   test.skip(!(await apiLive(request)), "server-java/ts-servants 미기동");
   test.setTimeout(600_000); // 라이브 executor 2분/하프 + 여유
   mkdirSync(SMOKE_DIR, { recursive: true });
@@ -78,15 +79,13 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   const nickname = `w3smoke_${Date.now().toString(36)}`;
 
   // 신 /login: provider stage(게스트) → 닉네임 → "계속" (AC-A1 개편)
-  await skipSplash(page);
-  await page.goto("/login");
-  await page.getByTestId("provider-guest").click();
-  await page.getByPlaceholder("2~16자").fill(nickname);
-  await page.getByRole("button", { name: "계속" }).click();
-  await page.getByRole("button", { name: "확인" }).click();
-  await expect(page).toHaveURL(/\/home$/);
+  await loginGuestAndSettleStarter(page, nickname);
 
   expect(await seedDeck(page)).toBe(true);
+  // ⚠️ 덱을 **fetch 로** 심었으므로 클라 캐시는 아직 "덱 없음"이다 — 그대로 [게임 시작]을 누르면
+  //    `현재 덱이 없습니다` 다이얼로그가 떠서 /game 으로 못 간다(실서버 콜드에서 실측, #471 AC4).
+  //    한 번 새로 열어 서버 상태를 다시 읽게 한다.
+  await page.goto("/home");
 
   // #286: 홈 [게임 시작] → 게임 탭 → 연습 경기(mode-practice). 모드 모달은 소멸했다.
   await page.getByTestId("home-tile-game").click();
@@ -99,6 +98,9 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
 
   // === H1_BREAK: 전반 시각 재생 ===
   await expect(page.getByTestId("halftime-panel")).toBeVisible({ timeout: 300_000 });
+  // #284 이후 무대는 **`경기장면` 탭 안**이다(StageShell 정보 패널 tablist) — 감독시간 기본 탭은
+  // `감독` 이라 탭을 고르지 않으면 뷰어가 렌더되지 않는다. 서버 없으면 skip 되던 탓에 안 잡혔다(#471 AC4).
+  await page.getByTestId("stage-tab-stage").click();
   await expect(page.getByTestId("match-viewer-half1")).toBeVisible();
   // 무대가 곧 시각 재생이다(#169 S1: 모드 탭 제거 — 폴백일 때만 텍스트 타임라인으로 바뀐다).
   await expect(page.getByTestId("viewer-visual-half1")).toBeVisible();
@@ -108,6 +110,9 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
     path: `${SMOKE_DIR}w3-half1-visual.png`,
   });
   await page.screenshot({ path: `${SMOKE_DIR}w3-half1-page.png`, fullPage: false });
+  // 확인했으면 **감독 탭으로 돌아온다** — 교체·지시 UI 는 그쪽에 있다. 무대 탭에 남아 있으면
+  // `halftime-mode-sub` 가 DOM 에 없어 테스트 타임아웃까지 매달린다(실측, #471 AC4).
+  await page.getByTestId("stage-tab-halftime").click();
 
   // 하프타임 교체 1건 → 후반 시작
   // 7) 하프타임 — 교체 1건 + 추가 프롬프트 → 후반 시작
@@ -137,19 +142,25 @@ test("W3 smoke: 시각 재생 탭이 H1_BREAK·FINISHED 에서 실제 렌더 + �
   await page.getByTestId(`token-${inId}`).click();
   await expect(page.getByTestId("sub-chip-0")).toBeVisible();
   await page.getByTestId("halftime-mode-say").click();
-  await page.getByTestId("halftime-prompt-team").click().catch(() => {}); // 선수 선택 상태면 팀으로
-  await page.getByTestId("halftime-team-prompt").fill("후반은 점유율 위주로 안정적으로");
+  // ⚠️ 대상 전환 버튼은 없을 수 있다(선수 선택 상태일 때만) → **짧은 타임아웃**을 준다.
+  //    `.click().catch()` 만 쓰면 actionTimeout 미설정이라 테스트 타임아웃까지 매달린다.
+  await page.getByTestId("halftime-prompt-team").click({ timeout: 3_000 }).catch(() => {});
+  await page.getByTestId("editor-team-prompt").fill("후반은 점유율 위주로 안정적으로");
   await page.getByTestId("resume-button").click();
 
   // === FINISHED: 후반 시각 재생 ===
   await expect(page.getByTestId("result-page")).toBeVisible({ timeout: 300_000 });
-  await expect(page.getByTestId("match-viewer-half2")).toBeVisible();
-  await expect(page.getByTestId("viewer-visual-half2")).toBeVisible();
-  const h2 = await assertViewerRendered(page, 2);
-  console.log(`[smoke] half2 viewer rendered — score ${h2.score}, tick ${h2.tick}`);
-  await page.getByTestId("viewer-canvas-half2").screenshot({
-    path: `${SMOKE_DIR}w3-half2-visual.png`,
-  });
+  // ⚠️ **종료 화면에는 재생 무대가 없다.** 탭이 `결과/통계/선수/로그` 뿐이고 `경기장면` 이 없으며
+  //    (`stage-state.test.ts:425`) `match-viewer-half*` 가 DOM 에 아예 안 뜬다(실측). 돌려보기 도구를
+  //    결과 화면에 켜지 않는다는 것이 현행 설계다(`MatchViewer.tsx:59`). 그래서 여기서는 결과 패널로
+  //    단언한다 — 없는 것을 있다고 적어 두면 다음 사람이 그 문장을 근거로 잘못 고친다.
+  //
+  //    ⚠️ 무대 탭은 `statePanel === "halftime"` 일 때만 붙는다(`stage-state.ts:496`) — 즉
+  //    SECOND_HALF·FINISHED 어디에도 `viewer-visual-half2` 는 없다. 구 코드는 그것을 단언하고
+  //    캔버스를 찍으려 했고, 이 스펙이 서버 없으면 skip 되던 탓에 그 드리프트가 여태 안 잡혔다.
+  //    "종료 화면에 돌려보기를 둘 것인가"는 게임설계 질문이라 여기서 정하지 않는다(#471 에 기록).
+  await expect(page.getByTestId("final-score")).toBeVisible();
+  await page.screenshot({ path: `${SMOKE_DIR}w3-result-page.png`, fullPage: false });
 
   // === 모바일(390px) 가로 오버플로 0 확인 ===
   await page.setViewportSize({ width: 390, height: 844 });

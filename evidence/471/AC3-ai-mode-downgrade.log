@@ -1,0 +1,150 @@
+# AC3 — claude 미로그인 시 스텁 강등 (안내만 하고 경기는 완주한다)
+# 커맨드: 팔A `HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke`
+#         팔B CLI 부재 · 팔C 로그아웃(가짜 프로브) — CLAUDE_BIN/HMB_LOCAL_CLAUDE_BIN 을 바꿔 끼운다
+# 실행: 2026-08-10 12:57:26 KST · HEAD 10f3ed85 · 워킹트리 변경 0 건(0=clean, evidence 제외)
+# 팔C 프로브 실물: `evidence/471/fake-claude-logged-out.sh` (촬영 시 /tmp/fakebin/claude 로 복사해 사용 — 동일 파일)
+# ⚠️ 헤더가 없으면 이 로그가 몇 세대 전 코드로 찍혔는지 아무도 모른다(#471 패널 S3 반려).
+#
+# ⚠️ 스코프 — 이 AC 가 증명하는 것은 hero 요구 ③ 의 문자 그대로 **게임 시작 시점**(부팅
+#    프리플라이트) 판정이다. 부팅 뒤 **플레이 중에** claude 세션이 만료되는 엣지(거짓 'live'
+#    배너 · 매치 FAILED)는 실재하는 결함이지만 이 AC 밖이고 **#488 로 분리**했다.
+#    resilience 의 AUTH-영구 분류(resilience.test.ts:45)는 의도된 계약이라 건드리지 않는다.
+
+### 팔 A — claude 로그인된 상태 · 희망 claude-code (기대: live/logged-in)
+# 실행 2026-08-10 12:57:26 KST
+$ HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
+
+
+[1m== 전제 점검[0m
+[32m   ✓ node v20.19.6 (요구 20.19.6)[0m
+[32m   ✓ npm 10.8.2[0m
+[32m   ✓ JDK 21.0.8 (JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home)[0m
+[32m   ✓ claude 로그인됨 (logged-in) → 라이브 AI[0m
+   포트: java 31080 · runner 31790 · web 31173  (HMB_LOCAL_*_PORT 로 변경)
+[32m   ✓ 로컬 빌드 전제 충족[0m
+
+[1m== 엔진 러너 :31790[0m
+[32m   ✓ 러너 준비[0m
+
+[1m== 권위 서버 빌드 + 기동 :31080[0m
+[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-U8vf/hmb.db)[0m
+
+[1m== AI 실행기 (희망 모드: claude-code)[0m
+[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-U8vf/executor.log)[0m
+[32m   ✓ 실효 AI 모드: live (logged-in) — 선수 프롬프트가 경기에 반영된다[0m
+
+[1m== 가입 → 덱 → 매치[0m
+[32m   ✓ 가입 local1786334258[0m
+[32m   ✓ 덱 저장 (선발 11 + 벤치 2)[0m
+[32m   ✓ 킥오프 01KZMX39FMWQJSTPX5N4F6P840[0m
+
+[1m== 관찰 (재생 창은 스킵 API 로 당긴다)[0m
+   t+000s  GEN1
+   t+056s  FIRST_HALF
+   ⏩ FIRST_HALF 재생 창 당김
+   t+056s  HALFTIME
+   t+060s  SECOND_HALF
+   ⏩ SECOND_HALF 재생 창 당김
+   t+061s  FINISHED
+[32m   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME SECOND_HALF FINISHED[0m
+
+[32mPASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다[0m
+scripts/local-stack.sh: line 81: 20427 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81: 20877 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81: 21336 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-U8vf
+
+# 팔 A 종료코드 0 · 소요 74초
+
+### 팔 B — claude CLI 부재 · 희망 claude-code (기대: stub/cli-missing + 매치 완주)
+# 실행 2026-08-10 12:58:40 KST
+$ CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_CLAUDE_BIN=/nonexistent/claude HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
+
+
+[1m== 전제 점검[0m
+[32m   ✓ node v20.19.6 (요구 20.19.6)[0m
+[32m   ✓ npm 10.8.2[0m
+[32m   ✓ JDK 21.0.8 (JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home)[0m
+[33m   ! claude CLI 없음 (cli-missing) → 스텁 엔진으로 강등. 경기는 정상 진행된다[0m
+   포트: java 31080 · runner 31790 · web 31173  (HMB_LOCAL_*_PORT 로 변경)
+[32m   ✓ 로컬 빌드 전제 충족[0m
+
+[1m== 엔진 러너 :31790[0m
+[32m   ✓ 러너 준비[0m
+
+[1m== 권위 서버 빌드 + 기동 :31080[0m
+[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-cetc/hmb.db)[0m
+
+[1m== AI 실행기 (희망 모드: claude-code)[0m
+[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-cetc/executor.log)[0m
+[33m   ! 실효 AI 모드: stub (cli-missing) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체[0m
+
+[1m== 가입 → 덱 → 매치[0m
+[32m   ✓ 가입 local1786334330[0m
+[32m   ✓ 덱 저장 (선발 11 + 벤치 2)[0m
+[32m   ✓ 킥오프 01KZMX5FCENTQTC5QN6759EFJK[0m
+
+[1m== 관찰 (재생 창은 스킵 API 로 당긴다)[0m
+   t+000s  GEN1
+   t+001s  FIRST_HALF
+   ⏩ FIRST_HALF 재생 창 당김
+   t+002s  HALFTIME
+   t+005s  SECOND_HALF
+   ⏩ SECOND_HALF 재생 창 당김
+   t+006s  FINISHED
+[32m   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME SECOND_HALF FINISHED[0m
+
+[32mPASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다[0m
+scripts/local-stack.sh: line 81: 30163 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81: 30268 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81: 30741 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-cetc
+
+# 팔 B 종료코드 0 · 소요 17초
+
+### 팔 C — claude 로그아웃 · 희망 claude-code (기대: stub/logged-out + 매치 완주) — hero 요구 ③ 문자 그대로
+# 실행 2026-08-10 12:58:57 KST
+$ CLAUDE_BIN=/tmp/fakebin/claude HMB_LOCAL_CLAUDE_BIN=/tmp/fakebin/claude HMB_LOCAL_AI=claude-code bash scripts/local-stack.sh smoke
+
+
+[1m== 전제 점검[0m
+[32m   ✓ node v20.19.6 (요구 20.19.6)[0m
+[32m   ✓ npm 10.8.2[0m
+[32m   ✓ JDK 21.0.8 (JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home)[0m
+[33m   ! claude 로그인 안 됨 (logged-out) → 스텁 엔진으로 강등. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체된다[0m
+   포트: java 31080 · runner 31790 · web 31173  (HMB_LOCAL_*_PORT 로 변경)
+[32m   ✓ 로컬 빌드 전제 충족[0m
+
+[1m== 엔진 러너 :31790[0m
+[32m   ✓ 러너 준비[0m
+
+[1m== 권위 서버 빌드 + 기동 :31080[0m
+[32m   ✓ 권위 서버 준비 (DB /tmp/hmb-local-stack-xkhU/hmb.db)[0m
+
+[1m== AI 실행기 (희망 모드: claude-code)[0m
+[32m   ✓ 실행기 기동 (로그 /tmp/hmb-local-stack-xkhU/executor.log)[0m
+[33m   ! 실효 AI 모드: stub (logged-out) — 스태틱 엔진. 경기는 정상 진행되고 AI 전술 생성만 결정론 대체[0m
+
+[1m== 가입 → 덱 → 매치[0m
+[32m   ✓ 가입 local1786334348[0m
+[32m   ✓ 덱 저장 (선발 11 + 벤치 2)[0m
+[32m   ✓ 킥오프 01KZMX613Q9C659FRBFS168WKM[0m
+
+[1m== 관찰 (재생 창은 스킵 API 로 당긴다)[0m
+   t+000s  GEN1
+   t+001s  FIRST_HALF
+   ⏩ FIRST_HALF 재생 창 당김
+   t+002s  HALFTIME
+   t+005s  GEN2
+   t+006s  SECOND_HALF
+   ⏩ SECOND_HALF 재생 창 당김
+   t+007s  FINISHED
+[32m   ✓ 관찰된 상태: GEN1 FIRST_HALF HALFTIME GEN2 SECOND_HALF FINISHED[0m
+
+[32mPASS — 클론 하나에서 빌드·기동·가입·덱·매치 완주까지 돌았다[0m
+scripts/local-stack.sh: line 81: 31639 Terminated: 15          ( cd "$ROOT" && RUNNER_PORT=$RUNNER_PORT npm run runner --workspace=@hmb/server > "$TMP/runner.log" 2>&1 )
+scripts/local-stack.sh: line 81: 31839 Terminated: 15          ( cd "$ROOT/server-java" && java -Dserver.port="$JAVA_PORT" -Dhmb.db.path="$TMP/hmb.db" -Dhmb.servant.engine-runner-url="http://localhost:$RUNNER_PORT" -Dhmb.servant.internal-token="$SERVANT_TOKEN_VALUE" -Dhmb.cors.allowed-origins="$CORS_ORIGINS" ${clock[@]+"${clock[@]}"} ${extra[@]+"${extra[@]}"} -jar "$jar" > "$TMP/java.log" 2>&1 )
+scripts/local-stack.sh: line 81: 32586 Terminated: 15          ( cd "$ROOT" && AI_EXECUTOR="$want" JAVA_URL="$BASE" SERVANT_TOKEN="$SERVANT_TOKEN_VALUE" npm run executor --workspace=@hmb/server > "$TMP/executor.log" 2>&1 )
+로그: /tmp/hmb-local-stack-xkhU
+
+# 팔 C 종료코드 0 · 소요 19초

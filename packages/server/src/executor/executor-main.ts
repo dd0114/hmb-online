@@ -3,6 +3,13 @@ import { JavaClient } from "./java-client.js";
 import { KINDS, type AiJobKind, type ExecutorJob, type KindSpec } from "./kinds.js";
 import { createResilientExecutor, type AiExecutor } from "./executor.js";
 import { claudeCodeAuthSelfCheck } from "./executors/claude-code.js";
+import {
+  resolveAiMode,
+  createClaudeAuthProbe,
+  describeAiMode,
+  type AiModeDecision,
+  type AuthProbe,
+} from "./ai-mode.js";
 import { CacheMetrics, type JobUsage } from "./metrics.js";
 
 /**
@@ -168,6 +175,26 @@ export function parseConcurrency(raw: string | undefined): number {
 const isMainModule =
   process.argv[1] !== undefined && import.meta.url === pathToFileURL(process.argv[1]).href;
 
+/**
+ * 기동 프리플라이트(#471 AC3) — 희망 모드가 claude-code 인데 로그인이 없으면 **스텁으로 강등**한다.
+ * `createResilientExecutor` 가 `process.env.AI_EXECUTOR` 를 다시 읽으므로 **실효 값을 env 에 되쓴다**
+ * (fallback executor 도 같은 env 를 본다 — 강등 후 라이브로 새는 경로를 남기지 않는다).
+ */
+export async function preflightAiMode(wanted: string, probe?: AuthProbe): Promise<AiModeDecision> {
+  const decision = await resolveAiMode(wanted, probe ?? createClaudeAuthProbe());
+  process.env["AI_EXECUTOR"] = decision.effective;
+  if (decision.downgraded) {
+    process.env["AI_FALLBACK_EXECUTOR"] = decision.effective;
+    console.warn(`[ai-executor] ⚠️ ${describeAiMode(decision)}`);
+  } else {
+    console.log(`[ai-executor] ${describeAiMode(decision)}`);
+  }
+  return decision;
+}
+
+/** 실효 모드 자기신고 — 부팅 1회 + 하트비트. Java 가 TTL 을 넘기면 `unknown` 으로 되돌리므로 갱신이 필요하다. */
+export const AI_MODE_HEARTBEAT_MS = 60_000;
+
 if (isMainModule) {
   const EXECUTOR_KIND = process.env["AI_EXECUTOR"] ?? "stub";
   prepareExecutorEnv(EXECUTOR_KIND);
@@ -180,6 +207,21 @@ if (isMainModule) {
 
   if (!TOKEN) console.warn("[ai-executor] ⚠️ SERVANT_TOKEN 미설정 — Java 가 401 을 줄 수 있음.");
 
+  // 프리플라이트 → 실효 모드로 executor 를 만든다. 신고 실패는 로그만(게임을 막지 않는다).
+  const client0 = new JavaClient({ baseUrl: JAVA_URL, token: TOKEN, workerId: WORKER_ID });
+  const decision = await preflightAiMode(EXECUTOR_KIND);
+  const report = async (): Promise<void> => {
+    const ok = await client0.reportAiMode({
+      mode: decision.mode,
+      reason: decision.reason,
+      wanted: decision.wanted,
+      effective: decision.effective,
+    });
+    if (!ok) console.warn("[ai-executor] AI 모드 신고 실패 — 웹 안내가 '확인 중'으로 보일 수 있음(재시도됨).");
+  };
+  await report();
+  setInterval(() => void report(), AI_MODE_HEARTBEAT_MS).unref();
+
   const metrics = new CacheMetrics();
   const usageByJob = new Map<string, JobUsage>();
   const executor = createResilientExecutor({
@@ -188,8 +230,7 @@ if (isMainModule) {
       metrics.recordUsage(u);
     },
   });
-  const client = new JavaClient({ baseUrl: JAVA_URL, token: TOKEN, workerId: WORKER_ID });
-  const loop = new ExecutorLoop(client, executor, {
+  const loop = new ExecutorLoop(client0, executor, {
     pollWaitMs: POLL_WAIT_MS,
     concurrency: CONCURRENCY,
     takeUsage: (id) => {
@@ -204,7 +245,7 @@ if (isMainModule) {
   process.on("SIGTERM", () => stop.abort());
 
   console.log(
-    `[ai-executor] java=${JAVA_URL} workerId=${WORKER_ID} executor=${EXECUTOR_KIND} concurrency=${CONCURRENCY}`,
+    `[ai-executor] java=${JAVA_URL} workerId=${WORKER_ID} executor=${decision.effective} concurrency=${CONCURRENCY}`,
   );
   void loop.run(stop.signal).then(() => {
     console.log(metrics.format());
