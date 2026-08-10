@@ -1,31 +1,31 @@
 # AC2 — README ↔ 스크립트 ↔ 버전 SoT 싱크 계약 (9 계약 + 변이체 6팔 전부 RED)
 # 커맨드: npx vitest run tools/readme-parity.test.ts · HMB_PARITY_MUTANT=<팔> 로 6팔
-# 실행: 2026-08-10 12:05:30 KST · HEAD e8e702ad · 워킹트리 변경 0 건(0=clean)
+# 실행: 2026-08-10 12:43:57 KST · HEAD 631a1f44 · 워킹트리 변경 0 건(0=clean)
 # ⚠️ 헤더가 없으면 이 로그가 몇 세대 전 코드로 찍혔는지 아무도 모른다(#471 패널 S3 반려).
 
 ### CTRL — 무변이 (기대: 9 passed)
- ✓ tools/readme-parity.test.ts (9 tests) 8ms
+ ✓ tools/readme-parity.test.ts (9 tests) 17ms
  Test Files  1 passed (1)
       Tests  9 passed (9)
 # CTRL 종료코드 0
 
 ### 변이 `node-version` (기대: 최소 1건 RED)
-   × #471 AC2 — README 싱크 계약 > README 의 Node 버전 = .nvmrc 10ms
+   × #471 AC2 — README 싱크 계약 > README 의 Node 버전 = .nvmrc 8ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
  Test Files  1 failed (1)
       Tests  1 failed | 8 passed (9)
 # 변이 node-version 종료코드 1 (0 이 아니어야 킬)
 
 ### 변이 `jdk-version` (기대: 최소 1건 RED)
-   × #471 AC2 — README 싱크 계약 > README 의 JDK 버전 = build.gradle.kts toolchain 11ms
+   × #471 AC2 — README 싱크 계약 > README 의 JDK 버전 = build.gradle.kts toolchain 14ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
  Test Files  1 failed (1)
       Tests  1 failed | 8 passed (9)
 # 변이 jdk-version 종료코드 1 (0 이 아니어야 킬)
 
 ### 변이 `script-path` (기대: 최소 1건 RED)
-   × #471 AC2 — README 싱크 계약 > README 가 로컬 빌드 절차를 담고 스크립트를 가리킨다 16ms
-   × #471 AC2 — README 싱크 계약 > README 가 언급하는 스크립트 경로가 전부 실재한다 2ms
+   × #471 AC2 — README 싱크 계약 > README 가 로컬 빌드 절차를 담고 스크립트를 가리킨다 27ms
+   × #471 AC2 — README 싱크 계약 > README 가 언급하는 스크립트 경로가 전부 실재한다 5ms
    × #471 AC2 — README 싱크 계약 > README 가 부르는 서브커맨드가 전부 스크립트에 있다 0ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
  Test Files  1 failed (1)
@@ -33,21 +33,21 @@
 # 변이 script-path 종료코드 1 (0 이 아니어야 킬)
 
 ### 변이 `subcommand` (기대: 최소 1건 RED)
-   × #471 AC2 — README 싱크 계약 > README 가 부르는 서브커맨드가 전부 스크립트에 있다 8ms
+   × #471 AC2 — README 싱크 계약 > README 가 부르는 서브커맨드가 전부 스크립트에 있다 7ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
  Test Files  1 failed (1)
       Tests  1 failed | 8 passed (9)
 # 변이 subcommand 종료코드 1 (0 이 아니어야 킬)
 
 ### 변이 `port` (기대: 최소 1건 RED)
-   × #471 AC2 — README 싱크 계약 > README 가 적는 접속 포트 = 스크립트 기본값 (그리고 데모 8080/8790 이 아니다) 11ms
+   × #471 AC2 — README 싱크 계약 > README 가 적는 접속 포트 = 스크립트 기본값 (그리고 데모 8080/8790 이 아니다) 9ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
  Test Files  1 failed (1)
       Tests  1 failed | 8 passed (9)
 # 변이 port 종료코드 1 (0 이 아니어야 킬)
 
 ### 변이 `env-default` (기대: 최소 1건 RED)
-   × #471 AC2 — README 싱크 계약 > README env 표의 포트 기본값 = 스크립트의 `${VAR:-기본값}` 5ms
+   × #471 AC2 — README 싱크 계약 > README env 표의 포트 기본값 = 스크립트의 `${VAR:-기본값}` 9ms
 ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
  Test Files  1 failed (1)
       Tests  1 failed | 8 passed (9)
