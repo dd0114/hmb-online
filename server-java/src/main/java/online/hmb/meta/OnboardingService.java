@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import online.hmb.catalog.CatalogPlayer;
 import online.hmb.common.TxRunner;
+import online.hmb.rewards.UxActionRewardService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,19 +37,22 @@ public class OnboardingService {
     private final ObjectMapper objectMapper;
     private final String defaultFormation;
     private final int benchMax;
+    private final UxActionRewardService uxActionRewardService;
 
     public OnboardingService(JdbcClient jdbcClient,
                              TxRunner txRunner,
                              DeckService deckService,
                              ObjectMapper objectMapper,
                              @Value("${hmb.starter.deck-formation}") String defaultFormation,
-                             @Value("${hmb.deck.bench-max}") int benchMax) {
+                             @Value("${hmb.deck.bench-max}") int benchMax,
+                             UxActionRewardService uxActionRewardService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.deckService = deckService;
         this.objectMapper = objectMapper;
         this.defaultFormation = defaultFormation;
         this.benchMax = benchMax;
+        this.uxActionRewardService = uxActionRewardService;
         // 부팅에서 막는다(fail-closed). 오타 난 포메이션을 그대로 두면 지급이 **조용히** 사라진다 —
         // 에러도 안 나고 로그 한 줄만 남은 채 모든 신규 유저가 덱 없이 온보딩을 마친다.
         if (!StarterDeckBuilder.supportsFormation(defaultFormation)) {
@@ -110,6 +114,9 @@ public class OnboardingService {
             jdbcClient.sql("UPDATE users SET tutorial_done = 1 WHERE id = ?")
                     .param(userId)
                     .update();
+
+            // #493 W3 ①: 튜토리얼 완주 행동 보상(우편 GEM) — 멱등이라 재호출·건너뛰기 반복에 안전.
+            uxActionRewardService.grantOnce(userId, UxActionRewardService.UxAction.TUTORIAL_DONE);
 
             if (hasActiveDeck(userId)) {
                 return new Result(true, false, null);

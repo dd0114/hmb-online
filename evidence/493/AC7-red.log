@@ -1,0 +1,2 @@
+# cmd: cd server-java && ./gradlew test --tests online.hmb.UxActionRewardTest --rerun-tasks (훅 배선 전)
+7 tests completed, 7 failed — Expected size: 1 but was: 0 (우편 부재 = 올바른 red)

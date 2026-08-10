@@ -16,13 +16,16 @@ public class DeckController {
     private final DeckService deckService;
     private final MatchLockService lockService;
     private final online.hmb.match.DeckPrewarmService prewarmService;
+    private final online.hmb.rewards.UxActionRewardService uxActionRewardService;
 
     public DeckController(DeckService deckService,
                           MatchLockService lockService,
-                          online.hmb.match.DeckPrewarmService prewarmService) {
+                          online.hmb.match.DeckPrewarmService prewarmService,
+                          online.hmb.rewards.UxActionRewardService uxActionRewardService) {
         this.deckService = deckService;
         this.lockService = lockService;
         this.prewarmService = prewarmService;
+        this.uxActionRewardService = uxActionRewardService;
     }
 
     /**
@@ -56,6 +59,11 @@ public class DeckController {
         // BRIEFING 은 잠그지 않는다 — 킥오프 재캡처(AC-B2)가 명시적으로 지원하는 창이다.
         lockService.assertNotLocked(userId, "deck.replace");
         DeckResponse saved = deckService.replaceDeck(userId, request);
+        // #493 W3 ③: 첫 덱 저장 행동 보상 — **유저의 저장**(PUT /api/deck)에만 건다. 온보딩의
+        // 스타터 덱 지급은 OnboardingService 가 deckService.replaceDeck 을 직접 부르므로 여기를
+        // 지나지 않는다(시스템 지급이 "첫 저장"을 선점하면 이 보상이 무의미해진다). auto 여부는
+        // 서버가 알 수 없고 묻지 않는다(W0 Decision — 튜토리얼이 auto 를 안내한다).
+        uxActionRewardService.grantOnce(userId, online.hmb.rewards.UxActionRewardService.UxAction.FIRST_DECK_SAVE);
         // 저장이 커밋된 뒤 AI 인풋을 미리 돌린다(#215 W2) — 응답을 막지 않도록 큐잉만 하고 끝낸다.
         // 컨트롤러에서 부르는 건 MatchController 의 prefetchBaseInputs 와 같은 자리·같은 이유다.
         prewarmService.onDeckSaved(userId);

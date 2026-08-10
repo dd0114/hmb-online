@@ -93,6 +93,7 @@ public class TradeService {
     private final TradeSeedSource seedSource;
     private final ObjectMapper objectMapper;
     private final TradeProperties tradeProperties;
+    private final online.hmb.rewards.UxActionRewardService uxActionRewardService;
 
     public TradeService(JdbcClient jdbcClient,
                         TxRunner txRunner,
@@ -100,7 +101,8 @@ public class TradeService {
                         WalletService walletService,
                         TradeSeedSource seedSource,
                         ObjectMapper objectMapper,
-                        TradeProperties tradeProperties) {
+                        TradeProperties tradeProperties,
+                        online.hmb.rewards.UxActionRewardService uxActionRewardService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.economyService = economyService;
@@ -108,6 +110,7 @@ public class TradeService {
         this.seedSource = seedSource;
         this.objectMapper = objectMapper;
         this.tradeProperties = tradeProperties;
+        this.uxActionRewardService = uxActionRewardService;
     }
 
     // ── config (economy.v2 trade 블록 — 수치 SoT) ────────────────────────
@@ -278,6 +281,9 @@ public class TradeService {
                         row.demandPlayerId() == null ? List.of() : List.of(row.demandPlayerId()),
                         0, null, null, "skip");
             }
+            // #493 W3 ⑤: 첫 트레이드 등록 행동 보상 — hero verbatim "걸었을때" = 등록 시점.
+            // busy-retry 가 tx 를 재실행해도 INSERT OR IGNORE 라 안전(멱등).
+            uxActionRewardService.grantOnce(userId, online.hmb.rewards.UxActionRewardService.UxAction.FIRST_TRADE);
             return new TradeStartResponse(viewOf(refresh(row.id()), cfg),
                     walletOf(userId));
         });
@@ -488,6 +494,9 @@ public class TradeService {
                 throw tradeInvalid("OPEN 상태의 FA 오퍼가 아닙니다");
             }
             claimOpen(row); // W2 이월(b): 상태-CAS(OPEN→RESOLVING) — 동시 중복 판정 차단
+            // #493 W3 ⑤: FA 제안도 "트레이드를 걸었다"(hero verbatim). 이후 검증 실패 시 tx 롤백에
+            // 같이 말려 취소된다 — 유효한 제안만 보상 대상이 된다.
+            uxActionRewardService.grantOnce(userId, online.hmb.rewards.UxActionRewardService.UxAction.FIRST_TRADE);
             // 제안 선수는 모두 현재 보유 중이어야 한다(중복 포함 개수 검증).
             Map<String, Long> need = new LinkedHashMap<>();
             for (String pid : offered) {

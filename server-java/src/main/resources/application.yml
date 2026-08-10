@@ -39,6 +39,11 @@ spring:
 hmb:
   db:
     path: ./.data/hmb.db
+  reward:
+    # #493 W3 — 행동 보상 5종(튜토리얼 완주·첫 결과 열람·첫 덱 저장·첫 뽑기·첫 트레이드) 각 GEM.
+    # hero 확정 = 300 통일(= 단챠 정확히 1회). ⚠️ 금액은 캠페인 생성 시점에 payload 로 박제된다 —
+    # 값을 바꿔도 이미 만들어진 캠페인의 미수령분은 옛 금액이다(UxActionRewardService 머리말).
+    ux-action-gems: 300
   notice:
     asset:
       # 공지 이미지 보관소. 비우면 **DB 파일 옆** notice-assets/ (도커에서는 영속 볼륨
