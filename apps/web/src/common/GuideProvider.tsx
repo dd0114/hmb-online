@@ -104,6 +104,10 @@ export function GuideProvider({
     // 라우트 감시가 방금 세운 첫 run 을 죽인다 — 실브라우저에서만 재현(jsdom 목은 동기 도착).
     if (prev === null) return;
     shownRef.current = new Set();
+    // 시도 기록도 전 계정 몫이다 — 안 지우면 같은 렌더 배치에서 라우트 감시가 새 계정 run 을
+    // 먼저 세우고 attempted 에 적은 뒤 여기서 지워져, 새 계정이 그 화면 재진입 전까지 가이드를
+    // 못 받는다(스켑틱 패널 2번 렌즈가 지목한 엣지).
+    attemptedRef.current = new Set();
     setRun(null);
   }, [tokenUserId]);
 
