@@ -42,7 +42,7 @@ public class UxActionRewardService {
 
     private static final Logger log = LoggerFactory.getLogger(UxActionRewardService.class);
 
-    /** 행동 5종 — 캠페인 id·제목·본문이 여기서만 정의된다(화면은 우편 내용을 그대로 그린다). */
+    /** 행동 6종 — 캠페인 id·제목·본문이 여기서만 정의된다(화면은 우편 내용을 그대로 그린다). */
     public enum UxAction {
         TUTORIAL_DONE("uxa_tutorial_done", "튜토리얼 완주 보상",
                 "감독 취임을 축하합니다! 기본기를 전부 익히셨네요. 첫 걸음 보상을 받아 주세요."),
@@ -53,7 +53,10 @@ public class UxActionRewardService {
         FIRST_GACHA("uxa_first_gacha", "첫 뽑기 보상",
                 "첫 영입을 축하합니다! 더 강한 선수로 스쿼드를 넓혀 보세요."),
         FIRST_TRADE("uxa_first_trade", "첫 트레이드 보상",
-                "첫 트레이드를 걸었습니다. 안 쓰는 선수가 새 전력이 되어 돌아옵니다.");
+                "첫 트레이드를 걸었습니다. 안 쓰는 선수가 새 전력이 되어 돌아옵니다."),
+        /** #493 W6-v3 (리플랜 v2 hero 승인 — 6종 × 300): 첫 강화(잠재 다이스) 완료. */
+        FIRST_ENHANCE("uxa_first_enhance", "첫 강화 보상",
+                "선수를 처음으로 강화하셨습니다. 잠재능력은 다시 굴릴수록 좋아집니다.");
 
         final String campaignId;
         final String title;

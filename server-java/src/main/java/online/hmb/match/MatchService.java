@@ -112,6 +112,8 @@ public class MatchService {
     private final LiveEngineConfigService liveEngineConfig;
     /** #431: 상대 선수의 ★·OVR — 공개 범위 안의 좁은 접근자만 쓴다(성장 상세 맵 아님). */
     private final online.hmb.growth.GrowthService growthService;
+    /** #493 W6-v3 — 튜토리얼 고정 매치의 시드·상대봇 출처(구운 자산이 SoT). */
+    private final online.hmb.tutorial.TutorialMatchAsset tutorialAsset;
 
     public MatchService(JdbcClient jdbcClient,
                         TxRunner txRunner,
@@ -129,8 +131,10 @@ public class MatchService {
                         online.hmb.mission.MissionService missionService,
                         MatchAutoProperties autoProps,
                         LiveEngineConfigService liveEngineConfig,
+                        online.hmb.tutorial.TutorialMatchAsset tutorialAsset,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
+        this.tutorialAsset = tutorialAsset;
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.deckService = deckService;
@@ -166,7 +170,13 @@ public class MatchService {
                             * 이 매치가 **시작할 때** 유효했던 계수 오버레이의 값 복사(#383). null = 없음.
                             * 진행 중에 라이브 값을 다시 조회하지 않는다 — 그게 #241 재발 방지의 전부다.
                             */
-                           String configOverridesJson, String configRevisionId) {
+                           String configOverridesJson, String configRevisionId,
+                           /**
+                            * #493 W6-v3 — 이 매치가 <b>튜토리얼 고정 매치</b>인가. true 면 AI 잡·러너를
+                            * 타지 않고 미리 구운 로그({@code TutorialMatchAsset})가 적재된다.
+                            * {@code mode} 는 그대로 {@code practice} 다(V43 머리말 참조).
+                            */
+                           boolean tutorial) {
     }
 
     public MatchRow getOwned(String userId, String matchId) {
@@ -205,7 +215,7 @@ public class MatchService {
                                conditions_json, mode, league_fixture_id,
                                kickoff_at, phase_start_at, phase_ends_at,
                                score_h2_home, score_h2_away, h2_tactics_json, h2_shape_json, auto_mode,
-                               config_overrides_json, config_revision_id
+                               config_overrides_json, config_revision_id, is_tutorial
                         FROM matches WHERE id = ?
                         """)
                 .param(matchId)
@@ -224,7 +234,8 @@ public class MatchService {
                         (Integer) rs.getObject("score_h2_home"), (Integer) rs.getObject("score_h2_away"),
                         rs.getString("h2_tactics_json"), rs.getString("h2_shape_json"),
                         rs.getInt("auto_mode") == 1,
-                        rs.getString("config_overrides_json"), rs.getString("config_revision_id")))
+                        rs.getString("config_overrides_json"), rs.getString("config_revision_id"),
+                        rs.getInt("is_tutorial") == 1))
                 .optional();
     }
 
@@ -253,6 +264,22 @@ public class MatchService {
      * 덱/전술을 바꿔도 진행 중 매치는 이 스냅샷으로 격리된다.
      */
     public MatchRow createMatch(String userId, String botId, JsonNode teamTactics) {
+        return createMatch(userId, botId, teamTactics, false);
+    }
+
+    /**
+     * #493 W6-v3 — {@code tutorial=true} 면 <b>미리 구운 고정 매치</b>를 만든다.
+     *
+     * <p>바뀌는 것은 셋뿐이다: ①상대 = 자산이 지정한 시드봇(구운 로그의 away 로스터와 같아야 화면의
+     * 상대 이름이 거짓말을 안 한다) ②{@code seed} = 구울 때 쓴 시드(재현 가능성 보존) ③{@code
+     * is_tutorial=1}. <b>덱 검증·스냅샷·컨디션·계수 핀은 그대로 지나간다</b> — 튜토리얼도 유저의
+     * 덱으로 만든 매치이고(정산·성장이 그 스냅샷을 읽는다), 다른 것은 <b>시뮬 입력</b>뿐이다.
+     *
+     * <p><b>1회 제한</b>: 이미 FINISHED 인 튜토리얼 매치가 있으면 409. 구운 로그는 언제나 크게 이기므로
+     * 반복 생성이 열려 있으면 승리 보상이 무한 발행된다(V43 머리말). ABANDONED·FAILED 는 사고 회수
+     * 경로라 재시도를 막지 않는다.
+     */
+    public MatchRow createMatch(String userId, String botId, JsonNode teamTactics, boolean tutorial) {
         // 활성 덱 재검증 (AC-S2 규칙 재사용, LLD §5.1). 덱 부재는 전용 코드 DECK_REQUIRED(#319) —
         // 매치 생성 3경로가 같은 게이트를 지나야 클라가 문구로 404 를 구분하지 않는다.
         DeckService.DeckResponse deck = deckService.requireActiveDeck(userId);
@@ -262,10 +289,17 @@ public class MatchService {
         // 연습 상대는 **시드봇만**(#252). 랜덤 경로는 BotService.pickRandom 이 이미 걸러내지만, botId 를
         // 명시하면 리그 봇팀·원정 고스트를 지목할 수 있어 풀 필터가 우회된다. 리그/원정은 각각
         // createLeagueMatch·createAwayMatch 라 이 가드에 걸리지 않는다.
-        BotService.BotRow bot = botId == null ? botService.pickRandom() : botService.getSeed(botId);
+        if (tutorial) {
+            requireTutorialAvailable(userId);
+        }
+        BotService.BotRow bot = tutorial
+                ? botService.getSeed(tutorialAsset.awayBotId())
+                : (botId == null ? botService.pickRandom() : botService.getSeed(botId));
 
         String matchId = Ulid.next();
-        String seed = randomSeedHex();
+        // 튜토리얼은 **구울 때 쓴 시드**를 그대로 박는다 — half_seed 파생이 자산과 일치해야
+        // "이 로그는 이 시드로 재현된다"가 참이 된다(자산 머리말).
+        String seed = tutorial ? tutorialAsset.matchSeed() : randomSeedHex();
         String snapshot = snapshotDeck(deck, teamTactics);
         Instant createdAt = Instant.now(clock);
         String now = createdAt.toString();
@@ -279,16 +313,38 @@ public class MatchService {
         txRunner.run(() -> jdbcClient.sql("""
                         INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
                                             user_deck_json, conditions_json, mode, created_at,
-                                            config_overrides_json, config_revision_id)
-                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'practice', ?, ?, ?)
+                                            config_overrides_json, config_revision_id, is_tutorial)
+                        VALUES (?, ?, ?, 'BRIEFING', ?, 'pending', ?, ?, 'practice', ?, ?, ?, ?)
                         """)
                 .params(matchId, userId, bot.id(), seed, snapshot, conditionsJson, now,
-                        configPin.overridesJson(), configPin.revisionId())
+                        configPin.overridesJson(), configPin.revisionId(), tutorial ? 1 : 0)
                 .update());
         // engine_version='pending' — 실제 EngineConfig.version은 h1 시뮬 응답의
         // matchLog.configVersion으로 갱신된다(러너가 버전의 SoT).
 
         return getOwned(userId, matchId);
+    }
+
+    /**
+     * 튜토리얼 고정 매치를 만들 수 있는 상태인가 (#493 W6-v3).
+     *
+     * <p>두 가지를 본다: ①자산이 실려 있나(없으면 이 기능 자체가 없는 배포다 — 400 으로 끊고 화면이
+     * 일반 연습으로 폴백하게 한다) ②이미 <b>끝낸</b> 튜토리얼 매치가 있나(파밍 차단, V43 머리말).
+     */
+    private void requireTutorialAvailable(String userId) {
+        if (!tutorialAsset.available()) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "TUTORIAL_UNAVAILABLE",
+                    "튜토리얼 경기를 사용할 수 없습니다");
+        }
+        int finished = jdbcClient.sql(
+                        "SELECT COUNT(*) FROM matches WHERE user_id = ? AND is_tutorial = 1 AND state = ?")
+                .params(userId, S_FINISHED)
+                .query(Integer.class)
+                .single();
+        if (finished > 0) {
+            throw new ApiException(HttpStatus.CONFLICT, "TUTORIAL_ALREADY_PLAYED",
+                    "튜토리얼 경기는 한 번만 진행할 수 있습니다", Map.of("played", finished));
+        }
     }
 
     /**
@@ -664,7 +720,12 @@ public class MatchService {
                                String result, String createdAt, String finishedAt,
                                Map<String, Double> conditions, String mode, String leagueFixtureId,
                                JsonNode userDeckSnapshot, MatchClockService.MatchClock clock,
-                               String ownerName, String homeName, String awayName, boolean auto) {
+                               String ownerName, String homeName, String awayName, boolean auto,
+                               /**
+                                * #493 W6-v3 additive — 튜토리얼 고정 매치인가. web 의 온레일 가이드
+                                * (탭 투어·스킵 잠금)가 이 값으로 켜진다. 기존 필드 불변.
+                                */
+                               boolean tutorial) {
     }
 
     /**
@@ -724,8 +785,9 @@ public class MatchService {
                 detail.mode(), detail.leagueFixtureId(),
                 null,                    // userDeckSnapshot — 공격자 선수별 지시·팀 전술(1R BL-1)
                 detail.clock(), detail.ownerName(), detail.homeName(), detail.awayName(),
-                false);                  // auto(#249) — 공격자의 흐름 설정. 허용 목록 규칙대로 새 필드는
+                false,                   // auto(#249) — 공격자의 흐름 설정. 허용 목록 규칙대로 새 필드는
                                          // 기본 차단이다: 관전자가 알 이유가 없고, 쓰기는 어차피 소유자만.
+                false);                  // tutorial(#493) — 온레일 가이드는 소유자 화면의 것이다.
     }
 
     public MatchDetail toDetail(MatchRow row) {
@@ -750,7 +812,7 @@ public class MatchService {
                 clockService.clockOf(row), owner,
                 userHome ? owner : opponent.name(),
                 userHome ? opponent.name() : owner,
-                effectiveAuto(row));
+                effectiveAuto(row), row.tutorial());
     }
 
     /**

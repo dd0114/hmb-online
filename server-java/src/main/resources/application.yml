@@ -44,6 +44,21 @@ hmb:
     # hero 확정 = 300 통일(= 단챠 정확히 1회). ⚠️ 금액은 캠페인 생성 시점에 payload 로 박제된다 —
     # 값을 바꿔도 이미 만들어진 캠페인의 미수령분은 옛 금액이다(UxActionRewardService 머리말).
     ux-action-gems: 300
+  tutorial:
+    # #493 W6-v3 — 온레일 튜토리얼(hero 리플랜 v3). 여기 값은 전부 **조정 포인트**다.
+    starter:
+      # 가입 시 튜토리얼 재료를 얹을지. false = 이 웨이브 이전 동작(기존 유저와 같은 스타터).
+      enabled: true
+      # 고정 튜토리얼 카드 — hero "스타터팩에 고정으로한명 무조건주고". 기본팩 구성원 중
+      # **브론즈 활성** 카드를 골랐다(브론즈여야 hero 원문의 "기본 브론즈 하나는 승급해보고"가 성립).
+      # ⚠️ 지급 장수는 여기 없다 — GrowthTuning 의 star.copies[2] 에서 파생한다(계수 SoT 는 하나).
+      card-id: P122
+      # 미리 채워 둘 레벨 수 = 즉시 쓸 수 있는 3지선다(=강화) 장수. 1 = "한 번 해 본다".
+      xp-levels: 1
+    trade:
+      # 첫 트레이드에 확정으로 나오는 등급 — hero "무조건 한명 높은 등급 에픽 정도 하나".
+      # 등급 사다리에 EPIC 은 없다(BRONZE·SILVER·GOLD·DIA·LEGEND) → 그 위치를 DIA 로 잡았다.
+      first-grade: DIA
   notice:
     asset:
       # 공지 이미지 보관소. 비우면 **DB 파일 옆** notice-assets/ (도커에서는 영속 볼륨

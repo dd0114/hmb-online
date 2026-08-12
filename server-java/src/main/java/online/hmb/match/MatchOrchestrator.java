@@ -63,6 +63,8 @@ public class MatchOrchestrator {
     private final RewardBundleService rewardBundleService;
     private final online.hmb.mission.MissionService missionService;
     private final MatchClockService clockService;
+    /** #493 W6-v3 — 튜토리얼 고정 매치의 구운 입력·로그(AI 0 · 러너 0). */
+    private final online.hmb.tutorial.TutorialMatchAsset tutorialAsset;
     private final ObjectMapper objectMapper;
     /** #193 라운드2 — 지시 델타 라우팅 노브(전부 config, 하드코딩 금지). */
     private final boolean deltaEnabled;
@@ -90,6 +92,7 @@ public class MatchOrchestrator {
                              online.hmb.mission.MissionService missionService,
                              MatchClockService clockService,
                              DeckPrewarmService prewarmService,
+                             online.hmb.tutorial.TutorialMatchAsset tutorialAsset,
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
                              @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
@@ -98,6 +101,7 @@ public class MatchOrchestrator {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.prewarmService = prewarmService;
+        this.tutorialAsset = tutorialAsset;
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
         this.botService = botService;
@@ -151,6 +155,18 @@ public class MatchOrchestrator {
         String genState = half == 1 ? MatchService.S_GEN1 : MatchService.S_GEN2;
         if (genState.equals(match.state())) {
             jobQueue.restartPendingTimeout(matchId, half);
+        }
+
+        // #493 W6-v3 — 튜토리얼 고정 매치: AI 를 부르지 않는다. 구운 인풋을 <b>이미 done 인 잡</b>으로
+        // 넣어 두면(materialize = #95 가 "콜 0 재사용"에 쓰는 바로 그 경로) 이후는 평소와 같다 —
+        // maybeSimulate 가 양쪽 done 을 보고 진행하고, 거기서 러너 대신 구운 로그가 들어간다.
+        // 새 상태·새 전이·새 뷰 경로를 만들지 않는 것이 이 분기의 전부다.
+        if (match.tutorial()) {
+            online.hmb.tutorial.TutorialMatchAsset.BakedHalf baked = tutorialAsset.half(half);
+            jobQueue.insertMaterialized(matchId, "home", half, baked.homeInput().toString());
+            jobQueue.insertMaterialized(matchId, "away", half, baked.awayInput().toString());
+            maybeSimulate(matchId, half);
+            return;
         }
 
         BotService.BotRow bot = botService.get(match.botId());
@@ -416,6 +432,11 @@ public class MatchOrchestrator {
             if (match == null) {
                 return;
             }
+            // #493 W6-v3: 튜토리얼은 구운 인풋을 쓴다 — A 를 미리 만들면 <b>안 쓸 AI 호출</b>이다
+            // (이 웨이브의 요건이 "AI 호출 0" 이므로 여기서 새는 것을 막는 것이 그 요건의 절반이다).
+            if (match.tutorial()) {
+                return;
+            }
             JsonNode snapshot = matchService.readJson(match.userDeckJson());
             BotService.BotRow bot = botService.get(match.botId());
             PromptContextBuilder.BaseJob userBase = contextBuilder.userBaseJob(match, snapshot);
@@ -546,7 +567,12 @@ public class MatchOrchestrator {
         List<MatchService.Substitution> effectiveSubs = half == 2 ? subs : List.of();
 
         String halfSeed = Hashes.halfSeed(match.seed(), half);
-        Map<String, Object> selectData = buildSelectData(match, snapshot, bot, effectiveSubs);
+        // #493 W6-v3 — 튜토리얼은 **유저 덱이 아니라 고정 로스터**로 돈다(hero: "선수도 보유 선수말고
+        // 그냥 튜토리얼선수로. 그래야 시드값이 안바뀌어"). 유저의 성장·컨디션·프롬프트가 시뮬에
+        // 들어가지 않으므로 전 유저가 같은 경기를 본다.
+        Object selectData = match.tutorial()
+                ? tutorialAsset.selectData()
+                : buildSelectData(match, snapshot, bot, effectiveSubs);
         JsonNode homeInput = matchService.readJson(homeInputJson);
         JsonNode awayInput = matchService.readJson(awayInputJson);
 
@@ -566,8 +592,12 @@ public class MatchOrchestrator {
         JsonNode configOverrides = match.configOverridesJson() == null || match.configOverridesJson().isBlank()
                 ? null : matchService.readJson(match.configOverridesJson());
 
-        EngineRunnerClient.SimulateResult result =
-                runnerClient.simulate(halfSeed, selectData, homeInput, awayInput, half, resumeState,
+        // 튜토리얼은 러너도 부르지 않는다 — 구운 결과를 러너 응답 자리에 그대로 끼운다.
+        // ⚠️ "반드시 승리"(hero)는 엔진 버전에 걸린 성질이라 매번 시뮬하면 엔진이 바뀔 때 조용히
+        // 뒤집힌다. 구우면 그 위험이 0 이고, 대기도 문자 그대로 0 이 된다(TutorialMatchAsset 머리말).
+        EngineRunnerClient.SimulateResult result = match.tutorial()
+                ? bakedResult(half)
+                : runnerClient.simulate(halfSeed, selectData, homeInput, awayInput, half, resumeState,
                         configOverrides);
 
         // #383 B3 — 러너가 버린 경로가 있으면 **소리를 낸다**. 조용히 버리면 "설정했는데 아무 일도
@@ -630,6 +660,13 @@ public class MatchOrchestrator {
         if (half == 1 && Boolean.TRUE.equals(stored)) {
             resolveSecondHalfInputs(match.id());
         }
+    }
+
+    /** 구운 하프를 러너 응답 형태로 — 이후 저장·전이·정산이 평소 경로를 그대로 탄다(#493 W6-v3). */
+    private EngineRunnerClient.SimulateResult bakedResult(int half) {
+        online.hmb.tutorial.TutorialMatchAsset.BakedHalf baked = tutorialAsset.half(half);
+        return new EngineRunnerClient.SimulateResult(baked.matchLog(), baked.resumeState(),
+                baked.lastHash(), baked.playbackMs(), baked.effectiveConfigHash(), null);
     }
 
     /**

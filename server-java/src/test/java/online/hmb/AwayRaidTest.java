@@ -530,11 +530,15 @@ class AwayRaidTest extends MatchTestBase {
         // (이 목록이 새 필드를 기본으로 막았다는 것 자체가 화이트리스트가 일하고 있다는 증거다.)
         // 새 필드를 여기 추가할 땐 **위 두 가지를 다 확인**하고 이유를 적어라 — 목록이 조용히
         // 넓어지는 순간 이 계약은 3R MAJOR-1 을 다시 놓친다.
+        // tutorial(#493 W6-v3) 도 auto 와 **같은 이유로** 넣는다: `toDetailFor` 가 상수 false 를 박으므로
+        // 구조적으로 공격자 정보를 담을 수 없고(원정 매치는 애초에 튜토리얼일 수 없다), 값의 의미는
+        // "이 화면에 온레일 가이드를 켤까"라는 소유자 화면의 연출 스위치다.
         assertThat(populated).isSubsetOf("id", "state", "failReason", "opponent",
                 "scoreH1Home", "scoreH1Away", "scoreHome", "scoreAway", "result",
                 "createdAt", "finishedAt", "mode", "leagueFixtureId", "clock", "ownerName",
-                "homeName", "awayName", "auto");
+                "homeName", "awayName", "auto", "tutorial");
         assertThat(body.get("auto")).isEqualTo(false); // 공격자가 켰든 껐든 관전자에겐 항상 false
+        assertThat(body.get("tutorial")).isEqualTo(false); // 관전 경로엔 온레일 가이드가 없다
         // 허용 목록은 **위치 기반 재조립**이라 필드가 뒤바뀌어도 키 집합은 그대로다(4R minor-7).
         // 몇 개는 값으로도 못박아 뒤바뀜을 잡는다.
         assertThat(body.get("id")).isEqualTo(matchId);

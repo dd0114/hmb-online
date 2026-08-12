@@ -1,0 +1,11 @@
+[bake] runner=http://127.0.0.1:8790 scan<=60
+#0 seed=073383e5ea3b76119e49490d2a7a84b1 h1=2:4 h2=0:1 total=2:5 -
+#1 seed=1e40a419336a5cce28a24d5b1dcfde79 h1=2:1 h2=0:2 total=2:3 -
+#2 seed=02b8f8c25cc4edf64fa390f8fdedd60f h1=2:2 h2=1:1 total=3:3 -
+#3 seed=cc79347ff88581d7e8d0eb4aa30b02f9 h1=0:1 h2=2:0 total=2:1 -
+#4 seed=c6f5884fa612061471d1c3491d39f9d0 h1=0:2 h2=0:1 total=0:3 -
+#5 seed=e7f22852638cd7870d5da26b03ccfefb h1=0:2 h2=2:2 total=2:4 -
+#6 seed=7b20d3a2e9d3e0b467ff6f612bd84633 h1=1:1 h2=3:1 total=4:2 ACCEPT
+[bake] wrote /Users/peter.park/spider20/hmb-online/server-java/src/main/resources/tutorial/tutorial-match.json.gz (raw 3.83 MB → gz 464 KB)
+[bake] seed=7b20d3a2e9d3e0b467ff6f612bd84633 score=4:2 engine=engine@0.43.0
+[bake] playbackMs h1=259250 h2=226350

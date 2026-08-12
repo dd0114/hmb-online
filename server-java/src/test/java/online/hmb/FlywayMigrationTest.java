@@ -128,7 +128,12 @@ class FlywayMigrationTest {
             //   daily_mission_progress  = 경기 × 미션의 진행 델타. **멱등**(재정산 이중 가산 차단)과
             //     결과 화면의 `missions` 배열(누적값에서 사후 분해 불가)이 둘 다 이 행에 걸려 있다.
             "daily_missions",
-            "daily_mission_progress"
+            "daily_mission_progress",
+            // V42 무료 쿠폰(1) — #493 W6-v3: "이번 한 번은 값을 안 낸다"는 **1회성 권리**.
+            //   지갑도 원장도 아니다(그래서 V33/V40 의 "지급 표를 새로 만들지 않는다" 규율과 충돌하지
+            //   않는다) — 쿠폰이 소비되면 차감 자체가 일어나지 않으므로 재화는 여전히 기존 원장만이
+            //   만든다. 지급 멱등 = uq(user,type,grant_key) · 소비 멱등 = used_at IS NULL CAS.
+            "user_coupons"
     );
 
     /**

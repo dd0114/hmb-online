@@ -19,7 +19,10 @@ import online.hmb.common.Josa;
 import online.hmb.common.SqliteErrors;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
+import online.hmb.coupon.CouponService;
 import online.hmb.meta.WalletService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -82,6 +85,8 @@ import org.springframework.stereotype.Service;
 @Service
 public class TradeService {
 
+    private static final Logger log = LoggerFactory.getLogger(TradeService.class);
+
     /** 등급 서열(낮→높) — 확률표 순회·풀 정규화 기준. 카탈로그 스키마 상수(튜닝값 아님). */
     static final List<String> GRADE_ORDER = List.of("BRONZE", "SILVER", "GOLD", "DIA", "LEGEND");
     private static final int SECONDS_PER_HOUR = 3600;
@@ -94,6 +99,10 @@ public class TradeService {
     private final ObjectMapper objectMapper;
     private final TradeProperties tradeProperties;
     private final online.hmb.rewards.UxActionRewardService uxActionRewardService;
+    /** #493 W6-v3 — 단축 무료 · 첫 트레이드 등급 확정(둘 다 1회성 권리). */
+    private final CouponService couponService;
+    /** #493 W6-v3 — 첫 트레이드에 확정으로 나오는 등급(조정 포인트, 하드코딩 금지). */
+    private final String firstTradeGrade;
 
     public TradeService(JdbcClient jdbcClient,
                         TxRunner txRunner,
@@ -102,7 +111,12 @@ public class TradeService {
                         TradeSeedSource seedSource,
                         ObjectMapper objectMapper,
                         TradeProperties tradeProperties,
-                        online.hmb.rewards.UxActionRewardService uxActionRewardService) {
+                        online.hmb.rewards.UxActionRewardService uxActionRewardService,
+                        CouponService couponService,
+                        @org.springframework.beans.factory.annotation.Value(
+                                "${hmb.tutorial.trade.first-grade}") String firstTradeGrade) {
+        this.couponService = couponService;
+        this.firstTradeGrade = firstTradeGrade;
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.economyService = economyService;
@@ -262,7 +276,7 @@ public class TradeService {
             boolean skipping = "OPEN".equals(row.state()); // [거래 안함] — 공개 오퍼 폐기
 
             String seed = seedSource.newSeed();
-            Offer offer = deriveOffer(userId, seed, cfg);
+            Offer offer = riggedIfEntitled(userId, seed, cfg, deriveOffer(userId, seed, cfg));
             Instant now = Instant.now();
             String opensAt = now.plusSeconds(waitSecondsFor(offer.targetPlayerId(), cfg)).toString();
             int updated = jdbcClient.sql("""
@@ -309,6 +323,49 @@ public class TradeService {
     /** public 오버로드(테스트/감사용) — config 를 내부 로드. 같은 (userId, seed) → 같은 오퍼. */
     public Offer deriveOffer(String userId, String seed) {
         return deriveOffer(userId, seed, config());
+    }
+
+    /**
+     * #493 W6-v3 — <b>첫 트레이드는 높은 등급이 확정으로 나온다</b>
+     * (hero: "트레이드고 처음은 무조건 한명 높은 등급 에픽 정도 하나 나오게하고").
+     *
+     * <p><b>{@link #deriveOffer} 를 건드리지 않는다.</b> 그 함수의 계약은 "같은 (userId, seed) → 같은
+     * 오퍼"(감사·재현)라, 안에서 유저 상태를 읽는 순간 그 계약이 깨지고 저장된 시드로 과거 오퍼를
+     * 재현할 수 없게 된다. 그래서 확정 등급은 <b>바깥에서 덮는 층</b>으로 둔다.
+     *
+     * <p><b>"첫 번째" 판정은 세지 않고 <b>권리를 소비</b>해서 한다</b> — 가입 시 지급한
+     * {@code FIRST_TRADE_EPIC} 권리가 있으면 그게 곧 "아직 안 썼다"이고, 소비의 원자성이 멱등을
+     * 보장한다. 슬롯·로그를 세는 방식은 "거래 안함"·FA 실패 재대기처럼 회차가 늘어나는 경로에서
+     * 정의가 흔들린다(그 형태가 #286 이 read-then-act 로 뚫린 자리다).
+     *
+     * <p>등급 사다리에 {@code EPIC} 은 없다(BRONZE·SILVER·GOLD·DIA·LEGEND) — "에픽 정도"를
+     * {@code hmb.tutorial.trade.first-grade}(기본 {@code DIA})로 옮겨 놓았고, 그 등급 풀이 비어 있으면
+     * 원래 오퍼를 그대로 둔다(권리는 그때 소비하지 않는다).
+     */
+    Offer riggedIfEntitled(String userId, String seed, TradeConfig cfg, Offer offer) {
+        Map<String, List<String>> pools = loadPools();
+        List<String> pool = pools.get(firstTradeGrade);
+        if (pool == null || pool.isEmpty()) {
+            return offer;
+        }
+        if (couponService.consume(userId, CouponService.CouponType.FIRST_TRADE_EPIC,
+                "trade:first:" + seed).isEmpty()) {
+            return offer;  // 권리 없음 = 첫 트레이드가 아니다(또는 이미 썼다)
+        }
+        // 대상 선택은 여전히 시드 결정론 — 등급만 고정되고 "누가 나오나"는 재현 가능하다.
+        SplittableRandom rng = rngFromSeed(seed + ":rigged");
+        String targetPlayerId = pool.get(rng.nextInt(pool.size()));
+        int waitHours = cfg.waitHours().getOrDefault(firstTradeGrade, 1);
+        String demandPlayerId = null;
+        String kind = offer.kind();
+        if ("TRADE".equals(kind)) {
+            demandPlayerId = closestOwnedByValue(userId, valueOf(targetPlayerId, cfg), targetPlayerId, cfg);
+            if (demandPlayerId == null) {
+                kind = "FA";
+            }
+        }
+        log.info("first trade rigged to {}: user={} target={}", firstTradeGrade, userId, targetPlayerId);
+        return new Offer(kind, targetPlayerId, demandPlayerId, waitHours);
     }
 
     Offer deriveOffer(String userId, String seed, TradeConfig cfg) {
@@ -411,8 +468,17 @@ public class TradeService {
             long remainingSec = remainingSec(row);
             int cost = speedupCost(remainingSec, cfg);
 
+            // #493 W6-v3 — <b>단축 무료 쿠폰</b>(hero: "단축도 무료로하게해줘야해"). 소비는 이 tx 안이라
+            // 아래 상태 전이가 실패하면 쿠폰도 함께 되돌아간다. 무료면 <b>잔액 검사도 하지 않는다</b> —
+            // "공짜인데 잔액이 모자라 못 쓴다"는 쿠폰의 존재 이유를 부정한다.
+            // ⚠️ busy-retry 가 이 람다를 재실행할 수 있는데, 그 재실행은 tx 롤백 뒤라 쿠폰도 미사용으로
+            //    돌아가 있다(재시도가 쿠폰을 태우지 않는다).
+            boolean freeByCoupon = couponService.consume(userId,
+                    CouponService.CouponType.FREE_TRADE_RUSH,
+                    "trade:" + slotNo + ":" + row.seed()).isPresent();
+
             long balance = walletService.points(userId);
-            if (balance < cost) {
+            if (!freeByCoupon && balance < cost) {
                 throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "INSUFFICIENT_POINTS",
                         shortOfPoints(), Map.of("balance", balance, "cost", cost));
             }
@@ -420,22 +486,25 @@ public class TradeService {
             // 찍히므로 회차가 자연 분리된다. (구 refId=slotId:seed 는 FA 실패가 같은 seed 를 유지해
             // 2회차부터 charged=false → 0P 무제한 즉시 재도전이 됐다.)
             String refId = row.id() + ":" + row.seed() + ":" + row.opensAt();
-            boolean charged;
-            try {
-                charged = walletService.apply(userId, -cost, "trade_speedup", refId);
-            } catch (DataAccessException e) {
-                if (SqliteErrors.isCheckViolation(e)) {
-                    throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "INSUFFICIENT_POINTS",
-                            shortOfPoints(), Map.of("balance", balance, "cost", cost));
+            if (!freeByCoupon) {
+                boolean charged;
+                try {
+                    charged = walletService.apply(userId, -cost, "trade_speedup", refId);
+                } catch (DataAccessException e) {
+                    if (SqliteErrors.isCheckViolation(e)) {
+                        throw new ApiException(HttpStatus.PAYMENT_REQUIRED, "INSUFFICIENT_POINTS",
+                                shortOfPoints(), Map.of("balance", balance, "cost", cost));
+                    }
+                    throw e;
                 }
-                throw e;
+                // #151 백스톱(심층방어): 차감이 실제로 일어나지 않았으면 단축하지 않는다. 정상 더블클릭은
+                // 첫 요청이 이미 OPEN 으로 바꿔놔 위 "WAITING 아님 → 400" 에서 걸리므로 여기 오지 않는다.
+                if (!charged) {
+                    throw tradeInvalid("이번 대기 회차의 단축 비용이 이미 청구돼 있습니다 — 잠시 후 다시 시도하세요");
+                }
             }
-            // #151 백스톱(심층방어): 차감이 실제로 일어나지 않았으면 단축하지 않는다. 정상 더블클릭은
-            // 첫 요청이 이미 OPEN 으로 바꿔놔 위 "WAITING 아님 → 400" 에서 걸리므로 여기 오지 않는다.
-            if (!charged) {
-                throw tradeInvalid("이번 대기 회차의 단축 비용이 이미 청구돼 있습니다 — 잠시 후 다시 시도하세요");
-            }
-            int spent = cost;
+            // 쿠폰으로 갔으면 실제 지출은 0 이다 — 화면이 "-500 G" 를 그리면 지갑과 거짓말이 어긋난다.
+            int spent = freeByCoupon ? 0 : cost;
             // opens_at 을 now 로 앞당겨 즉시 OPEN (남은시간 비례 비용을 지불하고 대기 전량 소거).
             String now = Instant.now().toString();
             jdbcClient.sql("UPDATE trade_slots SET opens_at = ?, state = 'OPEN', revealed = 1 WHERE id = ?")
