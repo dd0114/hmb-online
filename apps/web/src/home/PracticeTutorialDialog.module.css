@@ -1,0 +1,71 @@
+/* 연습경기 튜토리얼 제안 (#493 W5). 색은 --us/--them 계열만(#244 색 규칙). */
+
+/**
+ * ⚠️ **오버레이 클래스를 반드시 넘겨야 한다.** `Modal` 은 이 값을 오버레이 `<div>` 의
+ * **유일한 class** 로 쓴다 — 빠뜨리면 다이얼로그가 문서 흐름에 인라인으로 들어가
+ * `toBeVisible()` 은 통과하면서 백드롭도 바깥 클릭 닫기도 없는 상태가 된다
+ * (DecklessDialog.module.css 머리말의 독립검증 BL-1 이 그 사고다).
+ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 60;
+}
+
+.dialog {
+  width: min(320px, calc(100vw - 40px));
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid var(--hairline);
+}
+
+.body {
+  padding: 18px 16px 14px;
+}
+
+.title {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.text {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.actions button {
+  flex: 1;
+  border: 0;
+  border-radius: 11px;
+  padding: 11px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.actions button:disabled {
+  opacity: 0.6;
+}
+
+.secondary {
+  background: var(--sunk);
+  color: var(--text-muted);
+}
+
+.primary {
+  background: var(--us);
+  color: #fff;
+}

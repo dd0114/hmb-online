@@ -1,0 +1,20 @@
+
+Running 15 tests using 1 worker
+
+  ✓   1 [chromium] › e2e/p386-notice-gate.spec.ts:42:3 › #386 ① 신규 유저 — 코치마크가 끝나면 공지가 뜬다 › 코치마크가 도는 동안은 공지가 안 뜬다 (무회귀 — 온보딩 우선) (1.9s)
+  ✓   2 [chromium] › e2e/p386-notice-gate.spec.ts:62:3 › #386 ① 신규 유저 — 코치마크가 끝나면 공지가 뜬다 › 홈에서 안내를 다 넘기면 **같은 화면에서** 공지가 뜬다 (2.6s)
+  ✓   3 [chromium] › e2e/p386-notice-gate.spec.ts:83:3 › #386 ① 신규 유저 — 코치마크가 끝나면 공지가 뜬다 › 유저가 직접 끝낸 온보딩은 **완료로 저장된다** — 리로드해도 다시 안 돌고 공지가 뜬다 (3.6s)
+  ✓   4 [chromium] › e2e/p386-notice-gate.spec.ts:101:3 › #386 ① 신규 유저 — 코치마크가 끝나면 공지가 뜬다 › 골든 패스 무회귀 — [덱 구성] 타일 → 덱 스텝 완료 → 홈 복귀 시 공지 (2.7s)
+  ✓   5 [chromium] › e2e/p386-notice-gate.spec.ts:124:3 › #386 ① 신규 유저 — 코치마크가 끝나면 공지가 뜬다 › 무회귀 — 온보딩을 마친 유저는 진입 즉시 공지를 본다 (1.2s)
+  ✓   6 [chromium] › e2e/p386-notice-gate.spec.ts:132:3 › #386 ① 신규 유저 — 코치마크가 끝나면 공지가 뜬다 › 무회귀 — 코치마크 중에도 [공지 다시 보기] 진입점은 살아 있다 (691ms)
+  ✓   7 [chromium] › e2e/p386-notice-viewport.spec.ts:105:3 › #386 ② 오시야스 공지 — 폰에서 읽힌다 › 카드 전체와 [닫기]가 보이는 화면 안에 있다 (1.3s)
+  ✓   8 [chromium] › e2e/p386-notice-viewport.spec.ts:119:5 › #386 ② 오시야스 공지 — 폰에서 읽힌다 › 실터치 스와이프(image 위에서 시작)로 본문이 끝까지 내려간다 (2.2s)
+  ✓   9 [chromium] › e2e/p386-notice-viewport.spec.ts:119:5 › #386 ② 오시야스 공지 — 폰에서 읽힌다 › 실터치 스와이프(text 위에서 시작)로 본문이 끝까지 내려간다 (2.2s)
+  ✓  10 [chromium] › e2e/p386-notice-viewport.spec.ts:152:3 › #386 ② 오시야스 공지 — 폰에서 읽힌다 › [공지 다시 보기] 목록도 보이는 화면 안에서 스크롤된다 (2.0s)
+  ✓  11 [chromium] › e2e/p386-notice-viewport.spec.ts:237:3 › #386 ② 오시야스 공지 — 폰에서 읽힌다 › 데스크탑 1280×800 — 카드가 화면 안에 있고 [닫기]가 보인다 (1.5s)
+  ✓  12 [chromium] › e2e/p493-guides.spec.ts:80:1 › ① 온보딩 뒤 첫 /game 진입 = 가이드(1 / 3, 마지막 '확인') → 완주 후 재진입 무노출 (2.6s)
+  ✓  13 [chromium] › e2e/p493-guides.spec.ts:104:1 › ③ 래치 없는 유저(기존 유저)에게는 어느 화면에서도 안 뜬다 (2.4s)
+  ✓  14 [chromium] › e2e/p493-guides.spec.ts:115:1 › ④ /recruit 가이드 — 건너뛰기 = seen, 재진입 무노출 (2.5s)
+  ✓  15 [chromium] › e2e/p493-guides.spec.ts:129:1 › ⑤ /me '화면 안내 다시 보기' → 그 자리에서 즉시 재발화 (1.0s)
+
+  15 passed (33.9s)

@@ -7,7 +7,7 @@ import { skipSplash } from "./splash-mock";
 /**
  * #493 W4 AC10 — 신규 유저 풀 플로우 (route-mock · 390×844 · **실터치 탭**).
  *
- * 가입 → 스타터 → **미니게임(/welcome) 끝까지** → 온보딩 코치마크 완주(완료 저장 1회 = 보상①)
+ * 가입 → 스타터 → 온보딩 코치마크 완주(완료 저장 1회 = 보상①)
  * → 화면 가이드(/game) → 덱 저장(보상③) → 뽑기(보상④) → 트레이드 등록(보상⑤)
  * → **우편함에서 4통 확인·수령(잔액 반영)**. 보상②(첫 경기 결과 열람)는 경기 결과 화면
  * 시나리오가 따로 태운다(테스트 B — 봉투 ack → 우편 ②).
@@ -162,7 +162,7 @@ async function skipGuideIfShown(page: Page) {
 
 test.use({ viewport: PHONE, hasTouch: true });
 
-test("A. 가입 → 미니게임 → 온보딩 완주 → 행동 ①③④⑤ → 우편 수령·잔액 반영 (실터치)", async ({ page }) => {
+test("A. 가입 → 온보딩 완주 → 행동 ①③④⑤ → 우편 수령·잔액 반영 (실터치)", async ({ page }) => {
   // 뷰포트·터치 자기전제(#386 교훈 — 조용히 데스크탑으로 돌면 전부 초록이 된다).
   expect(page.viewportSize()).toEqual(PHONE);
   const st = await mockApi(page);
@@ -177,21 +177,8 @@ test("A. 가입 → 미니게임 → 온보딩 완주 → 행동 ①③④⑤ �
   await page.getByTestId("local-submit").tap();
   await page.getByTestId("starter-reveal-close").tap();
 
-  // ── 미니게임: 재생 확인 → 끝까지(시크 압축) → CTA ───────────────────────────
-  await expect(page).toHaveURL(/\/welcome$/);
-  await page.waitForFunction(() => {
-    const v = (window as unknown as { __viewer?: { ready?: () => boolean } }).__viewer;
-    return Boolean(v?.ready?.());
-  });
-  await page.evaluate(() => {
-    const v = (window as unknown as { __viewer?: { seek?: (t: number) => void; play?: () => void } }).__viewer!;
-    v.seek!(340);
-    v.play!();
-  });
-  await expect(page.getByTestId("minigame-end")).toBeVisible({ timeout: 15000 });
-  await page.getByTestId("minigame-cta").tap();
-
   // ── 온보딩 코치마크 완주(홈 스텝 전부 [다음]) → 완료 저장 1회 = 보상① ─────────
+  // #493 W5: W1 의 미니게임(/welcome)이 걷혀 가입 직후 곧바로 홈이다.
   await expect(page).toHaveURL(/\/home$/);
   await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
   for (let i = 0; i < 12 && (await page.getByTestId("tutorial-overlay").count()) > 0; i++) {

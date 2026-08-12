@@ -166,9 +166,7 @@ test.describe("#209 AC3 — 가입 최상위 지급 연출", () => {
     await expect(page.getByTestId("starter-reveal-grant")).toContainText("15명");
 
     await page.getByTestId("starter-reveal-close").click();
-    // #493 W1: 신규 가입의 기본 착지는 1분 미니게임(/welcome)이다 — 건너뛰면 홈(온보딩 시작).
-    await expect(page).toHaveURL(/\/welcome$/);
-    await page.getByTestId("minigame-skip").click();
+    // #493 W5: 신규 가입도 홈에 바로 착지한다(W1 의 /welcome 미니게임은 걷혔다).
     await expect(page).toHaveURL(/\/home$/);
   });
 
@@ -201,9 +199,7 @@ test.describe("#209 AC3 — 가입 최상위 지급 연출", () => {
 
     await expect(page.getByTestId("starter-reveal-card")).toHaveCount(0);
     await page.getByTestId("starter-reveal-close").click();
-    // 지급이 없어도 신규 유저다 — 미니게임(#493 W1)을 거쳐 홈으로.
-    await expect(page).toHaveURL(/\/welcome$/);
-    await page.getByTestId("minigame-skip").click();
+    // 지급이 없어도 신규 유저다 — 곧바로 홈으로.
     await expect(page).toHaveURL(/\/home$/);
   });
 });
@@ -214,7 +210,6 @@ test.describe("#209 AC2 — 튜토리얼 완료가 덱 지급을 트리거한다
     await register(page);
     await page.getByTestId("starter-reveal-card").click();
     await page.getByTestId("starter-reveal-close").click();
-    await page.getByTestId("minigame-skip").click(); // #493 W1 미니게임 통과
 
     // 로비 진입 → 튜토리얼 자동 시작. 건너뛰기는 유저가 온보딩 전체를 거절한 경우다 —
     // 그래도 덱은 지급된다(안 그러면 경기 자체를 못 한다, #209 D6).

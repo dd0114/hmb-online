@@ -12,6 +12,8 @@
  */
 const PENDING_KEY = (userId: string) => `hmb.guide.pending.${userId}`;
 const SEEN_KEY = (userId: string) => `hmb.guide.seen.${userId}`;
+/** #493 W5 — 연습경기 튜토리얼 제안에 **답한 적이 있는가**(수락/거절 무관). 위 두 키와 같은 규율. */
+const PRACTICE_KEY = (userId: string) => `hmb.guide.practice.${userId}`;
 
 export function markGuidePending(userId: string | null): void {
   if (!userId) return;
@@ -51,6 +53,42 @@ export function markGuideSeen(userId: string | null, screen: string): void {
     window.localStorage.setItem(SEEN_KEY(userId), JSON.stringify([...next]));
   } catch {
     /* no-op */
+  }
+}
+
+/**
+ * #493 W5 — 홈 [게임 시작]에서 **연습경기 튜토리얼을 제안할 때인가**.
+ *
+ * 곱 두 개다:
+ *  · **pending 래치가 서 있다** = 온보딩을 방금 끝낸 계정(`TutorialProvider.persistIfOwner` 가
+ *    심는다). 이 게이트가 없으면 기존 유저와 토큰만 심는 e2e 목 유저 전원이 첫 클릭에 이 모달을
+ *    맞는다 — GuideProvider 가 같은 이유로 같은 래치를 본다(이 파일 머리말).
+ *  · **아직 답하지 않았다.** 수락이든 거절이든 한 번 답하면 끝이다(매번 물으면 방해다).
+ *
+ * ⚠️ pending 래치는 '화면 안내 다시 보기'(`resetGuides`)로 다시 설 수 있지만 이 답은 **지우지
+ * 않는다** — 안내를 다시 보겠다는 뜻이 "첫 경기를 또 제안받겠다"는 뜻은 아니다.
+ */
+export function shouldOfferPracticeTutorial(userId: string | null): boolean {
+  if (!userId) return false;
+  return guidePending(userId) && !practiceTutorialAnswered(userId);
+}
+
+export function practiceTutorialAnswered(userId: string | null): boolean {
+  if (!userId) return false;
+  try {
+    return window.localStorage.getItem(PRACTICE_KEY(userId)) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** 수락/거절 어느 쪽이든 답한 그 순간 기록한다 — 되묻지 않는 것이 이 값의 전부다. */
+export function markPracticeTutorialAnswered(userId: string | null): void {
+  if (!userId) return;
+  try {
+    window.localStorage.setItem(PRACTICE_KEY(userId), "1");
+  } catch {
+    /* 저장 불가(사파리 프라이빗 등) — 다음에 한 번 더 물을 뿐 동선은 그대로 */
   }
 }
 

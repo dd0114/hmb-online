@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ApiError } from "../api/client";
-import { useActiveMatch, useAwayReports, useCreateMatch, useMe } from "../api/hooks";
+import { useActiveMatch, useAwayReports, useMe } from "../api/hooks";
 import { useLeague } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { AwayReportModal } from "../lobby/AwayReportModal";
 import { shouldShowAwayPopup } from "../lobby/away-report-logic";
 import { useDecklessGuard } from "../common/useDecklessGuard";
-import { matchInProgressIdOf, shouldForceResume } from "../common/match-lock";
+import { shouldForceResume } from "../common/match-lock";
 import { useAppConfigValue } from "../common/AppConfigContext";
-import { aiModeNotice, leagueModeHint, practiceError } from "./game-logic";
+import { usePracticeStart } from "../common/usePracticeStart";
+import { aiModeNotice, leagueModeHint } from "./game-logic";
 import styles from "./GamePage.module.css";
 
 /**
@@ -28,8 +28,6 @@ export function GamePage() {
   const navigate = useNavigate();
   const { data: me } = useMe();
   const { data: league } = useLeague();
-  const createMatch = useCreateMatch();
-  const [createError, setCreateError] = useState<string | null>(null);
 
   /**
    * #245 피원정 리포트 팝업 — 트리거가 **[원정] 카드 클릭**으로 옮겨왔다(#286).
@@ -71,27 +69,12 @@ export function GamePage() {
     navigate("/away");
   }
 
-  function startPractice() {
-    if (!deckless.guard()) return;
-    setCreateError(null);
-    createMatch.mutate(
-      {},
-      {
-        onSuccess: (match) => navigate(`/match/${match.id}`),
-        onError: (err) => {
-          // #217: 409 는 실패가 아니라 **이어가라는 안내**다. 문구만 띄우면 막다른 길이 된다.
-          const resumeId = matchInProgressIdOf(err);
-          if (resumeId) {
-            navigate(`/match/${resumeId}`);
-            return;
-          }
-          // L3 — 서버가 "덱이 없다"고 거부했다. 에러 토스트로 끝내면 막다른 길이다.
-          if (deckless.catchReject(err)) return;
-          setCreateError(practiceError(err as ApiError | Error));
-        },
-      },
-    );
-  }
+  /**
+   * ⚠️ **연습경기 시작 로직은 여기 있지 않다** — 홈 [게임 시작]의 튜토리얼 제안(#493 W5)이
+   * 두 번째 호출부가 되면서 `common/usePracticeStart` 한 곳으로 옮겼다. 409(이어하기)·L3(서버
+   * 덱 거부) 처리가 두 벌이 되면 한쪽이 조용히 낡는다(`useDecklessGuard` 와 같은 이유).
+   */
+  const practice = usePracticeStart(deckless);
 
   const header = (
     <div className={styles.headerRow}>
@@ -170,15 +153,15 @@ export function GamePage() {
           type="button"
           className={`${styles.mode} ${styles.practice}`}
           data-testid="mode-practice"
-          disabled={createMatch.isPending}
-          onClick={startPractice}
+          disabled={practice.isPending}
+          onClick={() => practice.start()}
         >
           <span className={styles.modeTop}>
             <span className={`${styles.modeIcon} ${styles.practiceIcon}`} aria-hidden="true">
               🎯
             </span>
             <b className={styles.practiceTitle}>
-              {createMatch.isPending ? "매치 생성 중…" : "연습 경기"}
+              {practice.isPending ? "매치 생성 중…" : "연습 경기"}
             </b>
             <span className={styles.chev} aria-hidden="true">
               ›
@@ -187,7 +170,7 @@ export function GamePage() {
           <p className={styles.practiceDesc}>봇과 단판 · 기록·보상 없음 · 전술 시험용</p>
         </button>
 
-        <ErrorToast message={createError} onDismiss={() => setCreateError(null)} />
+        <ErrorToast message={practice.error} onDismiss={practice.dismissError} />
 
         {deckless.dialog}
 

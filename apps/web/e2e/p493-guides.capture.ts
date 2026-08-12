@@ -47,7 +47,6 @@ async function newUserPastOnboarding(page: Page) {
   await page.getByTestId("local-password").fill("sup3rs3cret");
   await page.getByTestId("local-submit").click();
   await page.getByTestId("starter-reveal-close").click();
-  await page.getByTestId("minigame-skip").click();
   await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
   await page.getByTestId("tutorial-skip").click();
 }

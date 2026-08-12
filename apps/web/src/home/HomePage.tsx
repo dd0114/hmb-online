@@ -19,7 +19,13 @@ import { useUnbiddenPopupHold } from "../lobby/tutorial-hold";
 import { useTutorial } from "../common/tutorial-context";
 import { useGuide } from "../common/guide-context";
 import { DecklessDialog } from "../common/DecklessDialog";
-import { deckMissing } from "../common/deckless";
+import { deckMissing, isDeckRequiredError } from "../common/deckless";
+import {
+  markPracticeTutorialAnswered,
+  shouldOfferPracticeTutorial,
+} from "../common/guide-storage";
+import { usePracticeStart } from "../common/usePracticeStart";
+import { PracticeTutorialDialog } from "./PracticeTutorialDialog";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
 import { HOME_TILES, homeNotice, homeTileState, openTradeCount, teamLine } from "./home-logic";
 import styles from "./HomePage.module.css";
@@ -156,12 +162,63 @@ export function HomePage() {
    * 다만 이건 첫 겹일 뿐이다 — URL 직접 진입은 `GamePage` 가, 경합은 서버 응답이 받는다.
    */
   const [decklessOpen, setDecklessOpen] = useState(false);
+
+  /**
+   * 연습경기 튜토리얼 제안 (#493 W5, hero 리플랜 v2).
+   *
+   * *"게임시작 눌렀을때 '연습경기로 튜토리얼을 해보시겠습니까?' 하고 미리 준비한 덱으로 돌려서
+   * 보여줘야 자연스럽다"* — W1 의 `/welcome` 미니게임(60초 리플레이 관전)을 대신한다. 보여주는
+   * 것은 녹화가 아니라 **자기 팀의 진짜 연습경기**이고, 서버는 온보딩 덱 지급 그 자리에서 그
+   * 덱의 AI 인풋을 선실행해 둔다(`OnboardingController` → `DeckPrewarmService.onDeckSaved`).
+   *
+   * ⚠️ **발화 조건은 GuideProvider 와 같은 래치다**(`shouldOfferPracticeTutorial`). 래치 없이 뜨면
+   * 기존 유저와 토큰만 심는 e2e 목 유저 전원이 [게임 시작]에서 이 모달에 막힌다.
+   *
+   * ⚠️ **판정은 클릭하는 순간에 한다** — 렌더 시점에 계산해 두면 온보딩을 막 끝내고 홈으로 온
+   * 유저에게 래치가 서기 **전**의 값이 굳는다(스토리지는 React 밖이라 리렌더 신호가 없다).
+   */
+  const [practiceAsk, setPracticeAsk] = useState(false);
+  const decklessGuard = {
+    guard: () => {
+      if (deckMissing(deck)) {
+        setDecklessOpen(true);
+        return false;
+      }
+      return true;
+    },
+    catchReject: (err: unknown) => {
+      if (isDeckRequiredError(err)) {
+        setDecklessOpen(true);
+        return true;
+      }
+      return false;
+    },
+  };
+  const practice = usePracticeStart(decklessGuard);
+
   function pressTile(key: string, to: string) {
     if (key === "game" && deckMissing(deck)) {
       setDecklessOpen(true);
       return;
     }
+    if (key === "game" && shouldOfferPracticeTutorial(me?.user?.id ?? null)) {
+      setPracticeAsk(true);
+      return;
+    }
     navigate(to);
+  }
+
+  /** 수락 = 연습경기를 그 자리에서 만든다(모드 선택 화면을 거치지 않는다 — hero: "돌려서 보여줘야"). */
+  function acceptPracticeTutorial() {
+    markPracticeTutorialAnswered(me?.user?.id ?? null);
+    practice.start(() => setPracticeAsk(false));
+  }
+
+  /** 거절 = 원래 가려던 곳(게임 탭)으로 그대로. 다시 묻지 않는다. */
+  function declinePracticeTutorial() {
+    markPracticeTutorialAnswered(me?.user?.id ?? null);
+    setPracticeAsk(false);
+    navigate("/game");
   }
 
   const header = (
@@ -264,6 +321,17 @@ export function HomePage() {
             onClose={() => setDecklessOpen(false)}
           />
         )}
+
+        {/* #493 W5 — 덱 안내(위)와 **겹치지 않는다**: `pressTile` 이 덱 없음을 먼저 걸러낸다
+            (모달 2겹 금지 규율). 매치 생성이 실패하면 여기 토스트로 말한다. */}
+        {practiceAsk && (
+          <PracticeTutorialDialog
+            pending={practice.isPending}
+            onAccept={acceptPracticeTutorial}
+            onDecline={declinePracticeTutorial}
+          />
+        )}
+        <ErrorToast message={practice.error} onDismiss={practice.dismissError} />
       </div>
     </Layout>
   );

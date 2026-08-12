@@ -4,8 +4,11 @@ import {
   guidePending,
   markGuidePending,
   markGuideSeen,
+  markPracticeTutorialAnswered,
+  practiceTutorialAnswered,
   readGuideSeen,
   resetGuides,
+  shouldOfferPracticeTutorial,
 } from "./guide-storage";
 
 /**
@@ -63,5 +66,38 @@ describe("#493 guide-storage", () => {
   it("손상 저장값은 빈 집합으로 읽힌다(throw 0)", () => {
     window.localStorage.setItem("hmb.guide.seen.u1", "{not json");
     expect(readGuideSeen("u1").size).toBe(0);
+  });
+
+  // ── #493 W5 연습경기 튜토리얼 제안 ────────────────────────────────────────
+
+  it("제안은 pending 래치가 선 계정에만, 그리고 답하기 전까지만", () => {
+    // 래치 없는 계정(기존 유저·e2e 목 유저) — 절대 제안하지 않는다.
+    expect(shouldOfferPracticeTutorial("u1")).toBe(false);
+
+    markGuidePending("u1");
+    expect(shouldOfferPracticeTutorial("u1")).toBe(true);
+
+    // 답하면(수락/거절 무관) 다시 묻지 않는다.
+    markPracticeTutorialAnswered("u1");
+    expect(practiceTutorialAnswered("u1")).toBe(true);
+    expect(shouldOfferPracticeTutorial("u1")).toBe(false);
+
+    // userId 격리 — 같은 기기의 다른 계정에 답이 새지 않는다.
+    markGuidePending("u2");
+    expect(shouldOfferPracticeTutorial("u2")).toBe(true);
+  });
+
+  it("userId 를 모르면 제안하지 않고 아무것도 쓰지 않는다", () => {
+    markPracticeTutorialAnswered(null);
+    expect(window.localStorage.length).toBe(0);
+    expect(shouldOfferPracticeTutorial(null)).toBe(false);
+  });
+
+  it("'화면 안내 다시 보기'는 그 답을 되돌리지 않는다 — 첫 경기를 또 제안하지 않는다", () => {
+    markGuidePending("u1");
+    markPracticeTutorialAnswered("u1");
+    resetGuides("u1");
+    expect(guidePending("u1")).toBe(true); // 가이드 래치는 다시 선다
+    expect(shouldOfferPracticeTutorial("u1")).toBe(false); // 그래도 제안은 없다
   });
 });

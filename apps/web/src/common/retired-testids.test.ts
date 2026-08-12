@@ -34,6 +34,11 @@ const RETIRED: Record<string, string> = {
   "growth-empty": "codex 빈 상태",
   // #382 — 대기 화면의 시스템 설명 한 줄이 **정경 로테이션**으로 교체됐다.
   "genwait-note": "genwait-scene (축구장 정경 로테이션, match/waiting-scenes.ts)",
+  // #493 W5 — W1 의 1분 미니게임(`/welcome`)이 hero 판정으로 통째로 걷혔다. 첫 경험은 관전이
+  // 아니라 홈 [게임 시작]에서 제안하는 **진짜 연습경기**다(home/PracticeTutorialDialog).
+  "minigame-skip": "소멸 — 홈 [게임 시작] → practice-tutorial-dialog (#493 W5)",
+  "minigame-cta": "소멸 — practice-tutorial-accept (#493 W5)",
+  "minigame-end": "소멸 — 미니게임 자체가 없다 (#493 W5)",
 };
 
 const E2E_DIR = new URL("../../e2e/", import.meta.url).pathname;

@@ -62,7 +62,7 @@ async function mockApi(page: Page): Promise<St> {
   return st;
 }
 
-/** 가입 → 미니게임 건너뛰기 → 홈 온보딩 건너뛰기 = 가이드 래치가 서는 지점까지. */
+/** 가입 → 홈 온보딩 건너뛰기 = 가이드 래치가 서는 지점까지. */
 async function newUserPastOnboarding(page: Page) {
   await skipSplash(page);
   await page.goto("/login");
@@ -72,7 +72,6 @@ async function newUserPastOnboarding(page: Page) {
   await page.getByTestId("local-password").fill("sup3rs3cret");
   await page.getByTestId("local-submit").click();
   await page.getByTestId("starter-reveal-close").click();
-  await page.getByTestId("minigame-skip").click();
   await expect(page.getByTestId("tutorial-overlay")).toBeVisible();
   await page.getByTestId("tutorial-skip").click();
   await expect(page.getByTestId("tutorial-overlay")).toHaveCount(0);
