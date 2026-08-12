@@ -261,10 +261,15 @@ async function mockJourney(page: Page, opts: { deckReady?: boolean } = {}): Prom
       return route.fulfill(json({
         user: { id: USER_ID, nickname: "여정감독", tutorialDone: deckExists },
         wallet: { points: j.points, gems: j.gems },
-        records: { played: 0, wins: 0, draws: 0, losses: 0 },
+        // 서버 실물 그대로 — `records{wins,draws,losses}`(`MeController` 머리말), `mail{unread,total}`
+        // (둘 다 필수다 — `total` 이 없으면 우편함 진입점이 서버가 만들 수 없는 상태로 그려진다).
+        records: { wins: 0, draws: 0, losses: 0 },
         rating: 1000,
         coupons: { ...j.coupons },
-        mail: { unread: j.mails.filter((m) => !m.claimed).length },
+        mail: {
+          unread: j.mails.filter((m) => !m.claimed).length,
+          total: j.mails.length,
+        },
       }));
     }
     if (p === "/api/auth/register") {
@@ -309,7 +314,8 @@ async function mockJourney(page: Page, opts: { deckReady?: boolean } = {}): Prom
     // ── 매치 ────────────────────────────────────────────────────────────
     if (p === "/api/matches" && method === "POST") {
       j.creates.push(req.postDataJSON() ?? {});
-      return route.fulfill(json(matchDetail(j)));
+      // 서버는 **201** 로 만든다(`MatchController.create`) — 목이 200 이면 여정이 겪지 않는 응답이다.
+      return route.fulfill(json(matchDetail(j), 201));
     }
     if (p === `/api/matches/${MATCH_ID}`) return route.fulfill(json(matchDetail(j)));
     if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(p)) return route.fulfill(json(HALF_LOG));
@@ -472,14 +478,19 @@ function slotView(j: Journey) {
     slot: 1,
     state: j.trade.state,
     offerKind: j.trade.offerKind,
-    // 대기 중엔 등급만 공개(서버 마스킹). 단축 뒤에 정체가 열린다.
+    /*
+     * 대기 중엔 등급만 공개(서버 마스킹). 단축 뒤에 정체가 열린다.
+     * ⚠️ 키는 **`playerId`** 다(openapi `PlayerRef`) — `id` 로 쓰면 카탈로그 조회가 조용히 빗나가
+     * 화면이 능력치 없는 카드를 그리고, 그 상태를 서버는 만들 수 없다(독립 검증 3R minor-2).
+     */
     target: open
-      ? { id: "P200", name: "다이아 유망주", position: "FW", grade: "DIA", attributes: attrs(80) }
+      ? { playerId: "P200", name: "다이아 유망주", position: "FW", grade: "DIA" }
       : null,
-    demand: open ? { id: "P096", name: "선수P096", position: "MF", grade: "SILVER" } : null,
+    demand: open ? { playerId: "P096", name: "선수P096", position: "MF", grade: "SILVER" } : null,
     targetGrade: waiting || open ? "DIA" : null,
     targetValue: null,
-    prob: null,
+    // 서버 필드명은 `acceptProbability` 다(`TradeService:931`) — `prob` 은 이 리포에 없는 이름이었다.
+    acceptProbability: open && j.trade.offerKind === "TRADE" ? 0.8 : null,
     opensAt: "2026-08-15T00:00:00Z",
     remainingSec: waiting ? 48 * 3600 : 0,
     speedupCost: waiting ? SPEEDUP_COST : null,
@@ -492,8 +503,8 @@ function tradeView(j: Journey) {
     wallet: { points: j.points, gems: j.gems },
     slots: [
       slotView(j),
-      { slot: 2, state: "IDLE", offerKind: null, target: null, demand: null, targetGrade: null, targetValue: null, prob: null, opensAt: null, remainingSec: 0, speedupCost: null, speedupCurrency: null },
-      { slot: 3, state: "IDLE", offerKind: null, target: null, demand: null, targetGrade: null, targetValue: null, prob: null, opensAt: null, remainingSec: 0, speedupCost: null, speedupCurrency: null },
+      { slot: 2, state: "IDLE", offerKind: null, target: null, demand: null, targetGrade: null, targetValue: null, acceptProbability: null, opensAt: null, remainingSec: 0, speedupCost: null, speedupCurrency: null },
+      { slot: 3, state: "IDLE", offerKind: null, target: null, demand: null, targetGrade: null, targetValue: null, acceptProbability: null, opensAt: null, remainingSec: 0, speedupCost: null, speedupCurrency: null },
     ],
   };
 }
@@ -523,6 +534,18 @@ async function stepId(page: Page): Promise<string | null> {
   const bubble = page.getByTestId("onrail-bubble");
   if ((await bubble.count()) === 0) return null;
   return bubble.first().getAttribute("data-step-id");
+}
+
+/**
+ * 온보딩을 막 끝낸 계정 — 토큰 + 가이드 pending 래치(제안 모달의 발화 조건).
+ * 여정 본편은 실제 가입을 지나지만, 그 앞 구간이 주제가 아닌 스펙은 여기서 출발한다.
+ */
+async function seedOnboardedUser(page: Page) {
+  await skipSplash(page);
+  await page.addInitScript((uid) => {
+    window.localStorage.setItem("hmb.auth.token", "tok_w8");
+    window.localStorage.setItem(`hmb.guide.pending.${uid}`, "1");
+  }, USER_ID);
 }
 
 async function expectStep(page: Page, id: string) {
@@ -700,9 +723,15 @@ test("신규 유저 온레일 풀 저니 S0→S7 — 한 번도 갇히지 않고
   await expect(page.getByTestId("trade-slot-1-speedup")).toBeEnabled();
   await page.getByTestId("trade-slot-1-speedup").tap();
   await expectStep(page, "trade-accept");
-  // 쿠폰이 타 없어졌고 화면이 그 사실을 **다시 읽는다**(`invalidateAfterTrade` 의 `["me"]`) —
-  // 안 읽으면 다 쓴 무료권을 계속 광고하고, 다음 단축에서 402 를 맞는다.
-  expect(j.coupons.FREE_TRADE_RUSH).toBe(0);
+  expect(j.coupons.FREE_TRADE_RUSH).toBe(0); // 서버가 그 트랜잭션에서 태웠다
+  /*
+   * ⚠️ **여기서 캐시 무효화를 주장하지 않는다** (독립 검증 3R minor-1 정정).
+   * 단축이 성공하면 슬롯이 WAITING 을 떠나 무료권 칩을 소유한 블록 자체가 언마운트되므로, 이
+   * 단언은 `["me"]` 재조회 여부와 **무관하게** 참이다(변이로 확인됨 — 무효화를 지워도 초록).
+   * 쿠폰 표기가 서버 진실을 따라오는지는 **강화 쪽**(`growth-dice-free`, 아래 S5)이 문다 — 그 칩은
+   * 같은 화면에 계속 살아 있는 버튼 위에 있어 재조회가 없으면 남는다. 무효화 규칙 자체의 계약은
+   * `src/api/hooks-v2.test.ts`(선행) 소관이다.
+   */
   await expect(page.getByTestId("trade-slot-1-rush-free")).toHaveCount(0);
   expect(j.speedupSpent).toBe(0); // 쿠폰이면 지출 0 (서버 `spent`)
   expect(j.points).toBe(INITIAL_POINTS + WIN_POINTS); // 지갑은 한 푼도 안 나갔다
@@ -775,6 +804,63 @@ test("한마디를 치고 저장 전에 새로고침하면 그 스텝으로 되�
   const starters = (j.deck.slots as { role: string; promptText?: string | null }[])
     .filter((s) => s.role === "starter");
   expect(starters.some((s) => (s.promptText ?? "").includes("다시 쓴 한마디"))).toBe(true);
+});
+
+/**
+ * #493 W8-v3 — **되감기는 "복원 창"에서만 발화한다** (독립 검증 3R blocker-2).
+ *
+ * ⚠️ 이 계약은 **DOM 스냅샷으로는 쓸 수 없다.** 복원 창 가드(`restoredRef`)를 지워도 화면은 같아
+ * 보인다 — 되감긴 두 스텝(`deck-player`·`deck-prompt`)이 둘 다 행동형이라 *"이번 run 에서 이미 한
+ * 행동은 도착 즉시 통과"* 규칙이 그 자리에서 재생돼 곧바로 `deck-save` 로 돌아오기 때문이다.
+ * 실측으로 확인됐다: 그 가드를 제거해도 이 파일 8건 + 온레일 스위트 18건이 **전부 초록**이었다.
+ *
+ * 그래서 상태가 아니라 **전이(transition)** 를 잰다 — 스텝 id 가 바뀔 때마다 기록해 두고
+ * *"`deck-save` 에 도달한 뒤로는 뒤로 가지 않는다"* 를 문다. 가드가 없으면 그 기록에
+ * `deck-save → deck-player` 가 남는다(화면에는 한 프레임도 안 남지만 기록에는 남는다).
+ */
+test("복원 창 밖에서는 되감지 않는다 — 전이 기록에 역행이 없다", async ({ page }) => {
+  // 온보딩이 끝난 계정 = 덱이 이미 서 있다(그 덱에 한마디만 없다 — 되감기 조건의 나머지 절반).
+  await mockJourney(page, { deckReady: true });
+  await seedOnboardedUser(page);
+  /*
+   * 스텝 전이를 **전부** 받아 적는다 — 매 프레임 표본.
+   * ⚠️ `MutationObserver` 로는 못 잡는다(실측): 말풍선은 `key={step.id}` 라 통째로 교체되는데
+   * 그 관찰자를 `addInitScript` 단계에서 걸면 React 루트가 붙기 전이라 놓친다. rAF 는 화면이
+   * 그려지는 매 프레임을 보므로 한 프레임짜리 역행도 남는다(이 계약이 재려는 것이 정확히 그것이다).
+   */
+  await page.addInitScript(() => {
+    const w = window as unknown as { __railSteps: string[] };
+    w.__railSteps = [];
+    const tick = () => {
+      const id = document
+        .querySelector('[data-testid="onrail-bubble"]')
+        ?.getAttribute("data-step-id");
+      if (id && w.__railSteps[w.__railSteps.length - 1] !== id) w.__railSteps.push(id);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+
+  await page.goto("/home");
+  await page.getByTestId("home-tile-game").tap();
+  await page.getByTestId("practice-tutorial-accept").tap();
+  await expect(page).toHaveURL(/\/deck$/);
+
+  // S2 를 **이번 화면에서** 끝까지 밟는다(복원이 아니다 — 그래서 되감기가 발화하면 안 된다).
+  await expectStep(page, "deck-player");
+  await page.getByTestId(`token-${STARTERS[0]}`).tap();
+  await page.getByTestId("pmenu-say").tap();
+  const input = page.getByTestId("rail-prompt-input");
+  await input.fill("복원 창 밖");
+  await input.blur();
+  // 이 시점 서버 덱에는 아직 한마디가 없다 = 되감기 **조건은 참**이다. 막는 것은 가드뿐이다.
+  await page.waitForTimeout(1500);
+
+  const seen = await page.evaluate(() => (window as unknown as { __railSteps: string[] }).__railSteps);
+  const firstSave = seen.indexOf("deck-save");
+  expect(firstSave, `전이 기록에 deck-save 가 없다: ${seen.join(" → ")}`).toBeGreaterThanOrEqual(0);
+  expect(seen.slice(firstSave), `deck-save 뒤로 역행이 남았다: ${seen.join(" → ")}`)
+    .toEqual(["deck-save"]);
 });
 
 test("이미 한마디가 저장돼 있으면 되감지 않는다 — 되감기는 손실이 있을 때만", async ({ page }) => {
@@ -935,7 +1021,7 @@ test("튜토리얼 매치를 이미 했으면(409) 일반 연습경기로 착지
       });
     }
     j.creates.push(body);
-    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(matchDetail(j)) });
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(matchDetail(j)) });
   });
 
   await page.goto("/deck");
