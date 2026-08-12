@@ -1,3 +1,8 @@
+## 2026-08-12 23:34 KST — [장애] Docker 데몬 사망 → 백엔드 전체 다운, 수동 복구
+- 증상: Docker Desktop 프로세스 종료(원인: 업데이트/크래시 추정) → hmb-java·hmb-runner 다운, 백엔드 405. 워치독은 BACKEND_DOWN 기록만 가능(터널 전용). 웹은 점검 안내(#477) 노출.
+- 복구: Docker Desktop 재기동(6s) → compose up java runner → healthy 12s → status 전항목 ✓. DB 볼륨 무손상.
+- 재발 방지: usage-guard 사이클에 docker 데몬 liveness 체크 추가(죽으면 매니저 세션 통지) — 이번 커밋.
+
 ## 2026-08-09T17:40Z — **배포 v3.26 — 백엔드 단독** — 개명 캐리오버 수리 v2.8.1 (#483 / 패널 blocker A)
 
 - **git**: `c24dbba8` (브랜치 `data/483-fictional-rename`)
