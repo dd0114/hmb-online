@@ -164,9 +164,22 @@ public class BusinessEventQueryService {
                 parseProps(rs.getString("props_json")));
     }
 
+    /** 깨진 props 를 표시하는 키 — "속성이 없다"와 "속성이 깨졌다"를 화면에서 가른다. */
+    static final String PARSE_ERROR_KEY = "_parseError";
+
+    /** 깨진 원문(잘라서) — 무엇이 깨졌는지 보려면 원문이 필요하다. */
+    static final String RAW_KEY = "_raw";
+
+    private static final int RAW_MAX = 500;
+
     /**
      * props 는 <b>객체</b>로 내려간다. 깨진 행 하나가 페이지 전체를 500 으로 만들면 안 되므로
-     * 파싱 실패는 빈 객체로 낮춘다(원장은 append-only 라 고쳐 쓸 수도 없다).
+     * 파싱 실패는 객체로 낮춘다(원장은 append-only 라 고쳐 쓸 수도 없다).
+     *
+     * <p>⚠️ 단 <b>빈 객체로 낮추지 않는다</b>(AC7 패널 5R 엣지케이스 렌즈). 그러면 "속성이 애초에
+     * 없었다(props_json NULL)"와 "속성이 깨져서 못 읽었다"가 화면에서 <b>완전히 같아 보인다</b> —
+     * 관측 화면이 자기 결손을 숨기는 셈이라 계측으로서 최악이다. 깨진 행은 {@link #PARSE_ERROR_KEY}
+     * 와 원문 일부를 달고 나가 <b>눈에 띄게</b> 한다.
      */
     private Map<String, Object> parseProps(String json) {
         if (json == null || json.isBlank()) {
@@ -177,8 +190,11 @@ public class BusinessEventQueryService {
             });
             return parsed == null ? Map.of() : parsed;
         } catch (Exception e) {
-            log.warn("business_events.props_json 파싱 실패 — 빈 객체로 대체: {}", e.toString());
-            return new LinkedHashMap<>();
+            log.warn("business_events.props_json 파싱 실패 — 깨진 행으로 표시: {}", e.toString());
+            Map<String, Object> broken = new LinkedHashMap<>();
+            broken.put(PARSE_ERROR_KEY, true);
+            broken.put(RAW_KEY, json.length() > RAW_MAX ? json.substring(0, RAW_MAX) + "…" : json);
+            return broken;
         }
     }
 

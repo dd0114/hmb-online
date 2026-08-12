@@ -116,6 +116,16 @@ public class BusinessEventRecorder {
         }
     }
 
+    /**
+     * 직렬화 실패로 이벤트를 통째로 버리지 않는다 — "무슨 일이 있었나"가 속성보다 중요하다.
+     *
+     * <p>⚠️ 그렇다고 <b>속성 전부를 버려서도 안 된다</b>(AC7 패널 5R 엣지케이스 렌즈). 퍼널은
+     * {@code match_start} 의 {@code props.mode} 로 practice/league/away 를 가르므로, props 를 통째로
+     * NULL 로 낮추면 <b>그 유저가 그 모드를 안 해본 것처럼 보인다</b> — 하필 hero 의 1급 지표가
+     * 거짓이 되는 방향이다. 그래서 한 번 더 시도한다: <b>스칼라만 남겨</b> 재직렬화한다.
+     * 퍼널·필터가 읽는 값(mode·matchId·result…)은 전부 스칼라라, 이상한 값 하나가 섞여도
+     * <b>판독에 쓰이는 속성은 살아남는다</b>.
+     */
     private String toJson(Map<String, Object> props) {
         if (props == null || props.isEmpty()) {
             return null;
@@ -123,8 +133,26 @@ public class BusinessEventRecorder {
         try {
             return objectMapper.writeValueAsString(props);
         } catch (Exception e) {
-            // 직렬화 실패로 이벤트를 통째로 버리지 않는다 — "무슨 일이 있었나"가 속성보다 중요하다.
-            log.warn("business event props 직렬화 실패 — 속성 없이 기록: {}", e.toString());
+            log.warn("business event props 직렬화 실패 — 스칼라만 남겨 재시도: {}", e.toString());
+            return scalarFallback(props);
+        }
+    }
+
+    /** 1차 직렬화가 실패했을 때의 축소 시도. 이것마저 실패하면 그때 속성을 포기한다. */
+    private String scalarFallback(Map<String, Object> props) {
+        Map<String, Object> safe = new java.util.LinkedHashMap<>();
+        props.forEach((k, v) -> {
+            if (v == null || v instanceof String || v instanceof Number || v instanceof Boolean) {
+                safe.put(k, v);
+            }
+        });
+        if (safe.isEmpty()) {
+            return null;
+        }
+        try {
+            return objectMapper.writeValueAsString(safe);
+        } catch (Exception e) {
+            log.warn("business event props 축소 직렬화도 실패 — 속성 없이 기록: {}", e.toString());
             return null;
         }
     }
