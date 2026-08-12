@@ -733,6 +733,161 @@ test("신규 유저 온레일 풀 저니 S0→S7 — 한 번도 갇히지 않고
   await page.screenshot({ path: new URL("../.smoke/p493-w8v3-journey-end.png", import.meta.url).pathname });
 });
 
+/**
+ * #493 W8-v3 — **재진입이 시나리오의 약속을 깨지 않는다** (독립 검증 2R B1).
+ *
+ * 저장 단위는 스텝인데 화면 상태(덱 draft)는 저장되지 않는다. 그래서 한마디를 치고 [저장] 전에
+ * 새로고침하면 그 문장이 사라지는데, 스텝은 이미 `deck-save` 라 유저는 **한마디가 빠진 덱을 저장**
+ * 하고(그 자리에서 첫 저장 보상까지 태워진다) 그 사실조차 모른다.
+ */
+test("한마디를 치고 저장 전에 새로고침하면 그 스텝으로 되감긴다 — 빈 덱이 저장되지 않는다", async ({ page }) => {
+  const j = await mockJourney(page, { deckReady: true });
+  await skipSplash(page);
+  await page.addInitScript((uid) => {
+    window.localStorage.setItem("hmb.auth.token", "tok_w8");
+    window.localStorage.setItem(
+      `hmb.onrail.${uid}`,
+      // 한마디를 치고 [저장]을 누르기 직전에 창을 닫은 유저의 상태 그대로.
+      JSON.stringify({ status: "running", stepId: "deck-save", matchId: null }),
+    );
+  }, USER_ID);
+
+  await page.goto("/deck");
+  /*
+   * 되감긴다 — 서버 덱에 한마디가 없으므로 그 스텝을 다시 시킨다.
+   * ⚠️ 착지점은 `deck-prompt` 가 아니라 **`deck-player`** 다: 입력칸은 선수를 고른 뒤에만 존재해서
+   * (폰은 선수 메뉴를 한 번 더 지난다) 그 앞에 세우면 오버레이가 hold 로 사라진다.
+   */
+  await expectStep(page, "deck-player");
+  await page.getByTestId(`token-${STARTERS[0]}`).tap();
+  await expect(page.getByTestId("player-menu")).toBeVisible();
+  await page.getByTestId("pmenu-say").tap();
+  await expectStep(page, "deck-prompt");
+
+  // 다시 쓰면 정상 진행이고, 저장된 덱에 그 문장이 실제로 실린다.
+  const input = page.getByTestId("rail-prompt-input");
+  await expect(input).toBeInViewport();
+  await input.fill("다시 쓴 한마디");
+  await input.blur();
+  await expectStep(page, "deck-save");
+  await page.getByTestId("save-deck").tap();
+  await expectStep(page, "deck-done");
+  const starters = (j.deck.slots as { role: string; promptText?: string | null }[])
+    .filter((s) => s.role === "starter");
+  expect(starters.some((s) => (s.promptText ?? "").includes("다시 쓴 한마디"))).toBe(true);
+});
+
+test("이미 한마디가 저장돼 있으면 되감지 않는다 — 되감기는 손실이 있을 때만", async ({ page }) => {
+  const j = await mockJourney(page, { deckReady: true });
+  // 서버 덱에 한마디가 이미 실려 있다(저장까지 마친 뒤 새로고침한 유저).
+  (j.deck.slots as { promptText?: string | null }[])[0]!.promptText = "이미 저장된 한마디";
+  await skipSplash(page);
+  await page.addInitScript((uid) => {
+    window.localStorage.setItem("hmb.auth.token", "tok_w8");
+    window.localStorage.setItem(
+      `hmb.onrail.${uid}`,
+      JSON.stringify({ status: "running", stepId: "deck-save", matchId: null }),
+    );
+  }, USER_ID);
+
+  await page.goto("/deck");
+  await expectStep(page, "deck-save");
+  // 되감기가 늦게 오는 것도 아니다 — 잠시 기다려도 그대로다.
+  await page.waitForTimeout(1500);
+  await expectStep(page, "deck-save");
+});
+
+/**
+ * #493 W8-v3 — **[경기 시작]이 실패를 삼키지 않는다** (독립 검증 2R B4).
+ *
+ * 폴백 2종(자산 부재·1회 제한) 밖의 실패는 구 동작에서 **눌러도 아무 일 없는 버튼**이었다.
+ * 딤이 화면을 덮고 있어 다른 화면의 안내·토스트는 유저에게 도달하지 않는다.
+ */
+test("[경기 시작]이 409 MATCH_IN_PROGRESS 를 만나면 그 매치로 이어간다", async ({ page }) => {
+  const j = await mockJourney(page, { deckReady: true });
+  await skipSplash(page);
+  await page.addInitScript((uid) => {
+    window.localStorage.setItem("hmb.auth.token", "tok_w8");
+    window.localStorage.setItem(
+      `hmb.onrail.${uid}`,
+      JSON.stringify({ status: "running", stepId: "deck-done", matchId: null }),
+    );
+  }, USER_ID);
+  await page.route((url) => url.pathname === "/api/matches", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        code: "MATCH_IN_PROGRESS",
+        message: "진행 중인 경기가 있습니다",
+        detail: { matchId: MATCH_ID, state: "FIRST_HALF", action: "resume" },
+      }),
+    });
+  });
+
+  await page.goto("/deck");
+  await expectStep(page, "deck-done");
+  await page.getByTestId("onrail-next").tap();
+
+  // 막다른 길이 아니다 — 그 매치로 데려가고 투어가 이어진다(#217 규칙 재사용).
+  await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`), { timeout: 20_000 });
+  expect(j.creates).toHaveLength(0); // 새 매치를 만들지 않았다
+});
+
+test("[경기 시작]이 폴백 밖의 실패를 만나면 **말풍선이 말한다** — 조용히 죽지 않는다", async ({ page }) => {
+  await mockJourney(page, { deckReady: true });
+  await skipSplash(page);
+  await page.addInitScript((uid) => {
+    window.localStorage.setItem("hmb.auth.token", "tok_w8");
+    window.localStorage.setItem(
+      `hmb.onrail.${uid}`,
+      JSON.stringify({ status: "running", stepId: "deck-done", matchId: null }),
+    );
+  }, USER_ID);
+  await page.route((url) => url.pathname === "/api/matches", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ code: "INTERNAL", message: "서버 오류가 발생했습니다" }),
+    });
+  });
+
+  await page.goto("/deck");
+  await expectStep(page, "deck-done");
+  await page.getByTestId("onrail-next").tap();
+
+  await expect(page.getByTestId("onrail-note")).toBeVisible({ timeout: 20_000 });
+  // 스텝은 그대로라 다시 누를 수 있다(실패가 진행을 삼키지도, 되돌리지도 않는다).
+  await expectStep(page, "deck-done");
+  await expect(page).toHaveURL(/\/deck$/);
+});
+
+/**
+ * #493 W8-v3 — **매치 스텝의 [이어서 하기]가 무동작 루프가 아니다** (독립 검증 2R B5).
+ *
+ * 구 동작은 매치 스텝을 `/home` 으로 돌려주고 "잠금 게이트가 되돌린다"고 적었는데, 그 전제는
+ * 경기가 **진행 중일 때만** 참이다 — 결과 화면까지 온 뒤에는 되돌릴 잠금이 없어 홈에서 홈으로 간다.
+ */
+test("매치 스텝에서 나갔다 [이어서 하기] = 그 매치로 돌아간다", async ({ page }) => {
+  await mockJourney(page, { deckReady: true });
+  await skipSplash(page);
+  await page.addInitScript((uid) => {
+    window.localStorage.setItem("hmb.auth.token", "tok_w8");
+    window.localStorage.setItem(
+      `hmb.onrail.${uid}`,
+      JSON.stringify({ status: "running", stepId: "result-view", matchId: "m493w8" }),
+    );
+  }, USER_ID);
+
+  await page.goto("/home");
+  const resume = page.getByTestId("onrail-bubble");
+  await expect(resume).toHaveAttribute("data-step-id", "onrail-resume");
+  await resume.getByTestId("onrail-next").tap();
+  await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`), { timeout: 20_000 });
+});
+
 test("튜토리얼 매치의 하프타임은 교체·자리를 받지 않는다(구운 후반)", async ({ page }) => {
   const j = await mockJourney(page, { deckReady: true });
   j.matchState = "HALFTIME";

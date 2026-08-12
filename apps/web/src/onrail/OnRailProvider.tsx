@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { useDeck, useMe } from "../api/hooks";
 import { useToken } from "../auth/TokenContext";
+import { matchInProgressIdOf } from "../common/match-lock";
 import { OnRailContext } from "./onrail-context";
 import type { OnRailControls } from "./onrail-context";
 import { OnRailOverlay } from "./OnRailOverlay";
@@ -75,6 +77,15 @@ export function OnRailProvider({
   const [state, setState] = useState<OnRailState>({ status: "idle", stepId: null, matchId: null });
   /** 이번 run 에서 관측한 행동 id. run 이 시작될 때 비운다(지난 방문의 행동으로 넘어가지 않게). */
   const firedRef = useRef<Set<string>>(new Set());
+  /** CTA 가 서버에 닿았다가 실패했을 때 말풍선이 대신 말해 주는 한 줄(딤 밖으로 못 나가는 화면이라). */
+  const [ctaError, setCtaError] = useState<string | null>(null);
+
+  /**
+   * **복원 직후인가** — 이번 화면에서 스텝을 밟아 온 것이 아니라 저장된 진행도를 읽어 왔는가.
+   * 아래 "한마디 되감기"가 **복원 창에서만** 도는 이유다(그 창 밖에서 돌면 방금 입력한 한마디를
+   * 서버가 아직 모른다는 이유로 되감아 버린다).
+   */
+  const restoredRef = useRef(false);
 
   // 계정이 정해지면(또는 바뀌면) 그 계정의 진행도를 읽어 온다. **계정마다 격리**다.
   const loadedForRef = useRef<string | null>(null);
@@ -83,6 +94,7 @@ export function OnRailProvider({
     if (loadedForRef.current === userId) return;
     loadedForRef.current = userId;
     firedRef.current = new Set();
+    restoredRef.current = true;
     setState(readOnRail(userId));
   }, [userId]);
 
@@ -113,6 +125,7 @@ export function OnRailProvider({
 
   const advance = useCallback(() => {
     if (!stepId) return;
+    restoredRef.current = false; // 한 칸이라도 밟았으면 더는 "복원 직후"가 아니다
     const next = nextStepId(stepId);
     if (!next) {
       persist({ status: "done", stepId: null, matchId: state.matchId ?? null });
@@ -121,12 +134,39 @@ export function OnRailProvider({
     persist({ status: "running", stepId: next, matchId: state.matchId ?? null });
   }, [stepId, persist, state.matchId]);
 
+  /**
+   * **복원했는데 한마디가 저장돼 있지 않으면 그 스텝으로 되감는다** (독립 검증 2R B1).
+   *
+   * 저장 단위는 스텝인데 **화면 상태는 저장되지 않는다** — 새로고침·[나중에]로 나갔다 오면 덱
+   * draft 는 서버 덱에서 다시 읽히므로 유저가 쳤던 "감독의 한마디"가 사라진다. 그런데 스텝은
+   * `deck-save` 로 이미 넘어가 있어서, 그 자리에서 유일하게 열린 [저장]을 누르면 **한마디가 없는
+   * 덱이 저장되고 첫 저장 보상까지 태워진다**(그러면 되돌릴 방법이 없다). 각본이 순서를 뒤집어
+   * (AUTO → 프롬프트 → 저장) 막으려던 바로 그 사고를 재진입이 되살리는 자리다.
+   *
+   * ⚠️ **복원 창에서만** 판정한다(`restoredRef`). 그 창 밖에서 같은 조건을 보면, 방금 한마디를 치고
+   * 아직 저장하지 않은 정상 상태(서버 덱에는 당연히 없다)를 되감아 무한 루프를 만든다.
+   *
+   * ⚠️ 되감는 자리는 `deck-prompt` 가 아니라 **`deck-player`** 다. 입력칸(`rail-prompt-input`)은
+   * 선수를 고른 뒤에만 존재하고(폰은 선수 메뉴를 한 번 더 지난다, #455 A2), 그 앞에 세우면 대상이
+   * 없어 오버레이가 **hold 로 사라진다** = 안내 없는 화면이 된다(실측으로 밟았다). 한 칸 앞의
+   * "선수를 눌러 보세요"는 대상이 언제나 있으므로 그 자리에서 다시 잡힌다.
+   */
+  useEffect(() => {
+    if (!restoredRef.current || !running || stepId !== "deck-save") return;
+    const slots = (deck.data as { slots?: { promptText?: string | null }[] } | null | undefined)?.slots;
+    if (!Array.isArray(slots)) return; // 아직 모른다 — 판정하지 않는다(없다고 단정하지 않는다)
+    restoredRef.current = false;
+    const saved = slots.some((s) => (s?.promptText ?? "").trim().length > 0);
+    if (!saved) persist({ status: "running", stepId: "deck-player", matchId: state.matchId ?? null });
+  }, [running, stepId, deck.data, persist, state.matchId]);
+
   /** 말풍선 버튼이 하는 일 — **닫힌 목록**이라 데이터에 코드가 들어가지 않는다. */
   const runCta = useCallback(
     (cta: OnRailCta) => {
       switch (cta) {
         case "start-match":
           if (startMatch.isPending) return;
+          setCtaError(null);
           startMatch.mutate(undefined, {
             onSuccess: (match) => {
               // 매치 id 를 먼저 굳히고 스텝을 넘긴다 — 순서가 바뀌면 투어 첫 스텝이 "내 매치인가"를
@@ -135,9 +175,34 @@ export function OnRailProvider({
               persist({ status: "running", stepId: next, matchId: match.id });
               navigate(`/match/${match.id}`);
             },
-            // 실패해도 스텝은 그대로 둔다 — 유저는 [경기 시작]을 다시 누르거나 [그만두기]로 나간다.
-            // (덱 없음·진행 중 매치는 각각 자기 안내가 있고, 자산 부재는 `useStartTutorialMatch`
-            //  가 일반 연습경기로 흡수한다.)
+            /*
+             * ⚠️ **실패를 삼키지 않는다** (독립 검증 2R B4).
+             *
+             * 구 동작은 `onError` 자체가 없어서 폴백 2종(자산 부재·1회 제한, `onrail-api` 가 흡수)
+             * **밖의** 실패 — 진행 중 매치(409)·덱 거부(400)·5xx·네트워크 — 가 전부 **눌러도 아무
+             * 일 없는 버튼**이 됐다. 딤이 화면을 막고 있어 다른 화면의 안내는 도달하지 못하고
+             * (`ErrorToast` 도 딤 아래로 깔린다), 유저에게는 튜토리얼이 죽은 것으로 보인다.
+             *
+             * 409 는 실패가 아니라 **이어가라는 안내**다(#217) — `usePracticeStart` 가 이미 그 규칙을
+             * 소유하므로 판정 함수를 그대로 재사용한다(문구를 여기 다시 적으면 규칙이 두 벌이 된다).
+             * 그 매치로 데려가면서 스텝도 같이 넘긴다: 투어는 "그 매치 화면"을 전제로 하지 그 매치가
+             * 방금 만들어졌는지는 묻지 않는다.
+             */
+            onError: (err) => {
+              const resumeId = matchInProgressIdOf(err);
+              if (resumeId) {
+                const next = nextStepId(stepId ?? ONRAIL_FIRST_STEP) ?? null;
+                persist({ status: "running", stepId: next, matchId: resumeId });
+                navigate(`/match/${resumeId}`);
+                return;
+              }
+              // 나머지는 **말로 알린다**. 스텝은 그대로 두어 다시 누를 수 있게 남긴다.
+              setCtaError(
+                err instanceof ApiError && err.message
+                  ? err.message
+                  : "경기를 시작하지 못했습니다 — 잠시 후 다시 시도해 주세요",
+              );
+            },
           });
           return;
         case "go-growth":
@@ -197,6 +262,7 @@ export function OnRailProvider({
       matchFrozen,
       start: () => {
         firedRef.current = new Set();
+        restoredRef.current = false;
         persist({ status: "running", stepId: ONRAIL_FIRST_STEP, matchId: null });
         navigate("/deck");
       },
@@ -228,6 +294,7 @@ export function OnRailProvider({
           index={pos.index}
           total={pos.total}
           missingGraceMs={missingGraceMs}
+          note={ctaError}
           onAdvance={() => {
             if (step.advance.kind === "cta") runCta(step.advance.cta);
             else advance();
@@ -244,7 +311,7 @@ export function OnRailProvider({
           index={pos.index}
           total={pos.total}
           missingGraceMs={missingGraceMs}
-          onAdvance={() => navigate(resumePathFor(step))}
+          onAdvance={() => navigate(resumePathFor(step, state.matchId ?? null))}
           onMissingTarget={() => {}}
           /* 이어하기 카드에서의 탈출은 **진짜 그만두기**다 — 여기서까지 진행도를 남기면 홈에
              올 때마다 같은 카드가 떠서 그 카드 자체가 빠져나갈 수 없는 벽이 된다. */
@@ -270,10 +337,18 @@ const RESUME_STEP: OnRailStep = {
   advance: { kind: "cta", label: "이어서 하기", cta: "finish" }, // 라벨만 쓴다(동작은 호출부가 정한다)
 };
 
-/** 이어하기가 데려갈 곳. 매치 스텝은 그 매치로, 나머지는 그 화면으로. */
-function resumePathFor(step: OnRailStep | null): string {
+/**
+ * 이어하기가 데려갈 곳. 매치 스텝은 **그 매치로**, 나머지는 그 화면으로.
+ *
+ * ⚠️ 구 동작은 매치 스텝을 `/home` 으로 돌려주고 *"잠금 게이트(#217)가 알아서 되돌린다"* 고 적었다.
+ * 그 전제는 **경기가 아직 진행 중일 때만** 참이다 — 투어를 지나 결과(`result-view`)에 온 뒤에는
+ * 매치가 FINISHED 라 되돌릴 잠금이 없고, [이어서 하기]가 홈에서 홈으로 가는 **무동작 루프**가 된다
+ * (독립 검증 2R B5). 그 매치 id 는 이미 들고 있으므로(`state.matchId` — 투어를 얼릴 때 쓰는 값)
+ * 그리로 보낸다. 없을 때만 홈이다.
+ */
+function resumePathFor(step: OnRailStep | null, matchId: string | null): string {
   if (!step) return "/home";
-  if (step.screen === "/match") return "/home"; // 매치는 잠금 게이트(#217)가 알아서 되돌린다
+  if (step.screen === "/match") return matchId ? `/match/${matchId}` : "/home";
   if (step.screen === "/recruit") return "/recruit?tab=trade";
   if (step.screen === "*") return "/home";
   return step.screen;

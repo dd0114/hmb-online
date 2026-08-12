@@ -25,6 +25,13 @@ interface OnRailOverlayProps {
   exitLabel?: string;
   /** 대상 부재를 '없음'으로 확정하기까지의 유예(ms). 0 이면 즉시(테스트). */
   missingGraceMs?: number;
+  /**
+   * 말풍선이 대신 말해 주는 실패 한 줄 (#493 W8-v3).
+   *
+   * ⚠️ 온레일이 뜬 화면에서는 **다른 알림 채널이 유저에게 도달하지 않는다** — 딤이 화면을 덮고
+   * `ErrorToast` 는 그 아래로 깔린다. 그래서 CTA 가 서버에 닿았다가 실패하면 여기서 말한다.
+   */
+  note?: string | null;
 }
 
 const BUBBLE_MAX_WIDTH = 320;
@@ -72,6 +79,7 @@ export function OnRailOverlay({
   onExit,
   exitLabel = "나중에",
   missingGraceMs = 1500,
+  note = null,
 }: OnRailOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
   const [shield, setShield] = useState<OnRailShield>("block");
@@ -204,6 +212,11 @@ export function OnRailOverlay({
       <p className={styles.body} id="onrail-body" data-testid="onrail-body">
         {step.body}
       </p>
+      {note && (
+        <p className={styles.note} data-testid="onrail-note" role="alert">
+          {note}
+        </p>
+      )}
       <div className={styles.actions}>
         {advance.kind === "action" ? (
           <span className={styles.await} data-testid="onrail-await" role="status">

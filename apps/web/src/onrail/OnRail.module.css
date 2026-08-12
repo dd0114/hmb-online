@@ -101,6 +101,19 @@
   overflow-wrap: anywhere;
 }
 
+/* CTA 실패 한 줄 (#493 W8-v3) — 딤 위에 있는 유일한 알림 자리다(토스트는 딤 아래로 깔린다). */
+.note {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #ffd7d7;
+  background: rgba(220, 60, 60, 0.18);
+  border: 1px solid rgba(220, 60, 60, 0.45);
+  overflow-wrap: anywhere;
+}
+
 .actions {
   display: flex;
   align-items: center;
