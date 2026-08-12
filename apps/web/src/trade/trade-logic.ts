@@ -125,16 +125,26 @@ export interface SpeedupState {
 /**
  * Speedup button gating — mirrors shop's gachaButtonState (#73: never show '부족' before the
  * wallet loads). `cost` is the server-provided speedupCost (null when not shortenable).
+ *
+ * ⚠️ **무료 단축권(`FREE_TRADE_RUSH`)이 있으면 잔액을 보지 않는다** (#493 W8-v3 blocker-2).
+ * 서버가 그렇게 정해 놨다 — *"무료면 잔액 검사도 하지 않는다. '공짜인데 잔액이 모자라 못 쓴다'는
+ * 쿠폰의 존재 이유를 부정한다"*(`TradeService.speedup`). 운영값에서 이 차이는 이론이 아니다:
+ * 튜토리얼 첫 오퍼는 DIA 확정이라 대기가 48h → 단축 **24,000 G** 인데 신규 유저 지갑은 3,000 G 다.
+ * 잔액으로 잠그면 가입 선물로 받은 단축권을 **한 번도 못 쓰고**, 온레일 S6 이 그 버튼을 기다리는
+ * 행동형 스텝이라 튜토리얼이 거기서 멈춘다.
  */
 export function speedupButtonState(args: {
   loaded: boolean;
   points: number;
   cost: number | null | undefined;
   pending: boolean;
+  /** 남은 무료 단축권. 모르는 서버(구 응답)면 0 — 그때는 종전과 같이 잔액으로 판정한다. */
+  freeCoupons?: number;
 }): SpeedupState {
-  const { loaded, points, cost, pending } = args;
+  const { loaded, points, cost, pending, freeCoupons = 0 } = args;
   const hasCost = typeof cost === "number";
-  const short = loaded && hasCost && points < (cost as number);
+  const free = freeCoupons > 0;
+  const short = !free && loaded && hasCost && points < (cost as number);
   return {
     disabled: pending || !loaded || !hasCost || short,
     showShort: Boolean(short),

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { usePlayers, type CatalogPlayer } from "../api/hooks";
+import { COUPON_FREE_TRADE_RUSH, useMe, usePlayers, type CatalogPlayer } from "../api/hooks";
 import {
   useAcceptTrade,
   useProposeFa,
@@ -64,6 +64,13 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
   // 미수신이 정상 경로인데, 0 으로 읽으면 유상재화를 들고 있는 유저가 **거짓으로 잠긴다**.
   const walletGems = data?.wallet?.gems;
   const walletLoaded = Boolean(data);
+  /**
+   * 남은 **무료 단축권** (#493 W6-v3 `/api/me.coupons`). 지갑은 `/api/trade` 가 주지만 쿠폰은
+   * `/api/me` 소관이고, 소비되면 `invalidateAfterTrade` 의 `["me"]` 가 이 값을 다시 읽어 온다.
+   * 모르는 서버·구 응답이면 0 = 종전 동작(잔액 게이팅).
+   */
+  const me = useMe().data as { coupons?: Record<string, number> } | undefined;
+  const freeRushCoupons = Number(me?.coupons?.[COUPON_FREE_TRADE_RUSH] ?? 0);
   const busy = start.isPending || speedup.isPending || propose.isPending || accept.isPending;
 
   function handleError(err: unknown, fallback: string) {
@@ -113,6 +120,7 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
               walletPoints={walletPoints}
               walletGems={walletGems}
               walletLoaded={walletLoaded}
+              freeRushCoupons={freeRushCoupons}
               catalog={catalog}
               owned={owned}
               busy={busy}

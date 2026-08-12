@@ -449,7 +449,11 @@ paths:
               schema:
                 $ref: "#/components/schemas/MatchDetail"
         "400":
-          description: 활성 덱이 유효하지 않음(AC-S2 규칙 재검증). code=DECK_INVALID
+          description: |
+            code=DECK_INVALID(활성 덱이 유효하지 않음, AC-S2 규칙 재검증) ·
+            code=DECK_REQUIRED(활성 덱 자체가 없음, #319 — 화면은 덱 구성으로 보낸다) ·
+            code=TUTORIAL_UNAVAILABLE(#493 W6-v3 — `tutorial:true` 인데 배포에 구운 자산이 없다.
+            **막다른 길이 아니다**: 클라는 플래그를 빼고 한 번 더 보내 일반 연습경기로 착지한다).
           content:
             application/json:
               schema:
@@ -458,8 +462,11 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "409":
           description: |
-            끝나지 않은 매치가 이미 있음(#217 AC2). code=MATCH_IN_PROGRESS,
+            code=MATCH_IN_PROGRESS — 끝나지 않은 매치가 이미 있음(#217 AC2),
             detail={matchId,state,action} — 그 매치로 이어가거나 포기해야 새로 만들 수 있다.
+            code=TUTORIAL_ALREADY_PLAYED — 튜토리얼 고정 매치는 1회뿐(#493 W6-v3), detail={played}.
+            판정은 **FINISHED 인 튜토리얼 매치 존재**이고 ABANDONED·FAILED 는 재시도를 막지 않는다
+            (구운 로그는 언제나 크게 이기므로 반복 생성이 열려 있으면 승리 보상이 무한 발행된다).
           content:
             application/json:
               schema:
@@ -2845,6 +2852,23 @@ components:
           properties:
             unread: { type: integer }
             total: { type: integer }
+        coupons:
+          description: >-
+            지금 쓸 수 있는 **1회성 권리**의 종류별 잔여 장수(#493 W6-v3 additive).
+            지갑도 재화 원장도 아니다 — 쿠폰이 나타내는 것은 잔액이 아니라 *"이번 한 번은 값을
+            안 낸다"* 는 권리이고, 소비되면 **차감 자체가 일어나지 않는다**(원장에 0원 행조차 없다).
+            현재 3종: `FREE_ENHANCE`(잠재 다이스 골드) · `FREE_TRADE_RUSH`(트레이드 단축) ·
+            `FIRST_TRADE_EPIC`(첫 오퍼 등급 확정 — "무료"가 아니라 "결과 보장"이지만 같은 원자적
+            소비 규율이라 같은 표에 둔다).
+            ⚠️ **0 인 종류도 키가 실린다** — 클라가 "없음"과 "모름"(구서버)을 구분해야 무료 뱃지를
+            잘못 안 그린다. ⚠️ **열린 맵으로 다뤄라**: 종류가 늘면 키만 는다(서버 SoT =
+            `CouponService.CouponType`, 모르는 문자열은 조회에서 안 잡혀 혜택 없음으로 실패한다).
+            ⚠️ 잔액 게이팅을 하는 화면은 이 값을 **같이** 봐야 한다 — 서버는 무료면 잔액 검사를
+            아예 건너뛰므로(#493 W8-v3), 클라만 잔액으로 잠그면 공짜인데 못 쓰는 권리가 된다.
+          type: object
+          additionalProperties:
+            type: integer
+          example: { FREE_ENHANCE: 1, FREE_TRADE_RUSH: 1, FIRST_TRADE_EPIC: 0 }
 
     MeLeagueInfo:
       type: object
@@ -3476,6 +3500,14 @@ components:
           description: |
             오토 모드(#249, additive). true 면 전반 종료 시 감독시간 없이 후반이 바로 시작된다.
             변경은 `POST /api/matches/{id}/auto`. 구 매치·기본값은 false.
+        tutorial:
+          type: boolean
+          description: |
+            온레일 튜토리얼 고정 매치인가(#493 W6-v3, additive). 구 매치·기본값은 false.
+            web 은 이 값 하나로 **재생 정지·[스킵] 잠금·하프타임 교체 차단**을 건다 — 후반 로그가
+            미리 구워져 있어 교체·자리 지시가 결과에 반영되지 않기 때문이다(반영 안 되는 조작을
+            열어 두면 유저는 자기 지시가 사라졌다고 읽는다).
+            ⚠️ 관전자 경로(`toDetailFor`)에서는 `auto` 와 같은 이유로 **상수 false**.
 
             ⚠️ 이 값이 true 여도 운영 스위치(`hmb.match.auto.enabled=false`)가 내려가 있으면 흐름은
             정상 감독시간이다 — 그건 롤백 상태이고 클라가 알 필요는 없다.
@@ -3486,6 +3518,16 @@ components:
         botId:
           type: [string, "null"]
           description: "생략 시 랜덤 봇(BOT_ATK/BOT_DEF/BOT_BAL 중, PRD §3.4)"
+        tutorial:
+          type: [boolean, "null"]
+          description: |
+            온레일 튜토리얼 고정 매치로 만든다(#493 W6-v3, additive). 생략·false = 기존 연습경기.
+            true 면 서버가 **미리 구운 로그**를 적재한다 — AI 호출 0 · 러너 왕복 0 · 대기 0 ·
+            전 유저 bit-identical 한 유저 승리(고정 시드). ⚠️ `botId` 는 무시된다(상대는 자산이 정한다).
+            `mode` 는 여전히 `practice` 이고 표식만 다르다(모드 값을 늘리면 보상 곡선·전적·리그
+            분기가 "모르는 모드"로 폴백한다).
+            거절 2종은 **실패가 아니라 일반 연습경기로 가라는 뜻**이다 —
+            `400 TUTORIAL_UNAVAILABLE`(배포에 자산이 없다) · `409 TUTORIAL_ALREADY_PLAYED`(1회 제한).
 
     MatchPromptRequest:
       type: object

@@ -185,4 +185,27 @@ describe("speedupButtonState", () => {
   it("disables while pending", () => {
     expect(speedupButtonState({ loaded: true, points: 999, cost: 10, pending: true }).disabled).toBe(true);
   });
+
+  /**
+   * #493 W8-v3 blocker-2 — **무료 단축권이 있으면 잔액으로 잠그지 않는다.**
+   *
+   * 숫자는 운영값이다: 튜토리얼 첫 오퍼가 DIA 확정 → 대기 48h → 단축 24,000 G 인데 신규 유저
+   * 지갑은 3,000 G(+승리 500)다. 잔액으로 잠그면 가입 선물로 받은 단축권을 **한 번도 못 쓴다**.
+   * 서버는 반대로 못 박아 놨다 — `TradeService.speedup` 은 무료면 잔액 검사 자체를 건너뛴다.
+   */
+  it("무료 단축권이 있으면 잔액이 모자라도 열린다 (#493 W8-v3)", () => {
+    const short = { loaded: true, points: 3500, cost: 24000, pending: false };
+    // 쿠폰 없음 = 종전 동작(잠김 + 부족 문구).
+    expect(speedupButtonState({ ...short, freeCoupons: 0 }).disabled).toBe(true);
+    expect(speedupButtonState({ ...short, freeCoupons: 0 }).showShort).toBe(true);
+    // 쿠폰 있음 = 열린다. **"부족" 문구도 뜨지 않는다** — 공짜인데 부족하다고 말하면 거짓말이다.
+    expect(speedupButtonState({ ...short, freeCoupons: 1 }).disabled).toBe(false);
+    expect(speedupButtonState({ ...short, freeCoupons: 1 }).showShort).toBe(false);
+  });
+
+  it("쿠폰은 **잔액 축만** 면제한다 — 비용 미상·미로딩·진행중은 그대로 잠긴다", () => {
+    expect(speedupButtonState({ loaded: true, points: 0, cost: null, pending: false, freeCoupons: 1 }).disabled).toBe(true);
+    expect(speedupButtonState({ loaded: false, points: 0, cost: 200, pending: false, freeCoupons: 1 }).disabled).toBe(true);
+    expect(speedupButtonState({ loaded: true, points: 0, cost: 200, pending: true, freeCoupons: 1 }).disabled).toBe(true);
+  });
 });

@@ -204,7 +204,22 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
       ?? Number.POSITIVE_INFINITY;
   }
 
-  const normalShort = !!dicePrice && balanceOfKind("NORMAL") < dicePrice.normal.cost;
+  /**
+   * ⚠️ **무료 강화권이 있으면 잔액으로 잠그지 않는다** (#493 W8-v3 blocker-1).
+   *
+   * 서버는 이 자리를 명시적으로 반대로 정해 놨다 — *"무료면 잔액 검사도 하지 않는다. '공짜인데
+   * 잔액이 모자라 못 쓴다'는 쿠폰의 존재 이유를 부정한다"*(`GrowthService`·`TradeService` 머리말).
+   * 그런데 화면이 잔액으로 먼저 잠그면 그 규칙이 **유저에게 도달하지 않는다**: 신규 유저 지갑은
+   * 3,000 G 인데 노말 다이스는 5,000 G 라, 가입 선물로 받은 무료권을 **한 번도 쓸 수 없다**.
+   * 온레일 S5 는 이 버튼을 기다리는 행동형 스텝이라(`skipIfMissing` 없음) 튜토리얼이 거기서 멈춘다.
+   *
+   * ⚠️ 구 주석("쿠폰 수는 스냅샷이라 서버가 이미 태웠을 수 있다")이 가리킨 위험은 남아 있지만
+   * **크기가 다르다** — 낡은 스냅샷으로 열면 402 문구 한 번이고(그 자리에 이미 에러 표시가 있다),
+   * 닫아 두면 유저가 튜토리얼에서 갇힌다. 되돌릴 수 있는 실패를 고른다.
+   */
+  const freeNormalRoll = freeEnhanceLeft > 0;
+  const normalShort =
+    !!dicePrice && !freeNormalRoll && balanceOfKind("NORMAL") < dicePrice.normal.cost;
   const cashShort = !!dicePrice && balanceOfKind("CASH") < dicePrice.cash.cost;
   /** 잠재 미해금(2★ 미만)이면 롤 자체가 불가 — 서버 `POTENTIAL_LOCKED` 와 같은 조건. */
   const potentialLocked = !card?.potential.unlocked;
@@ -659,6 +674,17 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
           <div className={styles.confirmOverlay} data-testid="growth-roll-confirm">
             <div className={styles.confirmBox} role="dialog" aria-modal="true" aria-label="잠재 재설정 확인">
               <p className={styles.confirmTitle}>잠재를 다시 굴릴까요?</p>
+              {/*
+                ⚠️ **무료권이 걸리는 롤에서는 차감을 약속하지 않는다** (#493 W8-v3).
+                확인창이 "5,000 G 차감 · 남은 잔액 0 G"라고 말해 놓고 실제로는 한 푼도 안 나가면
+                (서버 `freeByCoupon`) 유저는 다음부터 이 창의 숫자를 믿지 않는다. 잔액이 비용보다
+                적을 때는 그 문장이 아예 성립하지도 않는다(신규 유저의 첫 강화가 정확히 그 상태다).
+              */}
+              {freeNormalRoll && pendingRoll === "NORMAL" ? (
+                <p className={styles.confirmCost} data-testid="growth-roll-confirm-free">
+                  무료 강화권 사용 · <b data-testid="growth-roll-confirm-after">차감 없음</b>
+                </p>
+              ) : (
               <p className={styles.confirmCost}>
                 <Amount
                   code={priceOf(pendingRoll).currency}
@@ -673,6 +699,7 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
                   />
                 </b>
               </p>
+              )}
               {/*
                 체크하는 즉시 저장한다 — [확인]에 묶어 두면 "다시 묻지 않기를 켜고 이번엔 취소"가
                 다음 세션에 잊혀진다(독립검증 minor-8). 체크는 그 자체로 유저의 표명이다.
