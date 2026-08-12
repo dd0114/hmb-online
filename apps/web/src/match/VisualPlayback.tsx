@@ -19,6 +19,7 @@ import {
   type SeekPolicy,
 } from "./seek-gate";
 import { buildViewerSkins } from "./viewer-skins";
+import { useOnRail } from "../onrail/onrail-context";
 // #421 W4 하이라이트 순서 재생 — 판정은 순수 모듈, 구동은 이 훅, 표시는 이 부품(호출부엔 한 줄씩).
 import { useHighlightSequencer } from "./useHighlightSequencer";
 /* `HighlightToggle` import 는 #456 B1 에서 빠졌다 — 부품은 남아 있고 무대가 그리지 않을 뿐이다. */
@@ -121,6 +122,14 @@ export function VisualPlayback({
   selection: selectionProp,
   onSelectionChange,
 }: VisualPlaybackProps) {
+  /**
+   * 온레일 화면 투어가 도는 동안 재생을 세운다 (#493 W7-v3).
+   *
+   * **prop 이 아니라 컨텍스트로 받는다** — 신호가 `MatchPage → StageShell → MatchViewer →`
+   * 여기까지 세 겹을 내려와야 하는데, 그 세 파일은 지금도 여러 트랙이 동시에 만지는 자리다.
+   * 컨텍스트는 프로바이더가 없으면 `false` 라 이 부품의 단위 테스트도 그대로 돈다.
+   */
+  const { matchFrozen: frozen } = useOnRail();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const flashRef = useRef<HTMLDivElement>(null);
   const situationRef = useRef<HTMLDivElement>(null);
@@ -504,6 +513,23 @@ export function VisualPlayback({
   useEffect(() => {
     const v = viewerRef.current;
     if (!viewerReady || !v) return;
+    /*
+     * 온레일 화면 투어(#493 W7-v3) — **재생을 세운다**.
+     *
+     * ⚠️ `StageShell` 머리말은 "정지 플래그를 뷰어에 하나 더 만들지 마라(라이브 게이트와 두
+     * 주인이 된다)"고 경고하는데, 여기는 그 경고의 **예외가 아니라 그 처방 그대로**다: 새 플래그를
+     * 뷰어에 넣는 대신 **라이브 게이트 자신이** 먼저 판단하고 빠진다(그래서 주인은 계속 하나다).
+     * 진입 점프·`play()`·250ms 회수 타이머가 전부 이 아래에 있으므로, 여기서 끊으면 투어가 도는
+     * 동안 아무도 재생을 되살리지 않는다. 투어가 끝나면 `frozen` 이 거짓이 되어 이 effect 가
+     * 다시 돌고, 그때 seek-to-now + play 로 **현재 시점부터** 이어진다.
+     *
+     * ⚠️ 무대를 언마운트하는 방식(#421 의 `overlayOpen`)은 쓸 수 없다 — 투어가 겨누는 손잡이가
+     * 바로 그 무대(`stage-canvas`·시크바·컨트롤)라 사라지면 설명할 대상이 없어진다.
+     */
+    if (frozen) {
+      (v as unknown as { pause?: () => void }).pause?.();
+      return;
+    }
     const gateNow = () => {
       const { clock: c, clockOffsetMs: off, half: h } = gateInput.current;
       return liveGate(c, h, tickCount, Date.now(), off);
@@ -565,7 +591,7 @@ export function VisualPlayback({
       window.clearInterval(timer);
       v.setSpeed(1);
     };
-  }, [viewerReady, tickCount, snapTicks, clock?.phase, clock?.phaseStartAt]);
+  }, [viewerReady, tickCount, snapTicks, clock?.phase, clock?.phaseStartAt, frozen]);
 
   /*
    * 돌려보는 화면(#244 review)은 **정지 상태로 연다**. 관전 무대는 자동 재생이 맞지만, 여기서

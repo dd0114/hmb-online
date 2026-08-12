@@ -13,6 +13,7 @@ import type { FaProposeRequest, TradeResolveResponse } from "../api/v2";
 import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import { TradeSlotCard } from "./TradeSlotCard";
 import { TradeResultModal } from "./TradeResultModal";
 import { countdownSec, slotView } from "./trade-logic";
@@ -115,21 +116,40 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
               catalog={catalog}
               owned={owned}
               busy={busy}
+              /* 온레일 S6 (#493) — **성공한 뒤에만** 신호를 낸다. 세 호출 전부 서버가 쿠폰·등급
+                 확정을 그 트랜잭션 안에서 처리하므로(W6-v3), 실패한 시도로 스텝이 넘어가면
+                 다음 스텝의 대상(단축 버튼·수락 버튼)이 아예 안 생긴다. */
               onStart={(s) =>
-                start.mutate(s, { onError: (e) => handleError(e, "장을 열지 못했습니다") })
+                start.mutate(s, {
+                  onSuccess: () => emitOnRailAction("trade-start"),
+                  onError: (e) => handleError(e, "장을 열지 못했습니다"),
+                })
               }
               onSpeedup={(s) =>
-                speedup.mutate(s, { onError: (e) => handleError(e, "단축에 실패했습니다") })
+                speedup.mutate(s, {
+                  onSuccess: () => emitOnRailAction("trade-rush"),
+                  onError: (e) => handleError(e, "단축에 실패했습니다"),
+                })
               }
               onPropose={(s, body: FaProposeRequest) =>
                 propose.mutate(
                   { slot: s, body },
-                  { onSuccess: onResolved, onError: (e) => handleError(e, "제안에 실패했습니다") },
+                  {
+                    onSuccess: (res) => {
+                      onResolved(res);
+                      // 제안형(FA)도 "첫 트레이드"의 한 갈래다 — 서버가 같은 보상을 태운다.
+                      emitOnRailAction("trade-accept");
+                    },
+                    onError: (e) => handleError(e, "제안에 실패했습니다"),
+                  },
                 )
               }
               onAccept={(s) =>
                 accept.mutate(s, {
-                  onSuccess: onResolved,
+                  onSuccess: (res) => {
+                    onResolved(res);
+                    emitOnRailAction("trade-accept");
+                  },
                   onError: (e) => handleError(e, "수락에 실패했습니다"),
                 })
               }

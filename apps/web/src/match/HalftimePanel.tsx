@@ -92,6 +92,21 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
   })();
   const expired = remaining != null && remaining <= 0;
 
+  /**
+   * **튜토리얼 고정 매치의 하프타임은 교체·자리를 받지 않는다** (#493 W7-v3 · W6-v3 전제).
+   *
+   * 후반 로그가 **사전에 구워져** 있어 여기서 무엇을 바꾸든 경기에 반영되지 않는다. 반영 안 되는
+   * 조작을 열어 두면 유저는 자기가 한 교체가 **사라졌다**고 읽는다 — 첫 경기에서 그 인상은
+   * "이 게임은 내 지시를 무시한다"가 된다. 그래서 손잡이를 잠그고 이유를 말한다(스토리보드
+   * 조정 ⑤ "하프타임 = 간단 안내만, 교체 강제 없음").
+   *
+   * ⚠️ 판정축은 **`match.tutorial`** 이지 온레일 진행 상태가 아니다 — 온레일을 [그만두기]로
+   * 나간 뒤에도 그 매치는 여전히 구운 매치다.
+   * ⚠️ **[감독의 한마디]는 잠그지 않는다.** 그것도 이 경기에는 반영되지 않지만, 프롬프트를 써 보는
+   * 것 자체가 이 게임을 배우는 일이고 시나리오(S2)가 이미 같은 성질로 그것을 시킨다.
+   */
+  const bakedHalf = match.tutorial === true;
+
   const [subs, setSubs] = useState<SubPair[]>([]);
   /**
    * 하단 모드 탭 — 기본은 프롬프트("감독의 한마디"). 교체·자리 탭은 **보드의 모드**를 바꾼다
@@ -380,7 +395,8 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
             aria-selected={mode === m}
             className={mode === m ? styles.modeTabActive : styles.modeTab}
             data-testid={`halftime-mode-${m}`}
-            disabled={expired}
+            disabled={expired || (bakedHalf && m !== "say")}
+            title={bakedHalf && m !== "say" ? "튜토리얼 경기에서는 사용할 수 없습니다" : undefined}
             onClick={() => {
               setMode(m);
               setPendingOut(null);
@@ -392,6 +408,11 @@ export function HalftimePanel({ match, clockOffsetMs = 0, draft }: HalftimePanel
           </button>
         ))}
       </div>
+      {bakedHalf && (
+        <p className={styles.note} data-testid="halftime-tutorial-note">
+          튜토리얼 경기는 준비된 흐름 그대로 진행돼요. 교체와 자리 바꾸기는 다음 경기부터 써 보세요.
+        </p>
+      )}
       {/*
         벤치 지시 열기 (#294 MINOR-2) — **접힌 채로 시작한다.**
 

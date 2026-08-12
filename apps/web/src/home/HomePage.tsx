@@ -19,12 +19,12 @@ import { useUnbiddenPopupHold } from "../lobby/tutorial-hold";
 import { useTutorial } from "../common/tutorial-context";
 import { useGuide } from "../common/guide-context";
 import { DecklessDialog } from "../common/DecklessDialog";
-import { deckMissing, isDeckRequiredError } from "../common/deckless";
+import { deckMissing } from "../common/deckless";
 import {
   markPracticeTutorialAnswered,
   shouldOfferPracticeTutorial,
 } from "../common/guide-storage";
-import { usePracticeStart } from "../common/usePracticeStart";
+import { useOnRail } from "../onrail/onrail-context";
 import { PracticeTutorialDialog } from "./PracticeTutorialDialog";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
 import { HOME_TILES, homeNotice, homeTileState, openTradeCount, teamLine } from "./home-logic";
@@ -178,23 +178,14 @@ export function HomePage() {
    * 유저에게 래치가 서기 **전**의 값이 굳는다(스토리지는 React 밖이라 리렌더 신호가 없다).
    */
   const [practiceAsk, setPracticeAsk] = useState(false);
-  const decklessGuard = {
-    guard: () => {
-      if (deckMissing(deck)) {
-        setDecklessOpen(true);
-        return false;
-      }
-      return true;
-    },
-    catchReject: (err: unknown) => {
-      if (isDeckRequiredError(err)) {
-        setDecklessOpen(true);
-        return true;
-      }
-      return false;
-    },
-  };
-  const practice = usePracticeStart(decklessGuard);
+  /**
+   * ⚠️ **여기서 더는 매치를 만들지 않는다**(#493 W7-v3). W5 의 `usePracticeStart(decklessGuard)`
+   * 는 수락 = 즉시 연습경기였기 때문에 필요했다. 리플랜 v3 이 수락을 "덱 화면으로 데려간다"로
+   * 바꾸면서 이 화면의 매치 생성 경로가 사라졌다 — 매치는 온레일이 S2 를 마친 뒤 만든다
+   * (`onrail/onrail-api.useStartTutorialMatch`, 그쪽이 `tutorial:true` 와 폴백을 소유한다).
+   * 덱 없음 안내(L1)는 아래 `pressTile` 이 그대로 한다.
+   */
+  const onRail = useOnRail();
 
   function pressTile(key: string, to: string) {
     if (key === "game" && deckMissing(deck)) {
@@ -208,15 +199,29 @@ export function HomePage() {
     navigate(to);
   }
 
-  /** 수락 = 연습경기를 그 자리에서 만든다(모드 선택 화면을 거치지 않는다 — hero: "돌려서 보여줘야"). */
+  /**
+   * 수락 = **온레일 튜토리얼 시작**(#493 W7-v3, hero 리플랜 v3).
+   *
+   * ⚠️ W5 는 여기서 곧바로 매치를 만들었다(*"수락 → 즉시 연습경기"*). 리플랜 v3 이 그 순서를
+   * 뒤집었다 — *"게임 시작하면 **셋팅부터** 알려줘야하는데"* — 그래서 수락은 이제 **덱 화면으로
+   * 데려가는 것**이고, 경기는 덱을 저장한 뒤 온레일이 만든다(S2 끝의 [경기 시작] CTA).
+   * 서버도 같은 순서를 요구한다: 튜토리얼 매치 생성은 덱이 없으면 400 `DECK_REQUIRED` 다.
+   */
   function acceptPracticeTutorial() {
     markPracticeTutorialAnswered(me?.user?.id ?? null);
-    practice.start(() => setPracticeAsk(false));
+    setPracticeAsk(false);
+    onRail.start();
   }
 
-  /** 거절 = 원래 가려던 곳(게임 탭)으로 그대로. 다시 묻지 않는다. */
+  /**
+   * 거절 = 원래 가려던 곳(게임 탭)으로 그대로. 다시 묻지 않는다.
+   *
+   * 온레일에도 사양을 기록한다 — **행동 보상 5종은 그대로 받고 완주 보상만 못 받는다**
+   * (스토리보드 S1). 그 보상들은 서버가 행동 시점에 태우므로 여기서 할 일은 "다시 걸지 않는다"뿐이다.
+   */
   function declinePracticeTutorial() {
     markPracticeTutorialAnswered(me?.user?.id ?? null);
+    onRail.skip();
     setPracticeAsk(false);
     navigate("/game");
   }
@@ -322,16 +327,14 @@ export function HomePage() {
           />
         )}
 
-        {/* #493 W5 — 덱 안내(위)와 **겹치지 않는다**: `pressTile` 이 덱 없음을 먼저 걸러낸다
-            (모달 2겹 금지 규율). 매치 생성이 실패하면 여기 토스트로 말한다. */}
+        {/* #493 W5 → W7-v3 — 덱 안내(위)와 **겹치지 않는다**: `pressTile` 이 덱 없음을 먼저
+            걸러낸다(모달 2겹 금지 규율). 수락은 이제 화면 이동이라 대기 상태가 없다. */}
         {practiceAsk && (
           <PracticeTutorialDialog
-            pending={practice.isPending}
             onAccept={acceptPracticeTutorial}
             onDecline={declinePracticeTutorial}
           />
         )}
-        <ErrorToast message={practice.error} onDismiss={practice.dismissError} />
       </div>
     </Layout>
   );

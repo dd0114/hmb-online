@@ -26,6 +26,13 @@ export interface PromptBlockProps {
   actions?: ReactNode;
   /** 문구 삽입 칩 등, 입력 아래 보조 영역. */
   children?: ReactNode;
+  /**
+   * 입력을 **마쳤다**(blur). 값은 그 시점의 문자열.
+   *
+   * ⚠️ `onChange` 와 다른 축이다 — 저장은 `onChange` 가 하고, 이건 "이 사람이 이제 다 썼다"는
+   * 신호다(#493 온레일이 그 순간을 기다린다). 안 넘기면 리스너가 아예 안 붙는다.
+   */
+  onCommit?: (text: string) => void;
 }
 
 /**
@@ -42,7 +49,7 @@ export interface PromptBlockProps {
 export function PromptBlock(props: PromptBlockProps) {
   const {
     title, subtitle, value, onChange, placeholder, countLength, rows = 4,
-    disabled, over, testId, targetTestId, actions, children,
+    disabled, over, testId, targetTestId, actions, children, onCommit,
   } = props;
   const len = countLength ?? value.length;
   return (
@@ -66,6 +73,10 @@ export function PromptBlock(props: PromptBlockProps) {
         placeholder={placeholder}
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        /* 입력을 **마쳤다**는 신호(#493 W7-v3). 값이 바뀔 때마다가 아니라 blur 한 번이다 —
+           온레일이 한 글자마다 넘어가면 "한마디를 썼다"가 아니라 "한 글자를 쳤다"가 된다.
+           듣는 사람이 없으면 아무 일도 안 일어난다(호출부가 안 넘기면 undefined). */
+        onBlur={onCommit ? (e) => onCommit(e.target.value) : undefined}
       />
       <div className={styles.meter}>
         <b data-testid={`${testId}-count`}>{len}</b> / {PROMPT_MAX_CHARS}

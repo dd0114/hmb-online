@@ -24,6 +24,7 @@ import { DEFAULT_TEAM_TACTICS, type EditorState } from "./tactics-logic";
 import { isDirty, makeBaseline, type EditorBaseline } from "./preset-selector-logic";
 import { canAutoBuild } from "./auto-lineup";
 import { canFillEmptySlots, fillEmptySlots } from "./fill-empty";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import { DeckEditor } from "./DeckEditor";
 import { useDeckLayout } from "./use-deck-layout";
 import { growthReadyIdsOf } from "./growth-ready";
@@ -213,6 +214,9 @@ export function DeckPage() {
       await updateDeck.mutateAsync(toUpdateRequest(editor!.draft, editor!.teamPrompt));
       setBaseline(makeBaseline(editor!, "", null));
       setSavedNote(true);
+      /* 온레일 S2 ④ — **성공한 뒤에만** 낸다. 누른 순간에 내면 서버가 거절한 덱으로 경기하러
+         가게 되고(첫 저장 보상도 그 저장에 걸려 있다), 그건 시나리오가 서는 자리를 잃는 것이다. */
+      emitOnRailAction("deck-save");
       return true;
     } catch (err) {
       setServerErrorFrom(err, "저장에 실패했습니다");
@@ -317,7 +321,10 @@ export function DeckPage() {
          * ⚠️ 구 `autoBuildLineup`(전면 재구성)으로 되돌리지 마라 — 그건 전원의 프롬프트를 덮고
          * 팀 전술·팀 문장을 초기화한다(= hero 가 없애라고 한 [초기화] 와 같은 피해).
          */
-        onAuto={() => mutateEditor({ ...editor, draft: fillEmptySlots(editor.draft, ownedPlayers) })}
+        onAuto={() => {
+          mutateEditor({ ...editor, draft: fillEmptySlots(editor.draft, ownedPlayers) });
+          emitOnRailAction("deck-auto"); // 온레일 S2 ①
+        }}
         /**
          * ⚠️ **활성 판정은 실행 함수와 같은 것을 쓴다**(#439 2R major-2). 구 게이트는
          * `canAutoBuild(보유 ≥ 11)` 이었는데, 그건 "전원에서 11명을 새로 짠다"의 조건이지

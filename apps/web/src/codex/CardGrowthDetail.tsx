@@ -6,6 +6,8 @@ import { GRADE_COLORS, GRADE_GLOW_COLORS, GRADE_LABELS, type Grade } from "../co
 import { FullArtCard } from "../common/FullArtCard";
 import { ApiError } from "../api/client";
 import { useCardEffective, useDiceRoll, useStarUp } from "../api/growth-hooks";
+import { emitOnRailAction } from "../onrail/onrail-actions";
+import { COUPON_FREE_ENHANCE } from "../api/hooks";
 import { useMe } from "../api/hooks";
 import { useAppConfigValue } from "../common/AppConfigContext";
 import {
@@ -92,6 +94,12 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
   // #247 확인 단계: 이 상세를 연 뒤 **첫 롤에서만** 묻는다(+ '다시 묻지 않기'는 영구).
   const [pendingRoll, setPendingRoll] = useState<"NORMAL" | "CASH" | null>(null);
   const [confirmedOnce, setConfirmedOnce] = useState(false);
+  /** 방금 강화가 **무료 쿠폰으로** 나갔다(서버 `freeByCoupon`) — 지갑이 그대로인 이유를 말한다. */
+  const [freeRoll, setFreeRoll] = useState(false);
+  /** 남은 무료 강화권 (#493 W6-v3 `/api/me.coupons`). 모르는 서버·구 응답이면 0. */
+  const freeEnhanceLeft = Number(
+    (me as { coupons?: Record<string, number> } | undefined)?.coupons?.[COUPON_FREE_ENHANCE] ?? 0,
+  );
   const [skipConfirm, setSkipConfirm] = useState(() => rollConfirmSkipped());
   const [tierUpOverlay, setTierUpOverlay] = useState<PotentialTier | null>(null);
   // GM7b: 성★ 승급 이펙트 — StarUpResult 자체를 들고 있어 오버레이가 승급된 star/해금 여부를 그대로 쓴다.
@@ -206,6 +214,8 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
     starUp.mutate(player.id, {
       onSuccess: (res) => {
         setStarUpOverlay(res);
+        // 온레일 S5 — 승급은 **강화(잠재)의 선행 조건**이다(2★ 미만은 서버가 POTENTIAL_LOCKED).
+        emitOnRailAction("growth-promote");
       },
       onError: (err) => {
         if (err instanceof ApiError && err.code === INSUFFICIENT_MATERIALS_CODE) {
@@ -237,6 +247,10 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
       { playerId: player.id, kind },
       {
         onSuccess: (res) => {
+          /* 무료 쿠폰으로 나갔는지는 **서버가 말한다**(#493 W6-v3 `freeByCoupon`). 지갑이 안
+             줄어든 이유를 화면이 추측하면(비용 0 을 클라가 계산하면) 쿠폰 규칙이 두 벌이 된다. */
+          setFreeRoll(res.freeByCoupon === true);
+          emitOnRailAction("growth-enhance"); // 온레일 S5 — 첫 강화
           window.setTimeout(() => {
             setRollingKind(null);
             if (res.tierUp) {
@@ -578,8 +592,27 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
               >
                 잠재 재설정
                 {dicePrice && (
-                  <span className={styles.costChip} data-testid="growth-dice-normal-price">
+                  /*
+                   * 무료 강화권이 있으면 **값을 지우지 않고 그어서** 보여 준다 (#493 W7-v3).
+                   * 지우면 "원래 얼마인가"를 배울 기회가 사라지고, 쿠폰을 다 쓴 다음 화면이
+                   * 갑자기 값을 요구하는 것처럼 보인다.
+                   *
+                   * ⚠️ **잔액 게이팅은 건드리지 않았다**(`normalShort`). 쿠폰 보유 수는 `/api/me`
+                   * 스냅샷이라 서버가 이미 태웠을 수 있고, 그걸 근거로 버튼을 열었다가 402 를
+                   * 맞으면 "눌리는데 안 되는 버튼"이 된다. 값을 **말하는 것**과 **잠그는 것**은
+                   * 다른 축이다(#232 규율).
+                   */
+                  <span
+                    className={freeEnhanceLeft > 0 ? styles.costChipFree : styles.costChip}
+                    data-testid="growth-dice-normal-price"
+                    data-free={freeEnhanceLeft > 0 ? "true" : "false"}
+                  >
                     <Amount code={dicePrice.normal.currency} value={dicePrice.normal.cost} />
+                  </span>
+                )}
+                {freeEnhanceLeft > 0 && (
+                  <span className={styles.freeChip} data-testid="growth-dice-free">
+                    무료권
                   </span>
                 )}
               </button>
@@ -598,6 +631,13 @@ export function CardGrowthDetail({ player, onClose, source = "players" }: CardGr
                 )}
               </button>
             </div>
+            {freeRoll && (
+              /* 지갑이 그대로인 **이유**를 말한다 — 서버가 `freeByCoupon` 으로 알려준 사실이지
+                 클라가 비용에서 추론한 값이 아니다. */
+              <p className={styles.freeNote} data-testid="growth-free-applied">
+                무료 강화권을 사용했습니다 — 비용이 나가지 않았어요.
+              </p>
+            )}
             <p className={styles.walletLine} data-testid="growth-wallet">
               보유 <Amount code={CURRENCY_POINT} value={walletPoints} icon /> ·{" "}
               <Amount code={CURRENCY_GEM} value={walletGems} icon />

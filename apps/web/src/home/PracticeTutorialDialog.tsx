@@ -16,8 +16,15 @@ import styles from "./PracticeTutorialDialog.module.css";
  * ⚠️ **묻는 것은 딱 한 번이다.** 수락이든 거절이든 그 계정에 답이 기록되고 다시 뜨지 않는다
  * (`guide-storage.markPracticeTutorialAnswered`). 매번 물으면 이건 안내가 아니라 방해다.
  *
- * ⚠️ **[아니오]는 막다른 길이 아니다** — 원래 가려던 게임 탭으로 그대로 보낸다(DecklessDialog 와
- * 같은 규율: 안내가 동선을 끊지 않는다).
+ * ⚠️ **[건너뛰기]는 막다른 길이 아니다** — 원래 가려던 게임 탭으로 그대로 보낸다(DecklessDialog 와
+ * 같은 규율: 안내가 동선을 끊지 않는다). 행동 보상 5종(덱 저장·결과 열람·강화·트레이드·뽑기)은
+ * 서버가 그 행동 시점에 태우므로 **건너뛴 유저도 그대로 받는다** — 못 받는 것은 완주 보상뿐이다.
+ *
+ * ## W7-v3: 이 모달은 이제 **온레일의 문**이다
+ *
+ * W5 에서는 [예]가 곧 매치 생성이었다. 리플랜 v3 이 순서를 뒤집어(*"게임 시작하면 셋팅부터
+ * 알려줘야하는데"*) [시작하기]는 **덱 화면으로 데려가는 것**이 됐고, 경기는 덱을 저장한 뒤
+ * 온레일이 만든다. 서버도 같은 순서를 요구한다(덱 없이 튜토리얼 매치를 만들면 400 `DECK_REQUIRED`).
  */
 export function PracticeTutorialDialog({
   onAccept,
@@ -43,11 +50,11 @@ export function PracticeTutorialDialog({
     >
       <div className={styles.body}>
         <h2 className={styles.title} id="practice-tutorial-title">
-          첫 경기를 시작할까요?
+          같이 한 판 해볼까요?
         </h2>
         <p className={styles.text}>
-          연습경기로 튜토리얼을 해보시겠습니까? 지급된 스쿼드로 봇과 한 판 치르며 경기가 어떻게
-          흘러가는지 직접 봅니다. 기록에는 남지 않습니다.
+          스쿼드를 짜고 연습경기를 치르는 것까지 순서대로 안내해 드립니다. 따라 하다 보면 젬도
+          쌓여요. 언제든 그만둘 수 있습니다.
         </p>
         <div className={styles.actions}>
           <button
@@ -57,7 +64,7 @@ export function PracticeTutorialDialog({
             disabled={pending}
             onClick={onDecline}
           >
-            아니오
+            건너뛰기
           </button>
           <button
             type="button"
@@ -66,7 +73,7 @@ export function PracticeTutorialDialog({
             disabled={pending}
             onClick={onAccept}
           >
-            {pending ? "경기 준비 중…" : "예, 해볼게요"}
+            {pending ? "준비 중…" : "시작하기"}
           </button>
         </div>
       </div>

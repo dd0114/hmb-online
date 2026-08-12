@@ -624,3 +624,26 @@
   font-weight: 900;
   cursor: pointer;
 }
+
+/* 무료 강화권 (#493 W7-v3) — 값을 **지우지 않고 그어서** 원가를 남긴다. */
+.costChipFree {
+  composes: costChip;
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+
+.freeChip {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0b1220;
+  background: var(--gold, #ffc94d);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.freeNote {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--gold, #ffc94d);
+}
