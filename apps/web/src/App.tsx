@@ -31,6 +31,7 @@ import { QaConsolePage } from "./qa/QaConsolePage";
 import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
 import { GuideProvider } from "./common/GuideProvider";
+import { OnRailProvider } from "./onrail/OnRailProvider";
 import { setUnauthorizedHandler } from "./api/client";
 import { queryClient } from "./api/query-client";
 
@@ -268,7 +269,13 @@ function App() {
                     TutorialProvider 안쪽인 이유: useTutorial().active 로 온보딩이 도는 동안
                     발화를 미룬다(두 코치마크가 겹치지 않게). */}
                 <GuideProvider>
-                  <AppRoutes />
+                  {/* 온레일 튜토리얼(#493 W7-v3) — **가장 안쪽**이다. 셋 중 유일하게 입력을
+                      실제로 막으므로 다른 두 오버레이보다 위에 그려져야 하고(z 120), 화면
+                      전환을 넘나드는 한 줄기라 라우트 바깥에 산다. 스스로 뜨지 않는다 —
+                      홈 [게임 시작] 제안 모달의 [시작하기]만이 문이다. */}
+                  <OnRailProvider>
+                    <AppRoutes />
+                  </OnRailProvider>
                 </GuideProvider>
               </TutorialProvider>
             </NavLockProvider>

@@ -26,7 +26,23 @@ export type MeResponse = Omit<components["schemas"]["MeResponse"], "wallet"> & {
    * (web 은 CF Pages 로 **서버와 따로** 배포되므로 버전 스큐가 실재한다).
    */
   mail?: { unread: number; total: number };
+  /**
+   * 보유 쿠폰 수 (#493 W6-v3 additive). 키 = 쿠폰 종류, 값 = **미사용** 장수.
+   *
+   * ⚠️ **열린 맵으로 다뤄라.** 서버는 지금 세 종류(`FREE_ENHANCE`·`FREE_TRADE_RUSH`·
+   * `FIRST_TRADE_EPIC`)를 **0 인 것까지 전부** 실어 보내지만, 종류가 늘면 키가 늘 뿐 응답
+   * 모양은 그대로다. 그래서 유니온이 아니라 `Record` 다 — 모르는 키를 만나도 화면이 안 깨진다.
+   *
+   * ⚠️ **소비는 보이지 않는다.** 쿠폰을 쓰는 경로(강화·트레이드 단축·첫 트레이드 등급 확정)에는
+   * 별도 소비 API 가 없고 서버가 그 트랜잭션 안에서 조용히 태운다. 즉 그 세 호출 뒤에는
+   * 이 값이 **즉시 낡는다** → `["me"]` 를 같이 무효화해야 한다.
+   */
+  coupons?: Record<string, number>;
 };
+
+/** 온레일 튜토리얼이 읽는 쿠폰 종류(#493). 문자열을 화면에 직접 적지 않기 위한 상수. */
+export const COUPON_FREE_ENHANCE = "FREE_ENHANCE";
+export const COUPON_FREE_TRADE_RUSH = "FREE_TRADE_RUSH";
 export type ModeInfo = components["schemas"]["ModeInfo"];
 /**
  * V1 CatalogPlayer + Phase2 additive personality (openapi-v2 CatalogPlayerPhase2Fields) — 도감/
@@ -182,6 +198,14 @@ export type MatchDetail = components["schemas"]["MatchDetail"] & {
    */
   homeName?: string | null;
   awayName?: string | null;
+  /**
+   * 이 매치가 **튜토리얼 고정 매치**인가 (#493 W6-v3 additive).
+   *
+   * 온레일의 경기 화면 투어·스킵 잠금·하프타임 교체 차단이 전부 이 한 불리언에 걸린다 —
+   * 온레일 진행 상태(localStorage)로 판단하면 다른 탭에서 시작한 일반 경기까지 얼린다.
+   * ⚠️ **관전 경로에서는 항상 false 다**(서버가 남의 매치에서 떼고 준다). 구 서버는 안 준다.
+   */
+  tutorial?: boolean;
 };
 export type MatchResult = components["schemas"]["MatchResult"];
 export type MatchLog = components["schemas"]["MatchLog"];
@@ -202,6 +226,16 @@ export type HalftimeRequest = components["schemas"]["HalftimeRequest"] & {
 /** V1 CreateMatchRequest {botId?} + Phase2 teamTactics (openapi-v2 CreateMatchRequestPhase2). */
 export type CreateMatchRequest = components["schemas"]["CreateMatchRequest"] & {
   teamTactics?: TeamTactics;
+  /**
+   * 튜토리얼 고정 매치로 만든다 (#493 W6-v3 additive). 상대·시드·경기 로그가 **사전에 구워져**
+   * 있어 AI 호출도 러너 왕복도 없다(대기 0) — 전 유저가 같은 승리 경기를 본다.
+   *
+   * ⚠️ `botId` 는 무시된다(상대는 구운 자산이 정한다). 덱 검증은 그대로라 **덱이 없으면 400
+   * `DECK_REQUIRED`** 다 — 시나리오가 덱셋팅(S2)을 경기(S3)보다 앞에 둔 이유가 이것이다.
+   * 1회 제한: 이미 끝낸 튜토리얼 매치가 있으면 409 `TUTORIAL_ALREADY_PLAYED`,
+   * 배포에 구운 자산이 없으면 400 `TUTORIAL_UNAVAILABLE`.
+   */
+  tutorial?: boolean;
 };
 
 /**
