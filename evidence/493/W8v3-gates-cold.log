@@ -19,8 +19,10 @@ EXIT=0 · 타입 에러 0 · ✓ built in 2.34s
    Error: Cannot find module '@hmb/viewer-core/playback'
    원인 = `apps/web/vite.config.ts:12` 의 alias 가 `"@hmb/viewer-core" → .../src/index.ts` 라는
    **문자열 alias** 라 서브패스가 `.../src/index.ts/playback` 으로 접합된다.
-   귀속 = `git log -1 -- apps/web/vite.config.ts src/match/highlight-reel.test.ts` → `88215613`(#421 W3).
-   이 웨이브 diff 는 두 파일 다 무접촉(`git status`).
+   ⚠️ 귀속 문구 정정(독립 검증 1R minor-1): 두 파일을 **한 질의로** 물으면 둘 중 더 최신 커밋만
+   나온다 — 정확히는 `88215613`(#421 W3)이 서브패스 import 를 **추가**했고, 그보다 앞선
+   `5b1d4110`(#191)이 마지막으로 만진 **문자열 alias** 가 그것을 못 푼다(각각 `git log -1 --` 로 확인).
+   판정은 그대로다: 이 웨이브 diff 는 두 파일 다 무접촉(`git diff 2faea6c1..HEAD` 로 독립 확인됨).
 
 ⚠️ 첫 콜드 실행에서는 red 가 2 였다 — `src/match/viewer-skins.test.ts` 가
    `packages/engine/dev-viewer/match-log.json`(**gitignore 생성물**) 부재로 ENOENT.
@@ -92,3 +94,9 @@ practice win 500 (POINT)                     economy.v4 rewards.byMode.practice.
 튜토리얼 첫 트레이드 등급 = DIA               hmb.tutorial.trade.first-grade (application.yml)
 스타터 = 팩 14 + starterTop 1 = 15명          economy.v4 starterPack / starterTop
   → 온보딩 덱 = 선발 11 + 벤치 4 → `hasEmptySlotGap` false → `auto-fill` 미노출(S2 AUTO 상시 스킵)
+
+⚠️ 이 수치들은 이제 **스펙이 발행물에서 직접 읽는다**(1R minor-2 수습) — `p493-full-journey.spec.ts`
+   가 `data/players/economy.v4.json` 을 파싱해 지갑·다이스·단축비를 만들고, 단축비는 서버와 **같은 식**
+   (`max(minPoints, ceil(시간×pointsPerHour))`)으로 파생한다. 여정 첫머리에 **자기전제**도 박았다:
+   신규 지갑(초기 + 승리 보상)이 두 비용보다 작지 않으면 그 자리에서 실패한다 — 발행물이 바뀌어
+   쿠폰 경로가 검사되지 않게 되는 순간을 "조용한 초록"이 아니라 red 로 받기 위해서다.

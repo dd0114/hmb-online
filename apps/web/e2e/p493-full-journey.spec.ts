@@ -35,12 +35,35 @@ const MATCH_ID = "m493w8";
 /** 스타터에 고정으로 들어오는 튜토리얼 카드 (`hmb.tutorial.starter.card-id`). */
 const TUTORIAL_CARD = "P122";
 
-/** 운영 발행물 값 — 목이 이 숫자를 **낮추면** 여정이 거짓으로 초록이 된다(머리말). */
-const INITIAL_POINTS = 3000;
-const INITIAL_GEMS = 6000;
-const DICE_NORMAL_COST = 5000;
-/** DIA 대기 48h × 500 G/h (economy.v4 trade.speedup) — 신규 유저 잔액의 8 배다. */
-const SPEEDUP_COST = 24000;
+/**
+ * 운영 경제값 — **발행물에서 읽는다**(상수로 베끼지 않는다).
+ *
+ * ⚠️ 이 스펙의 존재 이유가 *"경제 수치를 낮춰 잡지 않는다"* 인데, 그 보증을 수기 상수에 걸면
+ * `economy.v4.json` 이 바뀌는 날 스펙은 **낡은 값으로 조용히 초록**이 되고 가드가 실효한다
+ * (독립 검증 1R minor-2 — 리포 메모리 `hand-measured-numbers-go-stale` 부류). 그래서 파일이 SoT 다.
+ */
+const ECONOMY = JSON.parse(
+  readFileSync(new URL("../../../data/players/economy.v4.json", import.meta.url).pathname, "utf8"),
+) as {
+  initialPoints: number;
+  initialGems: number;
+  dice: { normalCost: number };
+  rewards: { byMode: { practice: { win: number } } };
+  trade: { waitHours: Record<string, number>; speedup: { pointsPerHour: number; minPoints: number } };
+};
+const INITIAL_POINTS = ECONOMY.initialPoints;
+const INITIAL_GEMS = ECONOMY.initialGems;
+const DICE_NORMAL_COST = ECONOMY.dice.normalCost;
+/** 연습경기 승리 보상 — 튜토리얼 매치도 `mode='practice'` 다(모드 값을 늘리지 않았다, W6-v3). */
+const WIN_POINTS = ECONOMY.rewards.byMode.practice.win;
+/**
+ * 튜토리얼 첫 오퍼는 **DIA 확정**(`hmb.tutorial.trade.first-grade`)이라 대기가 그 등급의 것이다.
+ * 식은 서버와 같다 — `TradeService.speedupCost` = `max(minPoints, ceil(시간 × pointsPerHour))`.
+ */
+const SPEEDUP_COST = Math.max(
+  ECONOMY.trade.speedup.minPoints,
+  Math.ceil((ECONOMY.trade.waitHours.DIA ?? 1) * ECONOMY.trade.speedup.pointsPerHour),
+);
 
 const json = (body: unknown, status = 200) => ({
   status,
@@ -304,7 +327,7 @@ async function mockJourney(page: Page, opts: { deckReady?: boolean } = {}): Prom
     if (/^\/api\/rewards\/[^/]+\/ack$/.test(p)) {
       const id = req.url().split("/api/rewards/")[1]!.split("/")[0]!;
       if (j.acked.length === 0) {
-        j.points += 500;             // 승리 보상(practice win) — 지갑은 그래도 5,000 에 못 미친다.
+        j.points += WIN_POINTS;      // 승리 보상(practice win) — 그래도 다이스 비용에 못 미친다.
         grant("FIRST_RESULT_VIEW");  // 서버 훅 ②(`RewardBundleService`)
       }
       j.acked.push(id);
@@ -416,7 +439,12 @@ async function mockJourney(page: Page, opts: { deckReady?: boolean } = {}): Prom
     }
     return route.fulfill(json({}));
   });
-  await mockAppConfig(page, { initialPoints: INITIAL_POINTS, initialGems: INITIAL_GEMS });
+  // 다이스 가격도 발행물에서 온다 — `/api/config` 가 서버에서 그렇게 조립된다(`ConfigController.shopOf`).
+  await mockAppConfig(page, {
+    initialPoints: INITIAL_POINTS,
+    initialGems: INITIAL_GEMS,
+    diceNormalCost: DICE_NORMAL_COST,
+  });
   return j;
 }
 
@@ -506,6 +534,15 @@ test.use({ viewport: PHONE, hasTouch: true, isMobile: true });
 test("신규 유저 온레일 풀 저니 S0→S7 — 한 번도 갇히지 않고 걷는다 (실터치)", async ({ page }) => {
   // 뷰포트·터치 자기전제(#386 — 조용히 데스크탑으로 돌면 전부 초록이 된다).
   expect(page.viewportSize()).toEqual(PHONE);
+  /*
+   * **경제 자기전제** — 이 여정이 무료 쿠폰 경로를 실제로 태우려면 신규 유저가 두 값을 **못 내야**
+   * 한다. 발행물이 바뀌어 낼 수 있게 되면 이 스펙은 통과하지만 **아무것도 검사하지 않는 상태**가
+   * 되므로, 조용히 초록이 되는 대신 여기서 크게 깨진다(그때 할 일 = 시나리오 재검토).
+   */
+  expect(INITIAL_POINTS + WIN_POINTS,
+    "신규 지갑이 다이스 비용을 감당하면 S5 쿠폰 경로가 검사되지 않는다").toBeLessThan(DICE_NORMAL_COST);
+  expect(INITIAL_POINTS + WIN_POINTS,
+    "신규 지갑이 단축 비용을 감당하면 S6 쿠폰 경로가 검사되지 않는다").toBeLessThan(SPEEDUP_COST);
   const j = await mockJourney(page);
   await skipSplash(page);
   test.setTimeout(180_000);
@@ -668,7 +705,7 @@ test("신규 유저 온레일 풀 저니 S0→S7 — 한 번도 갇히지 않고
   expect(j.coupons.FREE_TRADE_RUSH).toBe(0);
   await expect(page.getByTestId("trade-slot-1-rush-free")).toHaveCount(0);
   expect(j.speedupSpent).toBe(0); // 쿠폰이면 지출 0 (서버 `spent`)
-  expect(j.points).toBe(INITIAL_POINTS + 500); // 지갑은 한 푼도 안 나갔다
+  expect(j.points).toBe(INITIAL_POINTS + WIN_POINTS); // 지갑은 한 푼도 안 나갔다
 
   await page.getByTestId("trade-slot-1-accept").tap();
   // 영입 결과 모달은 **온레일 밖의 자기 모달**이다 — 온레일은 그 위에서 비켜나고(`shieldFor`),
