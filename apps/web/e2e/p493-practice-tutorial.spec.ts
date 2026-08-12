@@ -10,7 +10,7 @@ import { skipSplash } from "./splash-mock";
  *
  * 보는 것:
  *  · ① 온보딩을 끝낸 신규 유저(pending 래치)가 홈 [게임 시작]을 누르면 제안 모달이 뜬다
- *  · ② 수락 = 연습경기 생성 API 호출 + 그 매치로 이동(모드 선택 화면을 거치지 않는다)
+ *  · ② 수락 = **온레일 시작**(덱 화면으로 이동) — 매치 생성은 덱 저장 뒤로 옮겨졌다(리플랜 v3)
  *  · ③ 거절 = 일반 흐름(/game)으로 가고 **다시 묻지 않는다**
  *  · ④ **래치 없는 유저(기존 유저·목 유저)에게는 절대 안 뜬다** — GuideProvider 와 같은 게이트다.
  *       이 게이트가 무너지면 토큰만 심는 다른 스펙 전부가 이 모달에 막힌다.
@@ -114,7 +114,7 @@ test("① 온보딩 직후 [게임 시작] = 연습경기 튜토리얼 제안 �
   await expect(page).toHaveURL(/\/home$/);
 });
 
-test("② 수락 = 연습경기 생성 + 그 매치로 직행(모드 선택 화면을 거치지 않는다)", async ({ page }) => {
+test("② 수락 = **덱 화면부터**(온레일 시작) — 여기서 매치를 만들지 않는다", async ({ page }) => {
   const st = await mockApi(page);
   await seedNewUser(page);
 
@@ -122,8 +122,20 @@ test("② 수락 = 연습경기 생성 + 그 매치로 직행(모드 선택 화�
   await page.getByTestId("home-tile-game").click();
   await page.getByTestId("practice-tutorial-accept").click();
 
-  await expect(page).toHaveURL(/\/match\/m493$/);
-  expect(st.createCalls).toBe(1);
+  /*
+   * ⚠️ **W5 계약이 뒤집힌 자리다**(#493 리플랜 v3). 구 계약은 *"수락 = 그 자리에서 연습경기 생성
+   * + `/match/:id` 직행"* 이었고, 그 근거는 hero 리플랜 v2 의 *"미리 준비한 덱으로 돌려서 보여줘야"*
+   * 였다. 리플랜 v3 이 그 앞에 셋팅을 넣으면서 순서가 바뀌었다 — *"게임 시작하면 **셋팅부터**
+   * 알려줘야하는데 지금 너무 자유도가 높아"*.
+   *
+   * 서버도 같은 순서를 요구한다: 튜토리얼 매치 생성은 덱 검증을 그대로 지나므로 덱이 없으면
+   * 400 `DECK_REQUIRED` 다. 즉 "수락 즉시 매치"는 **신규 유저에게 성립할 수 없는 순서**였다.
+   * 매치는 온레일이 S2(덱 저장)를 마친 뒤 [경기 시작] CTA 에서 만든다 —
+   * 그 계약은 `p493-onrail.spec.ts` ④ 가 소유한다(`{tutorial:true}` 바디까지 본다).
+   */
+  await expect(page).toHaveURL(/\/deck$/);
+  expect(st.createCalls, "이 화면은 더 이상 매치를 만들지 않는다").toBe(0);
+  await expect(page.getByTestId("onrail-overlay")).toBeVisible();
 });
 
 test("③ 거절 = 일반 흐름(/game)으로 가고 다시 묻지 않는다", async ({ page }) => {

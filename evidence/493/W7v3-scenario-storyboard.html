@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>온레일 튜토리얼 시나리오 v3 — #493 컨펌용</title>
+<style>
+  :root { --bg:#0f1216; --card:#1a1f26; --line:#2c343e; --txt:#e8ecf1; --dim:#9aa7b4;
+          --acc:#4da3ff; --gold:#ffc94d; --ok:#5ad18a; --warn:#ff8f5a; --block:#5b6470; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--txt); font-family:-apple-system,"Apple SD Gothic Neo",sans-serif; padding:24px 16px 80px; max-width:860px; margin:0 auto; line-height:1.6; }
+  h1 { font-size:22px; margin-bottom:4px; }
+  .sub { color:var(--dim); font-size:13px; margin-bottom:24px; }
+  h2 { font-size:17px; margin:36px 0 12px; color:var(--acc); border-bottom:1px solid var(--line); padding-bottom:6px; }
+  .flow { display:flex; flex-wrap:wrap; gap:6px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; font-size:13px; }
+  .flow .n { background:#233041; border:1px solid #35516f; border-radius:6px; padding:4px 10px; white-space:nowrap; }
+  .flow .a { color:var(--dim); }
+  .scene { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:14px 0; }
+  .scene h3 { font-size:15px; margin-bottom:10px; }
+  .scene h3 .tag { font-size:11px; background:#233041; color:var(--acc); border-radius:4px; padding:2px 8px; margin-right:8px; vertical-align:1px; }
+  .cols { display:flex; gap:14px; flex-wrap:wrap; }
+  .phone { flex:0 0 200px; background:#0a0d10; border:2px solid #333c46; border-radius:14px; padding:10px 8px; font-size:11px; min-height:230px; }
+  .phone .bar { text-align:center; color:var(--dim); font-size:10px; margin-bottom:6px; }
+  .box { border:1px dashed #47525e; border-radius:6px; padding:5px 7px; margin:5px 0; color:var(--dim); }
+  .box.hl { border:2px solid var(--gold); color:var(--gold); font-weight:700; background:rgba(255,201,77,.07); }
+  .box.blocked { opacity:.35; }
+  .balloon { background:#2a3a2e; border:1px solid var(--ok); border-radius:8px; padding:6px 8px; color:var(--ok); margin:5px 0; font-size:10.5px; }
+  .desc { flex:1; min-width:250px; font-size:13.5px; }
+  .desc ul { padding-left:18px; }
+  .desc li { margin:5px 0; }
+  .k { color:var(--gold); font-weight:700; }
+  .b { color:var(--warn); }
+  .lock { color:var(--block); }
+  .reward { display:inline-block; background:rgba(255,201,77,.12); border:1px solid var(--gold); color:var(--gold); border-radius:6px; padding:1px 8px; font-size:12px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin:10px 0; }
+  th,td { border:1px solid var(--line); padding:7px 10px; text-align:left; vertical-align:top; }
+  th { background:#1e252d; color:var(--dim); font-weight:600; white-space:nowrap; }
+  .adj td:first-child { white-space:nowrap; color:var(--acc); font-weight:700; }
+  .note { background:rgba(77,163,255,.08); border:1px solid #2c4a68; border-radius:8px; padding:10px 14px; font-size:13px; margin:12px 0; }
+</style>
+</head>
+<body>
+
+<h1>온레일 튜토리얼 — 전체 시나리오 v3</h1>
+<div class="sub">#493 리플랜 v3 · 구현 전 컨펌용 스토리보드 · 2026-08-12<br>
+원칙: <b>각 순간 허용 액션 1개만</b>(나머지 차단) · <b>전 유저 동일 결과</b>(튜토리얼 고정 덱+고정 시드, AI 호출 0) · <b>반드시 승리</b> · 무료 쿠폰 인프라</div>
+
+<h2>전체 흐름 한눈에</h2>
+<div class="flow">
+  <span class="n">S0 스타터팩</span><span class="a">→</span>
+  <span class="n">S1 게임시작 모달</span><span class="a">→</span>
+  <span class="n">S2 덱셋팅 (AUTO→프롬프트→저장) 💰</span><span class="a">→</span>
+  <span class="n">S3 경기 (화면 투어→관전, 필승)</span><span class="a">→</span>
+  <span class="n">S4 결과 열람 💰</span><span class="a">→</span>
+  <span class="n">S5 성장 (강화 무료+승급) 💰</span><span class="a">→</span>
+  <span class="n">S6 트레이드 (에픽 확정+단축 무료) 💰</span><span class="a">→</span>
+  <span class="n">S7 완주 💰</span>
+</div>
+<div class="note">💰 = 300젬 우편 지급 지점 (덱저장 · 결과열람 · 첫강화 · 첫트레이드 · 완주). 첫 뽑기 300젬은 강제 흐름 밖에서 트리거만 유지(조정 ④).</div>
+
+<h2>S0 — 스타터팩 (온보딩 직후)</h2>
+<div class="scene">
+  <div class="cols">
+    <div class="phone"><div class="bar">스타터팩 수령</div>
+      <div class="box">기존 스타터 구성 (선수팩·재화)</div>
+      <div class="box hl">+ 튜토리얼 카드 ×2장<br>(같은 브론즈 카드 — 승급 재료)</div>
+      <div class="box hl">+ 카드 XP 프리필 (즉시 강화 가능)</div>
+      <div class="box hl">+ 쿠폰 2장: 강화 무료권 · 트레이드 단축권</div>
+    </div>
+    <div class="desc"><ul>
+      <li>신규 유저 스타터팩에 <span class="k">고정 튜토리얼 카드 1종 × 2장</span> 추가 — 전 유저 같은 카드. 2장인 이유 = S5 에서 <b>승급 재료</b>.</li>
+      <li>그 카드는 <span class="k">경험치가 미리 채워져</span> 있어 S5 에서 바로 강화 가능.</li>
+      <li><span class="k">무료 쿠폰 2장</span> 지급 — "첫 강화 무료" · "트레이드 단축 무료". 쿠폰은 일반 인프라(추후 이벤트 재사용 가능)로 설계.</li>
+      <li>기존 유저에게는 재지급 없음.</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>S1 — 게임 시작 → 튜토리얼 제안 모달</h2>
+<div class="scene">
+  <div class="cols">
+    <div class="phone"><div class="bar">홈</div>
+      <div class="box hl">[게임 시작] 타일 (탭)</div>
+      <div class="balloon">"연습경기로 튜토리얼을 진행해볼까요?"<br><b>[시작하기]</b> (크게) · [건너뛰기] (작게)</div>
+    </div>
+    <div class="desc"><ul>
+      <li>홈에서 [게임 시작] 첫 탭 → 모달. <b>[시작하기]</b>가 기본 강조.</li>
+      <li><span class="b">건너뛰기</span> 시: 다시 묻지 않음. 행동 보상 5종(덱저장·결과열람·강화·트레이드·뽑기)은 각 행동 시 여전히 지급, <b>완주 보상만 못 받음</b>.</li>
+      <li>수락 → 덱 화면으로 자동 이동, 온레일 시작.</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>S2 — 덱셋팅 (온레일 · 튜토리얼 고정 덱)</h2>
+<div class="scene">
+  <h3><span class="tag">허용 액션 1개씩</span>AUTO → 선수 1명 프롬프트 → 저장</h3>
+  <div class="cols">
+    <div class="phone"><div class="bar">덱 화면 — 스텝 ①</div>
+      <div class="box blocked">선수 슬롯들 <span class="lock">(잠김)</span></div>
+      <div class="box hl">[AUTO] ← 이것만 눌림</div>
+      <div class="box blocked">[저장] <span class="lock">(잠김)</span></div>
+      <div class="balloon">"AUTO 를 누르면 자동으로 베스트 라인업이 배치돼요"</div>
+    </div>
+    <div class="phone"><div class="bar">스텝 ② → ③</div>
+      <div class="box hl">지정 선수 1명 하이라이트 (탭)</div>
+      <div class="balloon">"이 선수에게 한마디 지시를 적어보세요"<br>→ 프롬프트 입력 (아무 문구 OK)</div>
+      <div class="box hl">[저장] ← 입력 후 이것만</div>
+      <div class="balloon">💰 "덱 저장 보상 300젬이 우편으로!"</div>
+    </div>
+    <div class="desc"><ul>
+      <li>덱은 <span class="k">튜토리얼 고정 덱</span>(보유 선수 아님) — 시드 불변의 핵심.</li>
+      <li>① <b>AUTO 만</b> 누를 수 있음 → 자동 배치. ② 지정 선수 1명 탭 → <b>프롬프트 강제 입력</b>(자유 문구, <span class="b">이번 경기 시뮬에는 미반영</span> — 유저에게 고지하지 않음, 전 유저 동일 결과 유지). ③ <b>저장</b> → 보상 💰.</li>
+      <li>저장 후: "이제 경기하러 가볼까요?" → 경기로.</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>S3 — 연습경기 (고정 매치 · 화면 투어 → 관전)</h2>
+<div class="scene">
+  <h3><span class="tag">진입 시 재생 정지 · 스킵 잠금</span>화면 요소를 하나씩 확인 → 투어 끝나면 재생</h3>
+  <div class="cols">
+    <div class="phone"><div class="bar">경기 화면 (일시정지 상태)</div>
+      <div class="box">① 스코어보드 · 시계</div>
+      <div class="box">② 경기 장면 (피치)</div>
+      <div class="box">③ 타임라인 · 장면 핀 (골/선방 점프)</div>
+      <div class="box">④ 재생 컨트롤 · 배속</div>
+      <div class="box">⑤ 통계 (정보 토글)</div>
+      <div class="box blocked">⑥ [스킵] <span class="lock">🔒 투어 중 잠김</span></div>
+      <div class="balloon">순서대로 하나씩 하이라이트 →<br>탭하면 설명 → 다음</div>
+    </div>
+    <div class="desc"><ul>
+      <li>매치 = <span class="k">서버 고정 시드 + 튜토리얼 덱</span>. AI 호출 0 → <b>대기 0</b>. 전 유저 bit-identical 한 <span class="k">승리 경기</span>(승리 시드를 실제 시뮬로 스캔해 고정).</li>
+      <li>진입 직후 <b>재생 정지</b> + <span class="lock">스킵 잠금</span>. 화면 요소 ①~⑥을 <b>한 개씩 눌러보게</b> 하며 설명 — 그동안 경기 진행 안 됨.</li>
+      <li>투어 완료 → 재생 시작 + 스킵 해제. 이후는 일반 관전과 동일(전·후반, 하프타임, 배속, 스킵 자유).</li>
+      <li>하프타임: 교체 화면 <b>간단 안내만</b>, 교체 강제 없음 (조정 ⑤).</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>S4 — 결과 (반드시 승리)</h2>
+<div class="scene">
+  <div class="cols">
+    <div class="phone"><div class="bar">결과 화면</div>
+      <div class="box hl">🏆 승리! 2 : 1</div>
+      <div class="box">평점 · 기록 · 보상</div>
+      <div class="balloon">💰 "결과 확인 보상 300젬!"<br>"이제 선수를 성장시켜볼까요?" → 선수 탭 유도</div>
+    </div>
+    <div class="desc"><ul>
+      <li>결과 열람(확인 버튼) 시 💰 FIRST_RESULT_VIEW 300젬.</li>
+      <li>스코어는 고정 시드가 정한 값(예시) — 항상 유저 승.</li>
+      <li>다음 가이드: <b>선수(성장) 탭</b>으로 유도.</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>S5 — 성장 (강화 1회 무료 + 승급 1회, 강제)</h2>
+<div class="scene">
+  <h3><span class="tag">선수 탭 진입 시 강제</span>튜토리얼 카드로 강화 → 승급</h3>
+  <div class="cols">
+    <div class="phone"><div class="bar">선수 상세 — 스텝 ①</div>
+      <div class="box hl">튜토리얼 카드 (XP 꽉 참)</div>
+      <div class="box hl">[강화] 비용: <s>500G</s> → <b>무료 쿠폰 적용 0G</b></div>
+      <div class="balloon">"무료 강화권으로 강화해보세요!"<br>→ 강화 성공 연출</div>
+    </div>
+    <div class="phone"><div class="bar">스텝 ②</div>
+      <div class="box hl">[승급] 재료: 같은 카드 1장 (보유 ✓)</div>
+      <div class="box">비용: 골드 (직접 소비 — 골드 써보기)</div>
+      <div class="balloon">"카드 2장을 합쳐 성★을 올려보세요!"<br>→ 승급 성공 연출<br>💰 "첫 강화 보상 300젬!"</div>
+    </div>
+    <div class="desc"><ul>
+      <li>선수 탭 진입 시 <span class="k">튜토리얼 카드 상세로 강제 유도</span>.</li>
+      <li>① <b>강화</b>: XP 프리필 + <span class="k">첫 강화 무료 쿠폰 자동 적용</span>(비용 0 표시) → 강화 경험.</li>
+      <li>② <b>승급</b>: 스타터로 받은 같은 카드 2장 → 성★ 승급. 승급 비용은 <span class="k">골드 직접 소비</span> = "골드 써보기" 경험 (조정 ③).</li>
+      <li>완료 → 💰 FIRST_ENHANCE 300젬.</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>S6 — 트레이드 (에픽 확정 + 단축 무료)</h2>
+<div class="scene">
+  <div class="cols">
+    <div class="phone"><div class="bar">영입 탭 — 트레이드</div>
+      <div class="box hl">[트레이드 실행] ← 이것만</div>
+      <div class="box">⏳ 대기시간 표시</div>
+      <div class="box hl">[즉시 받기] 비용: <s>단축비</s> → <b>단축권 적용 무료</b></div>
+      <div class="balloon">"단축권으로 바로 받아보세요!"<br>→ ✨ 에픽 등급 획득 연출<br>💰 "첫 트레이드 보상 300젬!"</div>
+    </div>
+    <div class="desc"><ul>
+      <li>영입 탭으로 유도 → 트레이드 실행. <span class="k">유저의 첫 트레이드는 에픽 등급 확정</span> 배출.</li>
+      <li>대기시간 발생 → <span class="k">단축 무료 쿠폰</span>으로 즉시 수령 = 단축 기능 학습.</li>
+      <li>완료 → 💰 FIRST_TRADE 300젬.</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>S7 — 완주</h2>
+<div class="scene">
+  <div class="cols">
+    <div class="phone"><div class="bar">완료</div>
+      <div class="box hl">🎉 튜토리얼 완료!</div>
+      <div class="balloon">💰 완주 보상 300젬<br>"이제 진짜 경기를 시작해보세요"</div>
+    </div>
+    <div class="desc"><ul>
+      <li>💰 완주 보상 300젬 (우편). 총 획득: 젬 1,800 (행동 5종 + 완주) + 뽑기 300 별도.</li>
+      <li>이후 [게임 시작] = <b>일반 흐름</b>(실제 봇 매칭 · 본인 덱 · AI 반영).</li>
+      <li>튜토리얼 덱은 이후 본인 덱으로 대체(튜토리얼 전용 — 이후 노출 안 함).</li>
+    </ul></div>
+  </div>
+</div>
+
+<h2>엣지 시나리오</h2>
+<table>
+  <tr><th>상황</th><th>동작</th></tr>
+  <tr><td>중도 이탈 (새로고침 · 앱 종료)</td><td>진행 스텝 저장 → 재진입 시 <b>그 스텝부터 재개</b> (경기 중이면 이어보기 — 고정 매치라 서버가 항상 재서빙 가능)</td></tr>
+  <tr><td>모달에서 건너뛰기</td><td>재노출 없음 · 행동 보상 5종은 개별 행동 시 지급 · 완주 보상만 제외 (조정 ⑥: 재진입 경로 없음이 기본안)</td></tr>
+  <tr><td>온레일 중 다른 곳 탭</td><td>허용 액션 외 전부 차단(반투명 오버레이). 단 <b>홈 복귀 탈출구 1개는 유지</b> — 갇힘 방지. 홈으로 나가면 이탈로 취급, 재진입 시 그 스텝부터</td></tr>
+  <tr><td>기존 유저 (이미 플레이 중)</td><td>튜토리얼 미노출 (신규 온보딩 유저만)</td></tr>
+  <tr><td>계정 전환</td><td>계정별 진행도 격리 (기존 W2 인프라)</td></tr>
+</table>
+
+<h2>조정 포인트 (기본안으로 구현 — 다르면 지금 알려주세요)</h2>
+<table class="adj">
+  <tr><th>#</th><th>기본안</th><th>비고</th></tr>
+  <tr><td>①</td><td>덱셋팅 순서 = AUTO → 프롬프트 → <b>저장</b>(마지막)</td><td>말씀 순서는 "AUTO→저장→프롬프트"였는데, 프롬프트를 저장에 담는 게 자연스러워 저장을 마지막에 둠</td></tr>
+  <tr><td>②</td><td>경기 중 "탭 투어" = <b>경기 화면 요소</b>(스코어보드·타임라인·배속·통계·스킵) 투어</td><td>앱 하단 탭(홈·덱·선수·영입…) 투어 의미였다면 변경 — 하단 탭은 경기 중 잠기는 구조라 경기 화면 요소로 해석</td></tr>
+  <tr><td>③</td><td>강화만 무료(쿠폰), <b>승급은 골드 소비</b></td><td>"골드도 써보게" 경험을 승급 쪽에 배치</td></tr>
+  <tr><td>④</td><td>뽑기는 강제 흐름 제외, 첫 뽑기 300젬 트리거만 유지</td><td>이번 말씀에 뽑기 강제가 없어 제외</td></tr>
+  <tr><td>⑤</td><td>하프타임 = 간단 안내만 (교체 강제 없음)</td><td>교체까지 강제하면 흐름이 길어짐</td></tr>
+  <tr><td>⑥</td><td>건너뛴 유저 재진입 경로 없음 (1회 제안)</td><td>필요하면 내 정보에 "튜토리얼 다시 보기" 추가 가능</td></tr>
+</table>
+
+</body>
+</html>
