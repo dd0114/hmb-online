@@ -1,0 +1,94 @@
+#493 W8-v3 — 전 게이트 콜드 재실행
+tree  = web/493-w8v3 @ b0d40b51 (base = epic/493-tutorial @ 2faea6c1, W7-v3 ff 머지분)
+when  = 2026-08-13 (독립 검증 세션, worktree 격리 — 리뷰 스택 :8080/:8790/:5173/:5199 무접촉)
+how   = 전부 이 트리에서 콜드 실행. 이전 웨이브 로그 인용 0(§gate-report-cold-rerun).
+
+================================================================================
+① 타입 게이트 — cd apps/web && npm run build   (tsc -p tsconfig.json --noEmit && vite build)
+================================================================================
+EXIT=0 · 타입 에러 0 · ✓ built in 2.34s
+※ 루트 `npm run typecheck` 는 apps/web 을 보지 않는다 — web 변경의 타입 게이트는 이 빌드가 유일하다.
+
+================================================================================
+② 유닛 — cd apps/web && npx vitest run
+================================================================================
+ Test Files  1 failed | 171 passed | 1 skipped (173)
+      Tests  2468 passed | 8 skipped (2476)        # 실패한 **테스트** 0
+
+⚠️ 유일한 red = `src/match/highlight-reel.test.ts` **파일 로드 실패**(선행 결함, 이 웨이브 무관):
+   Error: Cannot find module '@hmb/viewer-core/playback'
+   원인 = `apps/web/vite.config.ts:12` 의 alias 가 `"@hmb/viewer-core" → .../src/index.ts` 라는
+   **문자열 alias** 라 서브패스가 `.../src/index.ts/playback` 으로 접합된다.
+   귀속 = `git log -1 -- apps/web/vite.config.ts src/match/highlight-reel.test.ts` → `88215613`(#421 W3).
+   이 웨이브 diff 는 두 파일 다 무접촉(`git status`).
+
+⚠️ 첫 콜드 실행에서는 red 가 2 였다 — `src/match/viewer-skins.test.ts` 가
+   `packages/engine/dev-viewer/match-log.json`(**gitignore 생성물**) 부재로 ENOENT.
+   해소 = `npx vitest run packages/engine/dev-viewer/generate-demo.test.ts`(2 passed, 10.3s)로 생성.
+   갓 체크아웃한 트리에서만 나는 환경 결함이고 코드 결함이 아니다(W7-v3 이 같은 자리를 기록).
+
+================================================================================
+③ E2E — 전면 목킹 · 스펙 지정 · 대체 포트(WEB_E2E_PORT=5287) · CI=1
+================================================================================
+⚠️ 포트를 반드시 지정한다. 기본값 5199 는 **다른 세션의 vite 가 점유 중**이고
+   `reuseExistingServer: !CI` 라 무심코 돌리면 남의 트리 코드에 붙어 초록을 받는다(거짓 green).
+   CI=1 이라 playwright 가 자기 dev 서버를 띄우고 끝나면 내린다 — 실행 후 5287 LISTEN 0 확인.
+
+배치 A (온레일·튜토리얼·영향권):
+cd apps/web && CI=1 WEB_E2E_PORT=5287 npx playwright test \
+  e2e/p493-full-journey.spec.ts e2e/p493-onrail.spec.ts e2e/p493-practice-tutorial.spec.ts \
+  e2e/p493-guides.spec.ts e2e/w3-trade-mock.spec.ts e2e/growth-mock.spec.ts e2e/deck-auto.spec.ts \
+  e2e/p455-a3-auto-fill.spec.ts e2e/p244-prompt-first.spec.ts e2e/p421-skip-report.spec.ts \
+  e2e/p276-halftime-shape.spec.ts e2e/p286-w35-deckless.spec.ts e2e/p3-tutorial.spec.ts
+  → 148 passed (3.2m) · EXIT=0
+
+배치 B (폰·덱·하프타임 회귀, W7-v3 이 돌린 것과 같은 묶음):
+  e2e/p442-phone-substitution · deck-teamsheet · p439-phone-deck-ux · p455-a2-player-menu ·
+  p294-halftime-failure · p403-player-detail
+  → 79 passed (1.1m) · EXIT=0
+
+================================================================================
+④ server-java — /absolute/path && ./gradlew test --rerun-tasks
+================================================================================
+cd /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-a5ff144988c9212e6/server-java
+./gradlew test --rerun-tasks --console=plain
+  BUILD SUCCESSFUL in 2m 23s · EXIT=0
+  XML 집계(build/test-results/test/*.xml, 176 파일): tests 1216 · failures 0 · errors 0 · skipped 1
+※ `--rerun-tasks` 없이는 UP-TO-DATE 거짓 green 이 된다(모듈 메모리). 이 트리에서만 실행 —
+  같은 트리 gradle 동시 실행 없음.
+※ server-java 는 **읽기 전용 스코프**였다. 이 게이트는 W6-v3 착지분이 지금 트리에서 그대로
+  초록인지 확인하는 용도이고, 서버 파일은 한 줄도 고치지 않았다(`git status` 로 확인).
+
+================================================================================
+⑤ 신규 계약 red → green (E2E-TDD)
+================================================================================
+`e2e/p493-full-journey.spec.ts` 전면 재작성(구 버전 = 리플랜 v2 이전 여정, 온레일 무경유).
+
+red  (수정 전, 같은 스펙):
+  ✘ 신규 유저 온레일 풀 저니 S0→S7
+    Error: expect(locator).toBeEnabled() failed
+    Locator: getByTestId('growth-dice-normal') · Received: disabled
+    → S5 에서 멈춤. 무료 강화권을 들고도 [잠재 재설정]이 잔액(3,500 G < 5,000 G)으로 잠긴다.
+    (S6 단축은 그 뒤라 도달조차 못 했다 — 같은 뿌리이고 순수 함수 계약이 따로 문다:
+     `speedupButtonState({points:3500, cost:24000, freeCoupons:0}).disabled === true`)
+
+green(수정 후):
+  ✓ 신규 유저 온레일 풀 저니 S0→S7 — 한 번도 갇히지 않고 걷는다 (실터치) (18.6s)
+  ✓ 튜토리얼 매치의 하프타임은 교체·자리를 받지 않는다(구운 후반) (559ms)
+  ✓ 튜토리얼 매치를 이미 했으면(409) 일반 연습경기로 착지한다 — 막다른 길 금지 (644ms)
+  3 passed (23.0s)
+
+유닛(순수·배선 두 층):
+  src/trade/trade-logic.test.ts   31 passed  (쿠폰 0/1 양방향 + 면제는 잔액 축만)
+  src/trade/TradePage.test.ts     12 passed  (쿠폰 맵이 `/api/me` → 카드까지 내려오는가)
+
+================================================================================
+⑥ 여정이 쓰는 운영 수치 (목을 낮춰 잡지 않았다는 근거)
+================================================================================
+initialPoints 3,000 / initialGems 6,000      data/players/economy.v4.json
+dice.normalCost 5,000 (POINT)                economy.v4 + ConfigController.shopOf
+trade.waitHours.DIA 48h · speedup 500/h      economy.v4 → speedupCost = ceil(48×500) = 24,000
+practice win 500 (POINT)                     economy.v4 rewards.byMode.practice.win
+튜토리얼 첫 트레이드 등급 = DIA               hmb.tutorial.trade.first-grade (application.yml)
+스타터 = 팩 14 + starterTop 1 = 15명          economy.v4 starterPack / starterTop
+  → 온보딩 덱 = 선발 11 + 벤치 4 → `hasEmptySlotGap` false → `auto-fill` 미노출(S2 AUTO 상시 스킵)
