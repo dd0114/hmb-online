@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
  *
  * <p><b>고친 방식</b>: 지급의 근거를 <b>서버가 이미 아는 사실</b>로 옮긴다 —
  * {@code matches.is_tutorial = 1} 인 매치가 {@code FINISHED} 다. 그 상태는 서버가 정산 CAS 로 직접
- * 쓰는 값이라 클라가 만들 수 없고, 파밍 차단(V45 {@code TUTORIAL_ALREADY_PLAYED})이 이미 같은 사실을
+ * 쓰는 값이라 클라가 만들 수 없고, 파밍 차단(V44 {@code TUTORIAL_ALREADY_PLAYED})이 이미 같은 사실을
  * 판정 축으로 쓰고 있다 — 그래서 이 클래스가 <b>그 질의의 단일 출처</b>가 된다(둘이 갈라지면 "409 는
  * 이미 했다는데 보상은 안 나온다"가 된다).
  *
@@ -65,7 +65,7 @@ public class TutorialCompletionService {
     /**
      * 끝낸 튜토리얼 매치 수. 파밍 차단(409 {@code TUTORIAL_ALREADY_PLAYED})과 완주 보상이
      * <b>같은 질의</b>를 보게 하려고 여기 둔다. {@code ABANDONED}·{@code FAILED} 는 사고 회수
-     * 경로라 세지 않는다(V45 머리말).
+     * 경로라 세지 않는다(V44 머리말).
      */
     public int finishedTutorialMatches(String userId) {
         Integer n = jdbcClient.sql(
