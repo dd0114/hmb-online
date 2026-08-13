@@ -29,7 +29,7 @@ docker compose ps             # java/runner/executor 3개 healthy 확인
 | `executor-live.Dockerfile` | 모드 B 전용 이미지(서번트 + claude CLI) |
 | `.env.example` | 환경변수 템플릿. **실토큰 금지** — `.env` 로 복사해 채운다 |
 | `healthcheck-executor.mjs` | executor 헬스체크(워커 프로세스 상태 + Java 도달성). 컨테이너에 ro 마운트 |
-| `cloudflared/config.example.yml` | named tunnel 설정 **템플릿**(자격증명 JSON 은 커밋 금지) |
+| `cloudflared/config.example.yml` | 🛑 **중단된 경로**(2026-07-31 hero 확정, 플레이북 §6 "다시 제안하지 않는다"). named tunnel 템플릿 — 역사 기록용, 쓰지 마라 |
 | `pages/build.sh` | Cloudflare Pages 빌드 커맨드(리포 루트에서 실행) |
 | `pages/_redirects`·`_headers` | SPA 폴백 + 보안/캐시 헤더. build.sh 가 `apps/web/dist/` 로 복사 |
 | `pages/functions/**` | **Pages Function 소스**(#299 공유 URL OG 썸네일). SoT — 여기서만 고친다 |
