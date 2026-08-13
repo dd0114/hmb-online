@@ -1127,7 +1127,46 @@ hero 리플랜 v3: *"거의 정해진화면에서 유저가 선택할 여유가 
   `auto` 와 같은 이유로 **상수 false**.
 - ⚠️ **하프타임 교체는 결과에 영향이 없다**(구운 h2 는 고정이다). 온레일 UI 가 교체를 막는 것이 전제다.
 
+### 완주 보상의 판정은 **서버 사실**이다 (#493 W9)
+
+- **고친 결함**: `TUTORIAL_DONE`(GEM 300 우편)이 `POST /api/me/tutorial-complete` 라는 **클라 신고**
+  시점에 발화했다. 그 엔드포인트는 완료 모달을 스킵해도, 클라가 임의로 불러도 200 이라 **유저가
+  선언하면 서버가 믿는** 구조였다 = GEM 300 을 아무 때나 청구할 수 있었다.
+- **판정 축 = `matches.is_tutorial = 1` 인 매치가 `FINISHED`**(서버가 정산 CAS 로 직접 쓰는 값).
+  `users.tutorial_done` 은 **근거가 아니다** — 그 컬럼은 완료 API 가 무조건 1 로 쓰는 값이라
+  (플래그는 게이트가 아니다, `OnboardingService` 머리말) 근거로 쓰면 결함이 이름만 바뀐다.
+- **SoT = `TutorialCompletionService`**. 파밍 차단 409(`TUTORIAL_ALREADY_PLAYED`)도 이제 이 질의를
+  쓴다 — 갈라지면 *"409 는 이미 했다는데 보상은 안 나온다"* 가 되고 복구 경로가 없다.
+- **발화 지점 2곳, 멱등 축은 1개**: ①`MatchOrchestrator.finishMatch`(CAS **뒤** — 판정이 읽는 사실을
+  바로 그 UPDATE 가 만든다. 클라 호출 0으로도 지급) ②`OnboardingService.complete`(구버전 클라
+  호환 — 호출은 계속 받되 **같은 판정**을 통과해야 지급). 둘 다 `UxActionRewardService.grantOnce`
+  를 지나므로 멱등은 `uq_user_mails_user_campaign` 하나다(새 표 없음).
+- ⚠️ **자산이 없는 배포의 폴백**: `TUTORIAL_UNAVAILABLE` 이면 web 이 일반 연습경기로 폴백해
+  `is_tutorial` 매치가 **영영 안 생긴다** → 그 배포에서만 "끝난 매치가 하나라도 있다"로 물러선다.
+  이것도 서버 사실이고(경기를 끝까지 치렀다) 화면만 스킵한 유저에겐 열리지 않는다.
+- 계약 = `TutorialMatchTest`(실경로 — 끝내기 전 신고 0 · 끝나는 순간 1 · 재신고 무증가) +
+  `UxActionRewardTest`(근거 없는 신고 0 · **튜토리얼 아닌** FINISHED 매치도 근거 아님 · 계정 격리는
+  **양쪽에 근거를 심고** 호출만 갈라 공허함 방지).
+
+### `GET /api/config.tutorial.starterCardId` (#493 W9, additive)
+
+web 이 고정 카드 id 를 *"대기 중인 3지선다의 주인"* 으로 **추론**하고 있었다(`onrail-api.ts`) — 유저가
+다른 카드로 경기를 치르거나 선택권을 써 버리면 어긋난다. 서버가 이미 아는 값이라 그대로 내려 준다.
+**출처는 지급 로직이 쓰는 그 필드**(`TutorialStarterService.cardId()`) — 컨트롤러가 프로퍼티를 따로
+읽으면 표시와 지급이 다른 카드를 가리킬 수 있다. 계약은 출하 기본(P122)이 아니라 **오버라이드한 값**
+으로 건다(`TutorialStarterTest`) — 하드코딩 변이가 그때만 죽는다.
+⚠️ `openapi.yaml` 의 `AppConfig` 엔 아직 없다(`docs/**` 는 이 모듈 밖 — `ai`(#471)·`short_name`(#411)과
+같은 상태). additive·비필수로 편입 요청 필요.
+
 ### 이 웨이브가 기존 테스트에 남긴 자국
+
+⚠️ **W9 플래키 제거**(`TutorialFreebiesTest`, 실측 1/27 실패): **오퍼 등급은 SecureRandom 시드에서
+굴러 나오고**(`TradeSeedSource`→`deriveOffer`) 등급이 대기시간을, 대기시간이 단축 비용을 정한다
+(BRONZE 50 … **LEGEND 3,600**). 신규 지갑은 3,000 이라 LEGEND 롤(가중치 0.05)에서만
+`402 INSUFFICIENT_POINTS` 로 뒤집혔다 — 전 등급 대기를 72h 로 고정하면 **결정론적으로 재현**된다.
+고침은 임계 완화가 아니라 **등급→비용 의존을 끊는 것**: `hmb.trade.wait-seconds.{GRADE}=3600`(전 등급)
+으로 출발 상태를 고정하고, 단언을 `>0` 이 아니라 **견적(`speedupCost`)과 청구가 같다**로 좁혔다.
+프로덕션 랜덤은 그대로다. 등급별 대기 곡선의 계약은 `TradeWaitSecondsOverrideTest` 소관.
 
 가입 무료 쿠폰이 **신규 유저의 첫 강화·첫 단축·첫 오퍼**를 바꾼다 → 다이스 과금·트레이드 등급 롤·부족
 문구 계약 7개가 red 였다. 그 계약들(값을 내면 차감된다 · 등급은 확률 롤이다)은 **쿠폰을 다 쓴 뒤에도
