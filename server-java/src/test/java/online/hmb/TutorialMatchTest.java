@@ -132,6 +132,54 @@ class TutorialMatchTest extends MatchTestBase {
                 .isEqualTo(1);
     }
 
+    /**
+     * #493 W10 — <b>상대 카드는 실제로 뛴 로스터다</b>(봇 덱이 아니다).
+     *
+     * <p>W10 이 튜토리얼 로스터를 "얼굴 캐릭터가 있는 선수"로 갈면서 away 로스터가 시드봇 덱에서
+     * 떨어져 나왔다({@code data/**} 는 이 모듈 밖이라 봇 덱을 못 고친다). 그 순간부터 상대 분석
+     * 카드가 <b>경기에 나오지도 않는 선수</b>를 보여줄 수 있는 자리가 생겼고, 이 테스트가 그 자리를
+     * 막는다.
+     *
+     * <p>⚠️ <b>공허하지 않다는 근거를 같이 단언한다</b>: 봇 덱과 자산 로스터가 실제로 <b>다르다</b>는
+     * 것을 먼저 확인한다 — 두 배열이 같으면 어느 쪽을 읽든 통과해서 계약이 아무것도 안 지킨다.
+     */
+    @Test
+    void theOpponentCardShowsTheRosterThatActuallyPlayed() {
+        String token = setupUserWithDeck("tut-opp");
+        String matchId = createTutorialMatch(token);
+
+        List<String> baked = new java.util.ArrayList<>();
+        asset.selectData().path("away").path("players")
+                .forEach(p -> baked.add(p.path("playerId").asText()));
+        assertThat(baked).hasSize(11);
+
+        List<String> botDeck = new java.util.ArrayList<>();
+        String deckJson = jdbcClient.sql("SELECT b.deck_json FROM bots b JOIN matches m ON m.bot_id = b.id "
+                + "WHERE m.id = ?").param(matchId).query(String.class).single();
+        try {
+            objectMapper.readTree(deckJson).path("starters")
+                    .forEach(s -> botDeck.add(s.path("playerId").asText()));
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        assertThat(botDeck).as("봇 덱과 자산 로스터가 같으면 이 계약은 아무것도 지키지 않는다")
+                .isNotEqualTo(baked);
+
+        ResponseEntity<Map> detail = authGet("/api/matches/" + matchId, token, Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> opponent = (Map<String, Object>) detail.getBody().get("opponent");
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> shown = (List<Map<String, Object>>) opponent.get("deck");
+        assertThat(shown.stream().map(p -> (String) p.get("playerId")).toList())
+                .as("상대 카드 = 구운 자산의 away 로스터").isEqualTo(baked);
+        assertThat(shown).allSatisfy(p -> {
+            assertThat(p.get("name")).as("카탈로그에 있는 선수여야 이름이 뜬다").isNotNull();
+            assertThat(p.get("grade")).as("등급이 없으면 web 아트 정책이 fail-closed 로 닫힌다").isNotNull();
+        });
+        // 이름은 봇 덱이 아니라 카탈로그에서 왔다 = 상대 팀 이름은 여전히 봇 행의 것이다(#322 축).
+        assertThat(opponent.get("name")).isNotNull();
+    }
+
     /** ③ 모든 유저가 같은 결과 — 서로 다른 덱·계정이라도 바이트가 같다. */
     @Test
     void everyUserSeesTheSameBytes() {

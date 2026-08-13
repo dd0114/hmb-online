@@ -37,13 +37,65 @@ const OUT = resolve(HERE, "../src/main/resources/tutorial/tutorial-match.json.gz
 const PLAYERS_FILE = resolve(REPO, "data/players/players.v2.8.1.json");
 
 // ── 고정 로스터 ───────────────────────────────────────────────────────────
-// home = **유저 팀**. 신규 유저가 실제로 보유하는 스타터팩 구성과 같은 선수들을 쓴다 — 튜토리얼이
-// 보여 주는 팀이 "앞으로 내가 쓸 팀"과 이질적이면 안 된다. away = 시드봇 로스터 중 하나.
-const HOME_STARTERS = ["P074", "P077", "P078", "P079", "P080", "P093", "P094", "P095", "P106", "P107", "P108"];
+// hero (#493 W10): *"튜토리얼 선수들 다양하게하자 지금 튜토리얼 선수들 다 일반선수들이라 재미없어.
+// 얼굴 케릭터 있는거로하자."*
+//
+// **얼굴이 뜨는 조건은 두 개고, 둘 다 데이터에 있다**(web 코드는 안 건드린다):
+//   ① `data/players/player-chars.v2.json` 의 rule 이 `grade-default-unit` 이 **아닐 것**
+//      (= 등급 공용 기본 유닛이 아니라 개별/포지션 아트). 구 로스터 11+11 은 전원 그 공용 아트였다.
+//   ② 카탈로그 등급이 **DIA 이상**(web `icon-policy.CHAR_ART_MIN_GRADE`, #285) 이고
+//      **`active: true`**(=`GET /api/players` 가 `active=1 OR 보유>0` 로 자른다 — 비활성 선수는
+//      신규 유저의 카탈로그 응답에 아예 없어서 이름·등급이 안 잡히고, 등급이 없으면 아트가
+//      fail-closed 로 닫힌다). 그래서 **구 LEGEND 14명(P001~P012·P143·P144)은 못 쓴다** — 아트는
+//      있지만 전원 `active:false` 다.
+//
+// 그 두 조건을 통과하는 선수는 지금 카탈로그에 **22명뿐**이고(유닛 실아트 LEGEND 9 + DIA 13),
+// 그중 서로 **다른 아트 파일**을 갖는 조합만 고른다(DIA 는 포지션 풀 공용이라 `sail`·`ragna`·
+// `lupus` 가 두 명씩 겹친다 — 겹치는 쪽은 한 명만 쓴다).
+//
+// ⚠️ **수비수 아트는 4종이 전부다**(lupus·leo·bark·seokdijk). 4-3-3 두 팀이면 DF 슬롯이 8칸이라
+// 절반은 구조적으로 얼굴이 없다. hero 우선순위대로 **home(마이 팀)에 4종을 다 준다** — away 의
+// 백4 는 GOLD 일반 선수로 채운다(중복 아트를 만들지 않는 쪽을 택했다. Decision log 참조).
+const HOME_STARTERS = [
+  "P182", // GK 오시야스   LEGEND units/osiyas
+  "P015", // LB 에릭 발딘   DIA    characters/lupus
+  "P181", // CB 석다이크    LEGEND units/seokdijk
+  "P020", // CB 닐스 두란테 DIA    characters/leo
+  "P022", // RB 다니엘 오르베 DIA  characters/bark
+  "P179", // DM 욱링엄      LEGEND units/wookringham
+  "P175", // CM 열라도나    LEGEND units/yeoldona
+  "P177", // CM 덕브라이너  LEGEND units/dukbrayner
+  "P174", // LW 권씨        LEGEND units/kwonssi
+  "P173", // ST 보날두      LEGEND units/bonaldo
+  "P176", // RW 춘바페      LEGEND units/chunbappe
+];
 const HOME_NAME = "마이 팀";
 const AWAY_BOT = "BOT_ATK";   // 시드봇 3종 중 **테스트 픽스처에도 있는** id — 계약이 출하 자산을 그대로 태울 수 있다
 const AWAY_NAME_FALLBACK = "튜토리얼 FC";
+// away 도 **남는 얼굴 선수로 최대한** 채운다(GK·MF 3·FW 3 = 7명). 백4 는 얼굴 아트가 남지 않아
+// GOLD 일반 선수다 — BRONZE 봇 로스터보다 한 단계 올려 "이길 수는 있지만 허수아비는 아닌" 상대로
+// 둔다(승리 판정은 아래 `acceptable` 이 실시뮬로 확인한다).
+//
+// ⚠️ **더 이상 봇 덱에서 읽지 않는다.** `bots.v4.json` 은 전원 `grade-default-unit` 이고
+// `data/**` 는 이 모듈의 owned-glob 밖이라 고칠 수 없다. 대신 자산이 away 로스터를 들고 가고,
+// 서버 `MatchService.buildOpponent` 가 **튜토리얼 매치일 때 이 자산 로스터**를 상대 카드로 쓴다
+// (안 그러면 상대 분석 화면과 실제로 뛴 로스터가 갈린다).
+const AWAY_STARTERS = [
+  "P014", // GK 요나스 브리크 DIA characters/penguin-king
+  "P043", // LB 로만 팔코니   GOLD (공용 아트 — 남은 DF 아트가 없다)
+  "P050", // CB 세드릭 마르텔 GOLD
+  "P148", // CB 노시운        GOLD
+  "P150", // RB 표유안        GOLD
+  "P024", // DM 안톤 그레츠   DIA characters/riya
+  "P025", // CM 티모 라스코   DIA characters/sail
+  "P030", // CM 파블로 시몬티 DIA characters/bella
+  "P031", // LW 밀란 코발디   DIA characters/anubis
+  "P180", // ST 경니시우스    LEGEND units/kyeongnicius
+  "P033", // RW 이반 모리안   DIA characters/ragna
+];
 const FORMATION = "4-3-3";
+/** SLOTS 순서에 대응하는 **카탈로그 포지션** — 로스터를 바꿀 때 자리를 어기지 않게 검증한다. */
+const SLOT_POSITIONS = ["GK", "DF", "DF", "DF", "DF", "MF", "MF", "MF", "FW", "FW", "FW"];
 
 /** 4-3-3 슬롯 역할·기본좌표(정규화 0..1) — TacticalInput.players 순서와 1:1. */
 const SLOTS = [
@@ -110,7 +162,52 @@ const catalog = new Map(JSON.parse(readFileSync(PLAYERS_FILE, "utf8")).map((p) =
 const bots = JSON.parse(readFileSync(resolve(REPO, "data/players/bots.v4.json"), "utf8"));
 const awayBot = bots.find((b) => b.id === AWAY_BOT);
 if (!awayBot) throw new Error(`away bot not found: ${AWAY_BOT}`);
-const AWAY_STARTERS = awayBot.deck.starters.map((s) => s.playerId);
+
+// ── 로스터 검증 (#493 W10) ────────────────────────────────────────────────
+// 로스터를 손으로 고칠 수 있게 표로 뒀으니(위) **표가 틀리면 굽기 전에 죽는다**. 세 가지를 본다:
+//   ① 자리(카탈로그 포지션 ↔ SLOT_POSITIONS) ② `active`(비활성이면 신규 유저 카탈로그에 없다)
+//   ③ 아트 겹침(같은 아트 파일이 한 경기에 두 번 나오지 않는다 — hero W10 지시).
+// 아트 매핑은 `data/players/player-chars.v2.json` 을 **읽기만** 한다(data 는 owned-glob 밖).
+const CHARS_FILE = resolve(REPO, "data/players/player-chars.v2.json");
+const charDetail = new Map(
+  JSON.parse(readFileSync(CHARS_FILE, "utf8")).detail.map((d) => [d.playerId, d]),
+);
+/** 그 선수가 **개별/차별화 아트**를 갖나 = 등급 공용 기본 유닛이 아닌가. */
+const artOf = (id) => {
+  const d = charDetail.get(id);
+  if (!d || d.rule === "grade-default-unit") return null;
+  return `${d.axis}/${d.id}`;
+};
+
+function validateRoster(side, ids) {
+  if (ids.length !== SLOTS.length) {
+    throw new Error(`${side}: 선발이 ${ids.length}명입니다(${SLOTS.length} 이어야 합니다)`);
+  }
+  ids.forEach((id, i) => {
+    const p = catalog.get(id);
+    if (!p) throw new Error(`${side}[${i}] ${id}: 카탈로그에 없습니다`);
+    if (p.position !== SLOT_POSITIONS[i]) {
+      throw new Error(`${side}[${i}] ${id} ${p.name}: 포지션 ${p.position} 이 슬롯 `
+        + `${SLOTS[i].role}(${SLOT_POSITIONS[i]}) 와 맞지 않습니다`);
+    }
+    // 비활성 선수는 `GET /api/players` 가 잘라내므로 화면에서 이름·등급·얼굴이 통째로 빈다.
+    if (p.active === false) throw new Error(`${side}[${i}] ${id} ${p.name}: active=false 라 쓸 수 없습니다`);
+  });
+}
+validateRoster("home", HOME_STARTERS);
+validateRoster("away", AWAY_STARTERS);
+
+const dupArt = new Map();
+for (const id of [...HOME_STARTERS, ...AWAY_STARTERS]) {
+  const art = artOf(id);
+  if (!art) continue;
+  if (dupArt.has(art)) {
+    throw new Error(`아트 중복: ${art} 를 ${dupArt.get(art)} 와 ${id} 가 같이 씁니다`);
+  }
+  dupArt.set(art, id);
+}
+console.log(`[bake] 로스터 검증 OK — 차별화 아트 ${dupArt.size}종(중복 0), `
+  + `home ${HOME_STARTERS.filter(artOf).length}/11 · away ${AWAY_STARTERS.filter(artOf).length}/11`);
 
 function card(playerId) {
   const p = catalog.get(playerId);
@@ -187,11 +284,17 @@ async function playMatch(matchSeed) {
  */
 function acceptable(r) {
   const margin = r.total.home - r.total.away;
+  const total = r.total.home + r.total.away;
   const win = margin >= 2;              // 아슬아슬한 1점차는 "이겼다"가 한눈에 안 읽힌다
   const goals = r.total.home >= 2;      // 내 팀 골 장면이 최소 둘
   const conceded = r.total.away <= 2;   // 난타전이면 "이기는 경기"라는 인상이 흐려진다
   const h1Goal = r.h1.matchLog.finalScore.home >= 1; // 전반(탭 투어 구간)에도 볼 것이 있어야 한다
-  return win && goals && conceded && h1Goal;
+  // #493 W10 — **볼거리 밴드**: 구 자산(4:2)과 같은 급으로 좁힌다. 로스터를 LEGEND/DIA 로 갈면서
+  // home 이 훨씬 강해져 조건을 안 좁히면 6:0·7:0 같은 무미건조한 학살이 먼저 걸린다(실측: 그런
+  // 시드가 앞쪽에 있다). 총 4~6골 · 상대도 최소 1골 = "이기지만 경기가 흐르는" 그림.
+  const band = total >= 4 && total <= 6;
+  const awayScores = r.total.away >= 1;
+  return win && goals && conceded && h1Goal && band && awayScores;
 }
 
 const seedHex = (n) => createHash("sha256").update(`hmb-tutorial:${n}`).digest("hex").slice(0, 32);
@@ -208,9 +311,11 @@ async function main() {
       + ` total=${r.total.home}:${r.total.away} ${acceptable(r) ? "ACCEPT" : "-"}`;
     console.log(line);
     scanLog.push(line);
-    if (acceptable(r)) {
+    if (acceptable(r) && !picked) {
       picked = { n, matchSeed, r };
-      break;
+      // SCAN_ALL=1 이면 멈추지 않고 격자를 끝까지 훑는다(증빙·밴드 튜닝용). **고르는 규칙은
+      // 그래도 "첫 ACCEPT"** 라 결과는 같다 — 로그만 길어진다.
+      if (process.env.SCAN_ALL !== "1") break;
     }
   }
   if (!picked) throw new Error(`승리 조건을 만족하는 시드를 ${MAX_SEEDS}회 안에 찾지 못했습니다`);

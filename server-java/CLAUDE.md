@@ -1122,10 +1122,39 @@ hero 리플랜 v3: *"거의 정해진화면에서 유저가 선택할 여유가 
 - **다시 굽기** = `node server-java/tools/bake-tutorial-match.mjs`(**러너가 떠 있어야 한다**). 스크립트가
   승리 조건을 만족하는 시드를 **실제 시뮬로 스캔**한다(코드로 보장할 수 없는 성질이라 스캔이 본체다).
   자산은 gzip(원본 ~3.9MB → ~0.47MB)이고 `SoftReference` 로만 들고 있는다(유저당 1회 쓰는 값이다).
-  현재: 시드 `7b20d319…`(hex) · **4:2 유저 승리**(h1 1:1 · h2 3:1) · engine@0.43.0.
+  현재(**W10 재굽기**): 시드 `c6f5884f…`(hex, 격자 #4) · **5:1 유저 승리**(h1 4:0 · h2 1:1) · engine@0.43.0.
 - `MatchDetail.tutorial`(additive)이 web 온레일 가이드의 스위치다. 관전자 경로(`toDetailFor`)에서는
   `auto` 와 같은 이유로 **상수 false**.
 - ⚠️ **하프타임 교체는 결과에 영향이 없다**(구운 h2 는 고정이다). 온레일 UI 가 교체를 막는 것이 전제다.
+
+### 튜토리얼 로스터 = **얼굴 캐릭터가 있는 선수** (#493 W10)
+
+hero: *"튜토리얼 선수들 다양하게하자 지금 튜토리얼 선수들 다 일반선수들이라 재미없어. 얼굴 케릭터
+있는거로하자."* 구 로스터 22명은 **전원 `grade-default-unit`**(등급 공용 유닛 아트 = 일반 얼굴)이었다.
+
+- **얼굴이 뜨는 조건은 세 개고 전부 데이터 쪽이다**(web 무수정 — `charRefFor` 가 `playerId` 로 조인한다):
+  ① `data/players/player-chars.v2.json` 의 `rule ≠ grade-default-unit`
+  ② 카탈로그 등급 **DIA 이상**(web `icon-policy.CHAR_ART_MIN_GRADE`, #285 — 그 아래는 아트가 있어도 가린다)
+  ③ **`active: true`** — `GET /api/players` 가 `active=1 OR 보유>0` 로 자르므로 비활성 선수는 신규
+  유저 응답에 없고, 그러면 이름(`미상 선수`)도 등급도 못 잡아 아트가 fail-closed 로 닫힌다.
+  ⚠️ **그래서 구 LEGEND 14명(P001~P012·P143·P144)은 못 쓴다** — 아트는 있는데 전원 `active:false` 다.
+  세 조건을 통과하는 선수는 지금 **22명**(유닛 실아트 LEGEND 9 + DIA 13)이고, 아트가 겹치지 않는
+  조합은 **18종**이다(DIA 는 포지션 풀 공용이라 `lupus`·`sail`·`ragna` 가 두 명씩 겹친다).
+- ⚠️ **수비수 아트는 4종이 전부다**(`lupus·leo·bark·seokdijk`). 4-3-3 두 팀이면 DF 슬롯이 8칸이라
+  **절반은 구조적으로 얼굴이 없다** — hero 우선순위대로 home 에 4종을 다 주고 away 백4 는 GOLD
+  일반 선수로 뒀다(중복 아트를 만들지 않는 쪽). "away 도 전원 얼굴"을 원하면 DF 아트 발행이 선행이다(data).
+- **away 로스터가 봇 덱에서 떨어져 나왔다** — `bots.v4.json` 은 전원 공용 아트이고 `data/**` 는 이
+  모듈 밖이라 고칠 수 없어서, 자산이 away 로스터를 들고 간다. 그래서 **`MatchService.buildOpponent`
+  가 튜토리얼일 때 `tutorialAsset.selectData().away.players` 를 읽는다**(봇 행은 계속 `bot_id` FK ·
+  상대 **이름**·분석문의 출처다). 안 고치면 상대 분석 카드가 **경기에 나오지도 않는 11명**을 보여준다.
+  자산이 빠진 배포에서 구 매치를 여는 경로는 `available()` 로 봇 덱에 물러선다(500 방지).
+- **굽는 스크립트가 로스터를 검증한다**(`bake-tutorial-match.mjs`): 슬롯↔포지션 · `active` · 아트 중복 0.
+  표를 잘못 고치면 **굽기 전에 죽는다**. 승리 밴드도 좁혔다 — 총 4~6골 · 상대 최소 1골 · 전반 우리 골
+  ≥1(로스터를 LEGEND/DIA 로 갈면서 home 이 강해져, 안 좁히면 9:3 같은 학살 시드가 먼저 걸린다).
+- 계약 = `TutorialRosterArtTest`(**스프링 안 띄운다** — 테스트 컨텍스트 카탈로그는 픽스처
+  `players.v1.json` 이라 출하 카탈로그의 성질을 **관측할 수 없다**. 출하 발행물·출하 자산을 직접 읽는다)
+  + `TutorialMatchTest.theOpponentCardShowsTheRosterThatActuallyPlayed`(봇 덱과 자산 로스터가 **다르다**는
+  것을 같이 단언해 공허함을 막는다).
 
 ### 완주 보상의 판정은 **서버 사실**이다 (#493 W9)
 

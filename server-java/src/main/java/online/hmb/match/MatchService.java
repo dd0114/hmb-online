@@ -903,13 +903,26 @@ public class MatchService {
 
     private Opponent buildOpponent(MatchRow row) {
         BotService.BotRow bot = botService.get(row.botId());
-        JsonNode deck = readJson(bot.deckJson());
+        // #493 W10 — <b>튜토리얼의 상대 로스터는 구운 자산이 소유한다</b>(봇 덱이 아니다).
+        //
+        // W10 이 튜토리얼 로스터를 "얼굴 캐릭터가 있는 선수"로 갈면서 away 도 같이 갈렸는데,
+        // 시드봇 덱(`data/players/bots.v4.json`)은 전원 등급 공용 아트이고 `data/**` 는 이 모듈의
+        // owned-glob 밖이라 여기서 맞출 수 없다. 봇 덱을 계속 읽으면 <b>상대 분석 카드가 경기에
+        // 나오지도 않는 선수 11명</b>을 보여준다 — 화면과 실제로 뛴 로스터가 갈리는 형태다.
+        // 자산이 시뮬에 쓴 그 배열(`selectData.away.players`)을 그대로 읽어 축을 하나로 둔다.
+        // (봇 행은 계속 필요하다 — `matches.bot_id` FK · 상대 <b>이름</b>·분석문의 출처다.)
+        // ⚠️ `available()` 을 같이 본다 — 자산이 빠진 배포에서 <b>이미 만들어져 있던</b> 튜토리얼
+        // 매치를 열면 자산 로딩이 예외를 던져 조회가 통째로 500 이 된다. 그 경우엔 봇 덱으로
+        // 물러선다(로스터가 실제와 다를 뿐, 화면은 성립한다).
+        JsonNode starters = row.tutorial() && tutorialAsset.available()
+                ? tutorialAsset.selectData().path("away").path("players")
+                : readJson(bot.deckJson()).path("starters");
         // 이 상대가 실유저의 고스트면 그 유저가 카드의 주인이다(★ 의 출처). 시드봇·리그봇은 null —
         // 카드가 없으므로 ★ 는 0 이다. LeagueService 를 안 물고 직접 읽는 이유는 userIsHome 과 같다:
         // 한 줄짜리 조회에 모듈 의존(그것도 순환)을 만들지 않는다.
         String ghostOwner = awayDefenderOf(row.id());
         List<OpponentPlayer> players = new ArrayList<>();
-        for (JsonNode starter : deck.path("starters")) {
+        for (JsonNode starter : starters) {
             String playerId = starter.path("playerId").asText();
             Map<String, String> p = playerNameGrade(playerId);
             // 능력치는 **실제로 뛰는 값**이다: 고스트 덱에는 수비자의 유효스탯이 얼려 박혀 있고

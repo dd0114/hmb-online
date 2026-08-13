@@ -1,0 +1,10 @@
+[bake] 로스터 검증 OK — 차별화 아트 18종(중복 0), home 11/11 · away 7/11
+[bake] runner=http://127.0.0.1:8797 scan<=40
+#0 seed=073383e5ea3b76119e49490d2a7a84b1 h1=5:2 h2=4:1 total=9:3 -
+#1 seed=1e40a419336a5cce28a24d5b1dcfde79 h1=2:0 h2=4:1 total=6:1 -
+#2 seed=02b8f8c25cc4edf64fa390f8fdedd60f h1=1:1 h2=2:2 total=3:3 -
+#3 seed=cc79347ff88581d7e8d0eb4aa30b02f9 h1=1:2 h2=2:3 total=3:5 -
+#4 seed=c6f5884fa612061471d1c3491d39f9d0 h1=4:0 h2=1:1 total=5:1 ACCEPT
+[bake] wrote /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-ab6514a237674fae8/server-java/src/main/resources/tutorial/tutorial-match.json.gz (raw 3.83 MB → gz 466 KB)
+[bake] seed=c6f5884fa612061471d1c3491d39f9d0 score=5:1 engine=engine@0.43.0
+[bake] playbackMs h1=230967 h2=214567
