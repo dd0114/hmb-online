@@ -114,6 +114,8 @@ public class MatchService {
     private final online.hmb.growth.GrowthService growthService;
     /** #493 W6-v3 — 튜토리얼 고정 매치의 시드·상대봇 출처(구운 자산이 SoT). */
     private final online.hmb.tutorial.TutorialMatchAsset tutorialAsset;
+    /** #493 W9 — "이 유저가 튜토리얼을 끝냈나" 질의의 단일 출처(파밍 차단과 완주 보상이 같은 사실을 본다). */
+    private final online.hmb.tutorial.TutorialCompletionService tutorialCompletion;
 
     public MatchService(JdbcClient jdbcClient,
                         TxRunner txRunner,
@@ -132,9 +134,11 @@ public class MatchService {
                         MatchAutoProperties autoProps,
                         LiveEngineConfigService liveEngineConfig,
                         online.hmb.tutorial.TutorialMatchAsset tutorialAsset,
+                        online.hmb.tutorial.TutorialCompletionService tutorialCompletion,
                         @Value("${hmb.match.halftime-subs-max}") int halftimeSubsMax,
                         @Value("${hmb.deck.player-prompt-max-chars}") int promptMaxChars) {
         this.tutorialAsset = tutorialAsset;
+        this.tutorialCompletion = tutorialCompletion;
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.deckService = deckService;
@@ -336,11 +340,9 @@ public class MatchService {
             throw new ApiException(HttpStatus.BAD_REQUEST, "TUTORIAL_UNAVAILABLE",
                     "튜토리얼 경기를 사용할 수 없습니다");
         }
-        int finished = jdbcClient.sql(
-                        "SELECT COUNT(*) FROM matches WHERE user_id = ? AND is_tutorial = 1 AND state = ?")
-                .params(userId, S_FINISHED)
-                .query(Integer.class)
-                .single();
+        // #493 W9: 질의를 여기서 다시 쓰지 않는다 — 완주 보상 판정과 **같은 사실**을 봐야 한다.
+        // 갈라지면 "409 는 이미 했다는데 보상은 안 나온다"가 되고 그건 복구 경로가 없다.
+        int finished = tutorialCompletion.finishedTutorialMatches(userId);
         if (finished > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "TUTORIAL_ALREADY_PLAYED",
                     "튜토리얼 경기는 한 번만 진행할 수 있습니다", Map.of("played", finished));

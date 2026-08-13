@@ -158,6 +158,40 @@ class TutorialMatchTest extends MatchTestBase {
                         .query(String.class).single());
     }
 
+    /**
+     * #493 W9 — <b>완주 보상은 서버가 완료를 관측한 자리에서 발화한다</b>(클라 신고가 아니다).
+     *
+     * <p>고친 결함: 보상이 {@code POST /api/me/tutorial-complete} 호출 시점에 나갔다 — 완료 모달을
+     * 스킵해도, 클라가 임의로 불러도 GEM 300 이 나가는 구조였다. 이제 근거는 서버가 CAS 로 쓴 사실
+     * (FINISHED 인 튜토리얼 매치)이고, 그래서 <b>클라 호출이 한 번도 없어도</b> 지급되고
+     * <b>몇 번을 불러도</b> 늘지 않는다.
+     */
+    @Test
+    void theCompletionRewardFiresOnTheServersOwnJudgementAndOnlyOnce() {
+        String token = setupUserWithDeck("tut-reward");
+        String userId = userIdOf("tut-reward");
+
+        // ① 경기를 끝내기 전에는 클라가 완료를 신고해도 지급되지 않는다(= 스킵·임의 호출 차단).
+        assertThat(authPost("/api/me/tutorial-complete", token, Map.of(), Map.class).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(tutorialRewardMails(userId)).as("클라 신고만으로는 근거가 없다").isZero();
+
+        // ② 서버가 완료를 만드는 순간 지급된다 — 이 경로엔 tutorial-complete 호출이 없다.
+        String matchId = createTutorialMatch(token);
+        playToFinish(token, matchId);
+        assertThat(tutorialRewardMails(userId)).as("완료의 근거는 FINISHED 인 튜토리얼 매치다").isEqualTo(1);
+
+        // ③ 이후 클라가 몇 번을 신고해도 늘지 않는다(멱등 축은 우편 유니크 그대로).
+        authPost("/api/me/tutorial-complete", token, Map.of(), Map.class);
+        authPost("/api/me/tutorial-complete", token, Map.of(), Map.class);
+        assertThat(tutorialRewardMails(userId)).isEqualTo(1);
+    }
+
+    private int tutorialRewardMails(String userId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM user_mails WHERE user_id = ? AND campaign_id = ?")
+                .params(userId, "uxa_tutorial_done").query(Integer.class).single();
+    }
+
     /** 반복 생성 차단 — 구운 로그는 언제나 크게 이기므로 열어 두면 승리 보상이 무한 발행된다. */
     @Test
     void aSecondTutorialMatchIsRefusedAfterTheFirstOneFinished() {

@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import online.hmb.catalog.CatalogPlayer;
 import online.hmb.common.TxRunner;
-import online.hmb.rewards.UxActionRewardService;
+import online.hmb.tutorial.TutorialCompletionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,7 +37,7 @@ public class OnboardingService {
     private final ObjectMapper objectMapper;
     private final String defaultFormation;
     private final int benchMax;
-    private final UxActionRewardService uxActionRewardService;
+    private final TutorialCompletionService tutorialCompletionService;
 
     public OnboardingService(JdbcClient jdbcClient,
                              TxRunner txRunner,
@@ -45,14 +45,14 @@ public class OnboardingService {
                              ObjectMapper objectMapper,
                              @Value("${hmb.starter.deck-formation}") String defaultFormation,
                              @Value("${hmb.deck.bench-max}") int benchMax,
-                             UxActionRewardService uxActionRewardService) {
+                             TutorialCompletionService tutorialCompletionService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.deckService = deckService;
         this.objectMapper = objectMapper;
         this.defaultFormation = defaultFormation;
         this.benchMax = benchMax;
-        this.uxActionRewardService = uxActionRewardService;
+        this.tutorialCompletionService = tutorialCompletionService;
         // 부팅에서 막는다(fail-closed). 오타 난 포메이션을 그대로 두면 지급이 **조용히** 사라진다 —
         // 에러도 안 나고 로그 한 줄만 남은 채 모든 신규 유저가 덱 없이 온보딩을 마친다.
         if (!StarterDeckBuilder.supportsFormation(defaultFormation)) {
@@ -115,8 +115,11 @@ public class OnboardingService {
                     .param(userId)
                     .update();
 
-            // #493 W3 ①: 튜토리얼 완주 행동 보상(우편 GEM) — 멱등이라 재호출·건너뛰기 반복에 안전.
-            uxActionRewardService.grantOnce(userId, UxActionRewardService.UxAction.TUTORIAL_DONE);
+            // #493 W3 ①/W9: 튜토리얼 완주 행동 보상(우편 GEM). ⚠️ **이 호출이 지급의 근거가 아니다** —
+            // 클라가 완료를 신고하면 그대로 믿던 것이 W9 가 고친 결함이다(모달 스킵·임의 호출로 GEM 300).
+            // 지급 여부는 서버가 아는 사실(끝난 튜토리얼 매치)로만 판정한다. 호출 경로는 그대로 받는다
+            // (구버전 클라 호환) — 판정만 서버로 옮겼다. 멱등은 종전대로 우편 유니크 축.
+            tutorialCompletionService.grantIfCompleted(userId);
 
             if (hasActiveDeck(userId)) {
                 return new Result(true, false, null);

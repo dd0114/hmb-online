@@ -65,6 +65,8 @@ public class MatchOrchestrator {
     private final MatchClockService clockService;
     /** #493 W6-v3 — 튜토리얼 고정 매치의 구운 입력·로그(AI 0 · 러너 0). */
     private final online.hmb.tutorial.TutorialMatchAsset tutorialAsset;
+    /** #493 W9 — 완주 보상 판정의 권위(클라 신고가 아니라 서버가 관측한 완료). */
+    private final online.hmb.tutorial.TutorialCompletionService tutorialCompletionService;
     private final ObjectMapper objectMapper;
     /** #193 라운드2 — 지시 델타 라우팅 노브(전부 config, 하드코딩 금지). */
     private final boolean deltaEnabled;
@@ -93,6 +95,7 @@ public class MatchOrchestrator {
                              MatchClockService clockService,
                              DeckPrewarmService prewarmService,
                              online.hmb.tutorial.TutorialMatchAsset tutorialAsset,
+                             online.hmb.tutorial.TutorialCompletionService tutorialCompletionService,
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
                              @Value("${hmb.match.delta.overhaul-axis-count}") int overhaulAxisCount,
@@ -102,6 +105,7 @@ public class MatchOrchestrator {
         this.txRunner = txRunner;
         this.prewarmService = prewarmService;
         this.tutorialAsset = tutorialAsset;
+        this.tutorialCompletionService = tutorialCompletionService;
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
         this.botService = botService;
@@ -886,6 +890,17 @@ public class MatchOrchestrator {
         // #405 W2b §2.9: 보상 봉투 — 정산이 <b>끝난 뒤</b> 그 결과를 한 장으로 묶는다(멱등).
         // 표시용이므로 실패해도 정산을 되돌리지 않는다(RewardBundleService 내부에서 삼킨다).
         createRewardBundle(match, awarded[0]);
+
+        // #493 W9: 튜토리얼 완주 보상은 **서버가 완료를 관측한 이 자리**에서 발화한다(클라 신고 아님).
+        // 반드시 CAS 통과 뒤여야 한다 — 판정이 읽는 사실(FINISHED 인 튜토리얼 매치)을 바로 위 UPDATE 가
+        // 만든다. 우편 발송은 표시용이라 실패해도 정산을 되돌리지 않는다(보상 봉투와 같은 규율).
+        if (match.tutorial()) {
+            try {
+                tutorialCompletionService.grantIfCompleted(match.userId());
+            } catch (RuntimeException e) {
+                log.warn("튜토리얼 완주 보상 실패 match={}: {}", match.id(), e.toString());
+            }
+        }
         return true;
     }
 

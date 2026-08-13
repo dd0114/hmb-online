@@ -64,9 +64,16 @@ class UxActionRewardTest extends ApiTestBase {
 
     // ── ① 튜토리얼 완주 ────────────────────────────────────────────────────────
 
+    /**
+     * #493 W9 — 완주 보상의 근거는 <b>서버가 아는 사실</b>(FINISHED 인 튜토리얼 매치)이지 클라의
+     * 완료 신고가 아니다. 여기서는 그 사실을 <b>행으로 심어</b> 이 클래스의 주제(우편 1통·GEM 300·
+     * 멱등)만 본다 — 실제로 경기를 치러 그 사실이 생기는 경로는 {@code TutorialMatchTest} 가 전담한다
+     * ({@code TestDbSupport.disableMatchClock} 과 같은 규율).
+     */
     @Test
     void tutorialCompleteGrantsMailOnce() {
         String token = login("uxa_tuto");
+        plantFinishedTutorialMatch(userIdOf("uxa_tuto"));
         assertThat(authPost("/api/me/tutorial-complete", token, Map.of(), Map.class).getStatusCode())
                 .isEqualTo(HttpStatus.OK);
         List<Map<String, Object>> granted = mailsTitled(token, "튜토리얼 완주 보상");
@@ -76,6 +83,47 @@ class UxActionRewardTest extends ApiTestBase {
         // 완료 API 는 멱등 — 다시 불러도 우편이 늘지 않는다.
         authPost("/api/me/tutorial-complete", token, Map.of(), Map.class);
         assertThat(mailsTitled(token, "튜토리얼 완주 보상")).hasSize(1);
+    }
+
+    /**
+     * #493 W9 — <b>클라가 신고만 해서는 지급되지 않는다</b>. 이게 이 웨이브가 고친 결함이다:
+     * 완료 모달을 스킵하거나 클라가 임의로 이 엔드포인트를 불러도 GEM 300 이 나갔다.
+     * 호출 자체는 <b>여전히 200</b> 이어야 한다(구버전 클라 호환 — 덱 지급·완료 플래그는 그대로 돈다).
+     */
+    @Test
+    void tutorialCompleteWithoutTheServersOwnEvidenceGrantsNothing() {
+        String token = login("uxa_tuto_claim");
+        assertThat(authPost("/api/me/tutorial-complete", token, Map.of(), Map.class).getStatusCode())
+                .as("호환 유지 — 호출은 받는다").isEqualTo(HttpStatus.OK);
+        assertThat(mailsTitled(token, "튜토리얼 완주 보상")).isEmpty();
+
+        // 튜토리얼이 **아닌** 경기를 끝낸 것도 근거가 아니다 — 아니면 "아무 경기나 하나"가 우회로다.
+        plantFinishedMatch(userIdOf("uxa_tuto_claim"), false);
+        authPost("/api/me/tutorial-complete", token, Map.of(), Map.class);
+        assertThat(mailsTitled(token, "튜토리얼 완주 보상")).isEmpty();
+
+        // 튜토리얼 매치가 FINISHED 가 되어야 비로소 지급된다(같은 호출, 달라진 것은 서버 사실뿐).
+        plantFinishedTutorialMatch(userIdOf("uxa_tuto_claim"));
+        authPost("/api/me/tutorial-complete", token, Map.of(), Map.class);
+        assertThat(mailsTitled(token, "튜토리얼 완주 보상")).hasSize(1);
+    }
+
+    /** 서버 사실을 행으로 심는다(= 정산 CAS 가 만드는 것과 같은 상태). */
+    private void plantFinishedTutorialMatch(String userId) {
+        plantFinishedMatch(userId, true);
+    }
+
+    private void plantFinishedMatch(String userId, boolean tutorial) {
+        String botId = jdbcClient.sql("SELECT id FROM bots ORDER BY id LIMIT 1")
+                .query(String.class).single();
+        jdbcClient.sql("""
+                        INSERT INTO matches(id, user_id, bot_id, state, seed, engine_version,
+                                            user_deck_json, mode, created_at, is_tutorial)
+                        VALUES (?, ?, ?, 'FINISHED', 'seed', 'test', '{}', 'practice', ?, ?)
+                        """)
+                .params("m-" + userId + "-" + (tutorial ? "tut" : "normal"), userId, botId,
+                        java.time.Instant.now().toString(), tutorial ? 1 : 0)
+                .update();
     }
 
     // ── ③ 첫 덱 저장 (auto 여부 무관 — 서버는 auto 를 모른다, W0 Decision) ─────────
@@ -158,6 +206,7 @@ class UxActionRewardTest extends ApiTestBase {
     @SuppressWarnings("unchecked")
     void claimCreditsGemsExactlyOnce() {
         String token = login("uxa_claim");
+        plantFinishedTutorialMatch(userIdOf("uxa_claim"));   // #493 W9 — 지급의 근거는 서버 사실이다
         authPost("/api/me/tutorial-complete", token, Map.of(), Map.class);
         Map<String, Object> mail = mailsTitled(token, "튜토리얼 완주 보상").get(0);
         String mailId = (String) mail.get("id");
@@ -186,6 +235,10 @@ class UxActionRewardTest extends ApiTestBase {
     void grantsAreIsolatedPerUser() {
         String a = login("uxa_iso_a");
         String b = login("uxa_iso_b");
+        // ⚠️ 근거는 **둘 다** 심는다 — b 에게 근거가 없으면 "격리됐다"가 "근거가 없었다"와
+        // 구분되지 않아 계약이 공허해진다. 다른 것은 a 만 완료를 지났다는 사실 하나다.
+        plantFinishedTutorialMatch(userIdOf("uxa_iso_a"));
+        plantFinishedTutorialMatch(userIdOf("uxa_iso_b"));
         authPost("/api/me/tutorial-complete", a, Map.of(), Map.class);
         assertThat(mailsTitled(a, "튜토리얼 완주 보상")).hasSize(1);
         assertThat(mailsTitled(b, "튜토리얼 완주 보상")).isEmpty();
