@@ -65,6 +65,22 @@ public class TutorialStarterService {
     }
 
     /**
+     * 고정 튜토리얼 카드 id (#493 W9) — {@code GET /api/config} 의 {@code tutorial.starterCardId}.
+     *
+     * <p><b>지급 로직이 쓰는 그 값을 그대로</b> 내보낸다(이 필드 하나가 SoT). web 은 이 값이 없어서
+     * "대기 중인 3지선다의 주인"으로 <b>추론</b>하고 있었는데, 그 추론은 유저가 다른 카드로 경기를
+     * 치르거나 선택권을 이미 써 버리면 어긋난다(apps/web {@code onrail-api.ts} 머리말). 서버가
+     * 이미 아는 값이므로 알려 준다 — 컨트롤러가 프로퍼티를 따로 읽으면 그 순간 출처가 둘이 된다.
+     *
+     * <p><b>지급이 꺼진 배포({@code enabled=false})에서는 null</b> — 그 배포엔 고정 카드가 <b>없다</b>.
+     * 설정값을 그대로 흘리면 클라가 유저가 갖고 있지도 않은 카드로 온레일 가이드를 걸고, 그건
+     * "모른다"보다 나쁜 거짓말이다. null 이면 web 은 종전의 "못 찾음" 경로를 그대로 탄다.
+     */
+    public String starterCardId() {
+        return enabled ? cardId : null;
+    }
+
+    /**
      * 가입 트랜잭션 안에서 호출한다(스타터 팩 지급 <b>직후</b> — 기본 카드가 이미 들어와 있어야
      * 중복을 얹을 수 있다).
      */

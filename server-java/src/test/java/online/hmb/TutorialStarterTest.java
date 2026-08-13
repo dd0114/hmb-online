@@ -106,4 +106,29 @@ class TutorialStarterTest extends ApiTestBase {
         Map<String, Integer> coupons = (Map<String, Integer>) me.getBody().get("coupons");
         assertThat(coupons).containsEntry("FREE_ENHANCE", 1);
     }
+
+    /**
+     * #493 W9 — <b>서버가 아는 값을 클라가 추론하지 않게 한다</b>. web 은 고정 카드 id 를
+     * "대기 중인 3지선다의 주인"으로 <b>추론</b>하고 있었는데(apps/web {@code onrail-api.ts}),
+     * 유저가 다른 카드로 경기를 치르거나 선택권을 이미 써 버리면 어긋나는 추론이다.
+     *
+     * <p>단언을 출하 기본값({@code P122})이 아니라 <b>이 클래스가 오버라이드한 값</b>으로 거는 것이
+     * 계약의 전부다 — 컨트롤러가 id 를 하드코딩하거나 별도 프로퍼티를 읽으면 여기서 죽는다
+     * (지급 로직이 쓰는 그 필드가 유일한 출처여야 한다).
+     */
+    @Test
+    void theConfigEndpointPublishesTheCardIdThatTheGrantLogicUses() {
+        ResponseEntity<Map> res = rest.getForEntity(baseUrl("/api/config"), Map.class);
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> tutorial = (Map<String, Object>) res.getBody().get("tutorial");
+        assertThat(tutorial).as("additive 필드 — 없으면 web 이 추론으로 되돌아간다").isNotNull();
+        assertThat(tutorial.get("starterCardId")).isEqualTo(TUTORIAL_CARD);
+
+        // 그 카드가 실제로 재료를 받은 카드다 = 표시와 지급이 같은 값을 가리킨다.
+        String token = login("tut-config");
+        ResponseEntity<Map> star = authPost("/api/growth/star", token,
+                Map.of("playerId", (String) tutorial.get("starterCardId")), Map.class);
+        assertThat(star.getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
 }
