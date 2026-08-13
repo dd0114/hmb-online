@@ -98,6 +98,44 @@ public class BusinessEventRecorder {
     }
 
     /**
+     * <b>유저당 1행만</b> 남기는 append (#496). 멱등 엔드포인트의 재호출이 스트림을 도배하지 않게 한다.
+     *
+     * <p>대상은 <b>"한 번뿐인 사건"</b>이다 — {@code tutorial_complete} 처럼 엔드포인트가 멱등이라
+     * 몇 번을 불러도 같은 사실을 말하는 것. 반복이 의미를 갖는 이벤트({@code deck_save}·
+     * {@code gacha_pull}·{@code match_*})에 쓰면 <b>기록이 사라진다</b>.
+     *
+     * <h3>왜 게이트를 스트림 쪽에 두나 (플래그가 아니라)</h3>
+     * "{@code users.tutorial_done} 이 0 → 1 로 바뀌는 순간에만 기록"으로도 재호출은 막힌다. 그러나
+     * {@link #record} 는 예외를 전부 삼키는 best-effort 라 <b>첫 기록이 실패하는 경로가 실재</b>하고,
+     * 그때 플래그는 이미 1 이라 <b>영영 기록되지 않는다</b> — 퍼널이 그 유저를 "튜토리얼 미도달"로
+     * 오독하게 되고, 하필 그게 이 계측의 1급 지표다. 결과물(스트림)을 보면 <b>자가 치유</b>한다:
+     * 행이 없으면 다음 호출이 남긴다.
+     *
+     * <p><b>실패는 fail-open</b> — 중복 검사 쿼리가 던지면 {@link #probe} 가 {@code false} 를 돌려
+     * 그냥 기록한다. 잡음 제거는 부가 목적이고 <b>이벤트를 잃지 않는 것</b>이 본 목적이다.
+     * 계측이 꺼져 있으면({@code hmb.events.enabled=false}) 이 조회조차 돌지 않는다(probe 의 성질).
+     *
+     * <p>⚠️ 경합(같은 유저의 동시 요청 2건)에서는 2행이 날 수 있다 — 검사와 INSERT 가 원자적이지
+     * 않다. 유니크 인덱스로 막지 <b>않는다</b>: 그건 INSERT 를 실패시키는데 이 표는 "기록 실패가
+     * 본 동작을 깨지 않는다"를 위해 CHECK·FK 도 일부러 안 건 append-only 표다(V42). 목적이
+     * 정합성이 아니라 <b>가독성</b>이라 드문 중복 1행은 수용한다.
+     */
+    public void recordOnce(String event, String userId, Supplier<Map<String, Object>> props) {
+        if (!enabled || event == null || userId == null) {
+            return;
+        }
+        boolean already = probe(() -> Boolean.TRUE.equals(
+                jdbcClient.sql("SELECT EXISTS(SELECT 1 FROM business_events WHERE event = ? AND user_id = ?)")
+                        .params(event, userId)
+                        .query(Boolean.class)
+                        .single()), false);
+        if (already) {
+            return;
+        }
+        record(event, userId, props);
+    }
+
+    /**
      * <b>계측 전용 사전 조회</b>. 이벤트 props 중에는 본 동작 <b>전</b>에만 알 수 있는 것이 있다
      * (덱이 새로 생겼나 · 리그 시즌이 새로 생겼나). 그 조회를 호출부에서 맨몸으로 하면
      * <b>계측 때문에 본 동작이 실패</b>할 수 있다 — 그래서 여기로 감싼다.

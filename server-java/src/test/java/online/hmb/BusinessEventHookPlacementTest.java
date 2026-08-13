@@ -36,9 +36,18 @@ class BusinessEventHookPlacementTest {
 
     private static final Path MAIN_JAVA = Path.of("src/main/java");
 
-    /** 훅 호출 = 레코더 필드에 대한 {@code .record(} 호출. 필드명은 두 관용구뿐이다. */
+    /**
+     * 훅 호출 = 레코더 필드에 대한 {@code .record(} / {@code .recordOnce(} 호출. 필드명은 두 관용구뿐이다.
+     *
+     * <p>⚠️ <b>{@code recordOnce} 도 반드시 여기 걸려야 한다</b>(#496). 이 스캔이 지키는 성질은
+     * "무엇을 쓰는가"가 아니라 <b>"어디에 있는가"</b>(tx 람다 밖)이고, 그건 append 하는 모든 형태에
+     * 똑같이 필요하다. 실제로 {@code tutorial_complete} 를 {@code recordOnce} 로 바꿀 때 이 정규식이
+     * {@code record\\s*\\(} 라 매칭에서 빠졌고 — 훅 하나가 <b>스캔에서 통째로 사라지는데</b>
+     * ①의 "위반 0"은 여전히 참이었다. ②의 파일별 개수 계약이 그걸 잡았다.
+     * 레코더에 새 append 메서드를 만들면 이 패턴에 같이 넣어라.
+     */
     private static final Pattern RECORD_CALL =
-            Pattern.compile("\\b(events|eventRecorder)\\s*\\.\\s*record\\s*\\(");
+            Pattern.compile("\\b(events|eventRecorder)\\s*\\.\\s*record(Once)?\\s*\\(");
     private static final Pattern TX_RUN = Pattern.compile("\\btxRunner\\s*\\.\\s*run\\s*\\(");
 
     /**
@@ -156,6 +165,35 @@ class BusinessEventHookPlacementTest {
         assertThat(ok.find()).isTrue();
         assertThat(okRanges).hasSize(1);
         assertThat(ok.start()).isGreaterThan(okRanges.get(0)[1]);
+    }
+
+    /**
+     * <b>#496</b> — {@code recordOnce} 도 이 스캔의 사정권 안이다.
+     *
+     * <p>①이 지키는 것은 "append 가 tx 람다 밖에 있다"이고, 그 성질은 append 하는 <b>모든</b>
+     * 메서드에 필요하다. 패턴이 {@code record(} 만 보면 {@code recordOnce} 훅은 잘못 놓여도
+     * 위반으로 세어지지 않는다 — "위반 0"이 참인 채로 계측이 게임을 롤백시킬 수 있다.
+     */
+    @Test
+    void theScannerAlsoCoversRecordOnce() {
+        String bad = """
+                class X {
+                  void f() {
+                    txRunner.run(() -> {
+                      events.recordOnce("e", u, java.util.Map.of());
+                      return true;
+                    });
+                  }
+                }
+                """;
+        String code = stripCommentsAndStrings(bad);
+        List<int[]> ranges = transactionRanges(code);
+        Matcher m = RECORD_CALL.matcher(code);
+        assertThat(m.find())
+                .as("recordOnce 가 패턴에서 빠지면 그 훅은 스캔에서 통째로 사라진다(#496)")
+                .isTrue();
+        assertThat(ranges).hasSize(1);
+        assertThat(m.start()).isStrictlyBetween(ranges.get(0)[0], ranges.get(0)[1]);
     }
 
     // ── 스캐너 ───────────────────────────────────────────────────────────
