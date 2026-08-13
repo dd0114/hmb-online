@@ -1,0 +1,41 @@
+# #489 AC1(부분)/AC2 증빙 — 랩탑 DESKTOP-OHCRL7O (WSL2 Ubuntu, root, systemd system scope)
+# 수집: 2026-08-11 22:59 KST · 리포 /opt/hmb/hmb-online
+
+== 설치 스코프 ==
+/etc/systemd/system/hmb-stack.service        (enabled, WantedBy=multi-user.target)
+/etc/systemd/system/hmb-tunnel-heal.service  (Type=oneshot, KillMode=process)
+/etc/systemd/system/hmb-tunnel-heal.timer    (enabled, OnBootSec=90s / OnUnitActiveSec=60s)
+
+== AC1 (2단: WSL systemd → 스택) ==
+● hmb-stack.service - HMB p3 backend stack (java + runner)
+     Loaded: loaded (/etc/systemd/system/hmb-stack.service; enabled; vendor preset: enabled)
+     Active: active (exited) since Tue 2026-08-11 22:57:01 KST
+    Process: 616 ExecStart=/usr/bin/docker compose up -d java runner (code=exited, status=0/SUCCESS)
+헬스: t=20s java=healthy runner=healthy
+
+== AC2-a 타이머 등록 ==
+NEXT LEFT LAST                        PASSED  UNIT                  ACTIVATES
+n/a  n/a  Tue 2026-08-11 22:59:37 KST 14s ago hmb-tunnel-heal.timer hmb-tunnel-heal.service
+
+== AC2-b 실왕복 판정 (PID 생존이 아니라 왕복) ==
+✓ 터널 정상 — https://sharing-raid-expiration-parliament.trycloudflare.com (ok http=401 ip=104.16.231.132 via=system)
+  ※ 401 = 토큰 없는 /internal/health 의 정상 응답. 그 401 자체가 터널→백엔드 경로 생존의 증거다.
+
+== AC2-c 타이머가 실제로 돈 흔적 (사람 개입 0) ==
+Aug 11 22:59:37 systemd[1]: Starting HMB tunnel self-heal (one tick)...
+Aug 11 22:59:37 hmb-tunnel-heal.sh[1534]: ✗ 터널 URL 을 모른다 (/tmp/hmb-cf-tunnel.log 에 기록 없음)
+Aug 11 22:59:37 hmb-tunnel-heal.sh[1534]: ▶ 치유 시작 (사유: url-unknown, 기존 URL: 없음)
+Aug 11 22:59:37 hmb-tunnel-heal.sh[1534]: · 새 터널 기동 (pid 1567)
+Aug 11 22:59:45 hmb-tunnel-heal.sh[1534]: · 새 URL = https://sharing-raid-expiration-parliament.trycloudflare.com
+Aug 11 22:59:51 hmb-tunnel-heal.sh[1534]: · 왕복 확인 (ok http=401 ip=104.16.230.132 via=system, 6s)
+
+== AC2-d 이벤트 원장 ==
+1786456777	2026-08-11T13:59:37Z	HEAL_START	reason=url-unknown old=<없음>
+
+== selftest ==
+✓ cloudflared ✓ dig ✓ curl ✓ npx ✓ 해석기(system 8.8.8.8 9.9.9.9 1.1.1.1) ✓ 전파 스크립트 ✓ 로컬 :18080
+✗ ~/.config/hmb/deploy.env 없음          → AC5 선결 (CF 토큰 이송)
+✗ dist 캐시 없음                          → AC5 선결 (deploy-web.sh 1회)
+
+== 라이브 무접촉 확인 ==
+/root/.local/state/hmb/heal.conf : export PAGES_PROJECT=hmb-online-lab

@@ -1,0 +1,250 @@
+=== AC5 (tier:H) — 치유된 새 URL 이 web 까지 전파되는가 ===
+=== [A] dist 캐시 시딩 ===
+host=DESKTOP-OHCRL7O now=2026-08-13 00:02:39 KST
+git=21b9562 branch=main
+
+--- [A-1] 왜 1차 A 실행이 아무 로그도 안 남겼나 (규명 결과) ---
+  증거: /tmp/ac5a.sh 는 2649B 로 **존재**(23:51)하는데 /opt/hmb/hmb-online/evidence/489/AC5-url-propagation.log 은 아예 없었다.
+        스크립트 4번째 줄이 exec > $OUT 이므로, 파일이 없다 = 스크립트가 한 번도 실행되지 않았다.
+  배제: nohup setsid / systemd-run 두 detach 관용구를 대조 실험(t1/t2)으로 검증 —
+        ssh 세션 종료 후에도 **둘 다 25초 sleep 을 넘겨 완주**했다(t1 end/t2 end 기록).
+        즉 detach 도, set -u 도, deploy.env 파싱도 원인이 아니다.
+  결론: 전달(파일 쓰기)만 되고 **기동 커맨드가 실행되지 않은** 런처 시퀀싱 실패다.
+  처방: 이번엔 systemd-run 트랜지언트 유닛으로 띄우고, 기동 직후 이 로그의 존재 자체를
+        하트비트로 확인한다(파일이 없으면 = 안 떴다, 를 즉시 판별).
+
+--- [A0] 안전장치 — 라이브(hmb-online) 로 나가면 이사가 계획 밖에서 일어난다 ---
+  ⚠️ deploy-web.sh 는 heal.conf 를 source 하지 않는다 (PROJECT=${PAGES_PROJECT:-hmb-online}).
+     워치독은 heal.conf 를 읽지만(line 47) 이 수동 1회는 env 로 직접 넘겨야 한다.
+  ✓ PAGES_PROJECT=hmb-online-lab (assert 통과)
+  CF token=있음 account=있음
+  현재 터널 URL(시딩 기준) = https://significantly-energy-perth-wines.trycloudflare.com   cloudflared pid=1491
+
+--- [A1] lab Pages 프로젝트 확보 (라이브와 물리적으로 분리된 대상) ---
+  없음 → 생성
+
+ ⛅️ wrangler 4.86.0 (update available 4.122.0)
+──────────────────────────────────────────────
+✨ Successfully created the 'hmb-online-lab' project. It will be available at https://hmb-online-lab.pages.dev/ once you create your first deployment.
+To deploy a folder of assets, run 'wrangler pages deploy [directory]'.
+  프로젝트 목록:
+    │ hmb-online-lab │ hmb-online-lab.pages.dev │ No           │ just now      │
+    │ hmb-online     │ hmb-online.pages.dev     │ No           │ 1 day ago     │
+
+--- [A2] deploy-web.sh 1회 (npm ci → 빌드 → lab 배포 → 캐시 시딩) ---
+  시작 00:02:45 — npm ci 부터라 수 분 걸린다
+  | [deploy-web] backend = https://significantly-energy-perth-wines.trycloudflare.com
+  | [pages] repo root = /opt/hmb/hmb-online
+  | [pages] node=v20.20.2 npm=10.8.2
+  | npm warn deprecated whatwg-encoding@3.1.1: Use @exodus/bytes instead for a more spec-conformant and faster implementation
+  | 
+  | added 217 packages, and audited 224 packages in 10s
+  | 
+  | 38 packages are looking for funding
+  |   run `npm fund` for details
+  | 
+  | 12 vulnerabilities (5 moderate, 6 high, 1 critical)
+  | 
+  | To address issues that do not require attention, run:
+  |   npm audit fix
+  | 
+  | To address all issues (including breaking changes), run:
+  |   npm audit fix --force
+  | 
+  | Run `npm audit` for details.
+  | 
+  | > @hmb/web@0.0.0 prebuild
+  | > node scripts/ensure-chars.mjs
+  | 
+  | [ensure-chars] 재스테이징: 스테이징 없음
+  | [ensure-chars] 완료 — 플레이스홀더 172명 · 캐릭터 14종
+  | 
+  | > @hmb/web@0.0.0 build
+  | > tsc -p tsconfig.json --noEmit && vite build
+  | 
+  | vite v5.4.21 building for production...
+  | transforming...
+  | ✓ 447 modules transformed.
+  | rendering chunks...
+  | computing gzip size...
+  | dist/index.html                   0.46 kB │ gzip:   0.31 kB
+  | dist/assets/index-BIZtwX4k.css  220.03 kB │ gzip:  42.29 kB
+  | dist/assets/index-CuTKV4ch.js   876.16 kB │ gzip: 289.28 kB
+  | 
+  | (!) Some chunks are larger than 500 kB after minification. Consider:
+  | - Using dynamic import() to code-split the application
+  | - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+  | - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+  | ✓ built in 5.18s
+  | [stage-functions] /opt/hmb/hmb-online/infra/pages/functions → /opt/hmb/hmb-online/functions
+  | [stage-functions]   functions/share/notice/[id].js
+  | [pages] config.json = https://significantly-energy-perth-wines.trycloudflare.com (런타임 우선, VITE_API_BASE 는 폴백)
+  | [pages] VITE_API_BASE=https://significantly-energy-perth-wines.trycloudflare.com
+  | [pages] output:
+  | total 56
+  | drwxr-xr-x 7 root root 4096 Aug 13 00:03 .
+  | drwxr-xr-x 7 root root 4096 Aug 13 00:03 ..
+  | -rw-r--r-- 1 root root 1993 Aug 13 00:03 _headers
+  | -rw-r--r-- 1 root root 1998 Aug 13 00:03 _redirects
+  | drwxr-xr-x 2 root root 4096 Aug 13 00:03 assets
+  | drwxr-xr-x 4 root root 4096 Aug 13 00:03 chars
+  | -rw-r--r-- 1 root root  138 Aug 13 00:03 config.json
+  | -rw-r--r-- 1 root root 9522 Aug 13 00:03 favicon.svg
+  | -rw-r--r-- 1 root root  463 Aug 13 00:03 index.html
+  | drwxr-xr-x 2 root root 4096 Aug 13 00:03 notice
+  | drwxr-xr-x 4 root root 4096 Aug 13 00:03 splash
+  | drwxr-xr-x 2 root root 4096 Aug 13 00:03 support
+  | [deploy-web] Pages 배포 (hmb-online-lab)...
+  | 
+  |  ⛅️ wrangler 4.86.0 (update available 4.122.0)
+  | ──────────────────────────────────────────────
+  | ✨ Compiled Worker successfully
+  | Uploading... (0/205)
+  | Uploading... (68/205)
+  | Uploading... (136/205)
+  | Uploading... (205/205)
+  | ✨ Success! Uploaded 205 files (4.66 sec)
+  | 
+  | ✨ Uploading _headers
+  | ✨ Uploading _redirects
+  | ✨ Uploading Functions bundle
+  | 🌎 Deploying...
+  | ✨ Deployment complete! Take a peek over at https://f76d5a8d.hmb-online-lab.pages.dev
+  | [deploy-web] dist 스냅샷 보존 → /root/.cache/hmb/dist-current (+ functions → /root/.cache/hmb/dist-current.functions)
+  | [deploy-web] 완료 — web=https://hmb-online-lab.pages.dev  →  backend=https://significantly-energy-perth-wines.trycloudflare.com
+  deploy_rc=0  소요=46s  끝 00:03:31
+
+--- [A3] 캐시 시딩 확인 (AC1 의 HEAL_UNPROPAGATED 원인이 바로 이 캐시 부재였다) ---
+  drwxr-xr-x 7 root root 4096 Aug 13 00:03 /root/.cache/hmb/dist-current
+  drwxr-xr-x 3 root root 4096 Aug 11 01:03 /root/.cache/hmb/dist-current.functions
+  index.html: 있음
+  assets/*.js: 1개
+  meta:
+    deployedAt=2026-08-12T15:03:31Z
+    backend=https://significantly-energy-perth-wines.trycloudflare.com
+    git=21b9562
+    from=/opt/hmb/hmb-online
+  캐시 config.json:
+    {
+      "apiBase": "https://significantly-energy-perth-wines.trycloudflare.com",
+      "updatedAt": "2026-08-12T15:03:21Z",
+      "source": "build"
+    }
+
+--- [A4] lab 이 그 URL 을 서빙하는가 (⚠️ 랩탑 안에서 측정 — 맥 리졸버는 IPv6-only 로 거짓 FAIL) ---
+  try=1 served=<응답없음>
+  try=2 served=<응답없음>
+  try=3 served={"apiBase":"https://significantly-energy-perth-wines.trycloudflare.com","updatedAt":"2026-08-12T15:03:21Z","source":"build"}
+  ✓ 시딩 URL 도달 — 캐시·배포 경로 정상
+
+--- [A5] 라이브 무접촉 확인 (시딩이 라이브를 건드리지 않았는가) ---
+  live config.json: {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+=== AC5_A_DONE 00:03:52 rc=0 ===
+
+==================================================================
+=== [B] 터널 kill → 새 URL → web 전파 (무개입) ===
+now=2026-08-13 00:05:04 KST
+
+--- [B1] 사전 상태 ---
+  heals.tsv 초기화·DEGRADED 제거 완료 (AC4 잔재 격리)
+  heal.conf: export PAGES_PROJECT=hmb-online-lab
+  old_url = https://significantly-energy-perth-wines.trycloudflare.com
+  cloudflared pid = 1491
+  lab  전: {"apiBase":"https://significantly-energy-perth-wines.trycloudflare.com","updatedAt":"2026-08-12T15:03:21Z","source":"build"}
+  live 전: {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+           ↑ ⚠️ 이 값은 끝까지 안 변해야 한다 (단계3.5 고정 제약 = 맥 무중단)
+
+--- [B2] PID 로만 kill (pkill -f 금지 — 다른 세션 스택을 죽인다) ---
+  kill -9 1491  at 00:05:04  (T0)
+  kill 직후 cloudflared: 
+
+--- [B3] 무개입 관찰 ①: 새 터널 URL 이 뜨는가 (워치독 틱 60s + 기동 + DNS 대기 최대 120s) ---
+  t=+32s  ✓ 새 터널 URL = https://urge-monitoring-twisted-twiki.trycloudflare.com  (pid=12499)
+  → 조건1(old ≠ new): old=https://significantly-energy-perth-wines.trycloudflare.com  new=https://urge-monitoring-twisted-twiki.trycloudflare.com
+
+--- [B4] 무개입 관찰 ②: 그 새 URL 이 lab config.json 까지 도달하는가 (= AC5 본체) ---
+  t=+53s  ✓ 전파 도달: {"apiBase":"https://urge-monitoring-twisted-twiki.trycloudflare.com","updatedAt":"2026-08-12T15:05:48Z","source":"heal"}
+
+--- [B5] 판정 재료 (실측치) ---
+  old_url          = https://significantly-energy-perth-wines.trycloudflare.com
+  new_url          = https://urge-monitoring-twisted-twiki.trycloudflare.com
+  old≠new          = YES
+  kill→새URL       = 32s
+  kill→lab 전파    = 53s
+  전파성공         = yes
+  lab  후: {"apiBase":"https://urge-monitoring-twisted-twiki.trycloudflare.com","updatedAt":"2026-08-12T15:05:48Z","source":"heal"}
+  live 전: {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+  live 후: {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+  ✓ 조건3: 라이브 web 무접촉 (맥 무중단 유지)
+
+  터널 헬스(--check):
+    ✓ 터널 정상 — https://urge-monitoring-twisted-twiki.trycloudflare.com (ok http=401 ip=104.16.231.132 via=system)
+  check_rc=0
+  DEGRADED: 없음
+  heals.tsv:
+    1786547128	2026-08-12T15:05:28Z	attempt
+  치유 이벤트 로그:
+    1786537440	2026-08-12T12:24:00Z	UNHEALTHY	url=https://barnes-literally-gender-experimental.trycloudflare.com detail=http:530 ip=104.16.230.132 via=1.1.1.1
+    1786537440	2026-08-12T12:24:00Z	DEGRADED	1시간 내 치유 1 회 ≥ 상한 1 — 백오프
+    1786537502	2026-08-12T12:25:02Z	UNHEALTHY	url=https://barnes-literally-gender-experimental.trycloudflare.com detail=http:530 ip=104.16.231.132 via=8.8.8.8
+    1786537502	2026-08-12T12:25:02Z	DEGRADED	1시간 내 치유 1 회 ≥ 상한 1 — 백오프
+    1786537567	2026-08-12T12:26:07Z	UNHEALTHY	url=https://barnes-literally-gender-experimental.trycloudflare.com detail=http:530 ip=104.16.230.132 via=8.8.8.8
+    1786537567	2026-08-12T12:26:07Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.230.132 via=8.8.8.8 old=https://barnes-literally-gender-experimental.trycloudflare.com
+    1786537587	2026-08-12T12:26:27Z	DEGRADED_CLEARED	
+    1786537608	2026-08-12T12:26:48Z	PUBLISH_UNVERIFIED	try=1/3 url=https://cms-quick-printed-laid.trycloudflare.com served=<응답없음>
+    1786537653	2026-08-12T12:27:33Z	PUBLISH_UNVERIFIED	try=2/3 url=https://cms-quick-printed-laid.trycloudflare.com served=<응답없음>
+    1786537713	2026-08-12T12:28:33Z	PUBLISH_UNVERIFIED	try=3/3 url=https://cms-quick-printed-laid.trycloudflare.com served=<응답없음>
+    1786537713	2026-08-12T12:28:33Z	HEAL_UNPROPAGATED	url=https://cms-quick-printed-laid.trycloudflare.com — 터널은 살아있다. 다음 틱이 재전파한다 (로그: /root/.local/state/hmb/tunnel-heal.log.publish)
+    1786540854	2026-08-12T13:20:54Z	BLIP	url=https://cms-quick-printed-laid.trycloudflare.com first=http:000 ip=104.16.231.132 via=system
+    1786545287	2026-08-12T14:34:47Z	HEAL_START	reason=url-unknown old=<없음>
+    1786545329	2026-08-12T14:35:29Z	PUBLISH_UNVERIFIED	try=1/3 url=https://significantly-energy-perth-wines.trycloudflare.com served=<응답없음>
+    1786545375	2026-08-12T14:36:15Z	PUBLISH_UNVERIFIED	try=2/3 url=https://significantly-energy-perth-wines.trycloudflare.com served=<응답없음>
+    1786545435	2026-08-12T14:37:15Z	PUBLISH_UNVERIFIED	try=3/3 url=https://significantly-energy-perth-wines.trycloudflare.com served=<응답없음>
+    1786545435	2026-08-12T14:37:15Z	HEAL_UNPROPAGATED	url=https://significantly-energy-perth-wines.trycloudflare.com — 터널은 살아있다. 다음 틱이 재전파한다 (로그: /root/.local/state/hmb/tunnel-heal.log.publish)
+    1786547128	2026-08-12T15:05:28Z	UNHEALTHY	url=https://significantly-energy-perth-wines.trycloudflare.com detail=http:530 ip=104.16.231.132 via=system
+    1786547128	2026-08-12T15:05:28Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.231.132 via=system old=https://significantly-energy-perth-wines.trycloudflare.com
+    1786547155	2026-08-12T15:05:55Z	HEAL_OK	old=https://significantly-energy-perth-wines.trycloudflare.com new=https://urge-monitoring-twisted-twiki.trycloudflare.com
+  전파 로그:
+              web 을 한 번 정상 배포해 캐시를 만들어야 한다:
+                bash infra/deploy-web.sh https://significantly-energy-perth-wines.trycloudflare.com
+    [publish] ✗ dist 캐시가 없다: /root/.cache/hmb/dist-current
+              web 을 한 번 정상 배포해 캐시를 만들어야 한다:
+                bash infra/deploy-web.sh https://significantly-energy-perth-wines.trycloudflare.com
+    [publish] ✗ dist 캐시가 없다: /root/.cache/hmb/dist-current
+              web 을 한 번 정상 배포해 캐시를 만들어야 한다:
+                bash infra/deploy-web.sh https://significantly-energy-perth-wines.trycloudflare.com
+    [publish] config.json: https://significantly-energy-perth-wines.trycloudflare.com → https://urge-monitoring-twisted-twiki.trycloudflare.com
+    [publish] functions 스냅샷 적재: /root/.cache/hmb/dist-current.functions → /tmp/hmb-wrangler-work/functions
+    [publish] wrangler pages deploy /root/.cache/hmb/dist-current  (/usr/bin/wrangler)
+    [publish] ✓ 검증: https://hmb-online-lab.pages.dev/config.json → https://urge-monitoring-twisted-twiki.trycloudflare.com
+  cloudflared: 12499 
+=== AC5_B_DONE 00:05:57 result=yes ===
+
+--- [B6] 독립 사후검증: 라이브 프로젝트가 정말 무접촉인가 (서빙값 말고 배포 이력으로) ---
+  측정시각 2026-08-13 00:06:34 KST
+  live 프로젝트 최근 배포:
+    
+     ⛅️ wrangler 4.86.0 (update available 4.122.0)
+    ──────────────────────────────────────────────
+    ┌──────────────────────────────────────┬─────────────┬────────┬─────────┬───────────────────────────────────────┬────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+    │ Id                                   │ Environment │ Branch │ Source  │ Deployment                            │ Status     │ Build                                                                                                                   │
+    ├──────────────────────────────────────┼─────────────┼────────┼─────────┼───────────────────────────────────────┼────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+    │ cfa479f6-a01c-4492-8374-c031c8a0a1dd │ Production  │ main   │         │ https://cfa479f6.hmb-online.pages.dev │ 1 day ago  │ https://dash.cloudflare.com/6675a80f6ffb21fc7cff41724d49b717/pages/view/hmb-online/cfa479f6-a01c-4492-8374-c031c8a0a1dd │
+    ├──────────────────────────────────────┼─────────────┼────────┼─────────┼───────────────────────────────────────┼────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+  lab 프로젝트 최근 배포:
+    
+     ⛅️ wrangler 4.86.0 (update available 4.122.0)
+    ──────────────────────────────────────────────
+    ┌──────────────────────────────────────┬─────────────┬────────┬─────────┬───────────────────────────────────────────┬────────────────┬─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+    │ Id                                   │ Environment │ Branch │ Source  │ Deployment                                │ Status         │ Build                                                                                                                       │
+    ├──────────────────────────────────────┼─────────────┼────────┼─────────┼───────────────────────────────────────────┼────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+    │ 87415879-70aa-4936-bcd9-35b33dc22483 │ Production  │ main   │         │ https://87415879.hmb-online-lab.pages.dev │ 43 seconds ago │ https://dash.cloudflare.com/6675a80f6ffb21fc7cff41724d49b717/pages/view/hmb-online-lab/87415879-70aa-4936-bcd9-35b33dc22483 │
+    ├──────────────────────────────────────┼─────────────┼────────┼─────────┼───────────────────────────────────────────┼────────────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+
+  재확인(수 분 경과 후) live config.json: {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+  재확인(수 분 경과 후) lab  config.json: {"apiBase":"https://urge-monitoring-twisted-twiki.trycloudflare.com","updatedAt":"2026-08-12T15:05:48Z","source":"heal"}
+  cloudflared: 12499   터널 URL: https://urge-monitoring-twisted-twiki.trycloudflare.com
+  DEGRADED: 없음
+  heals.tsv:
+    1786547128	2026-08-12T15:05:28Z	attempt
+=== AC5_EVIDENCE_COMPLETE 2026-08-13 00:06:37 KST ===
