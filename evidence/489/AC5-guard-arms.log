@@ -1,0 +1,78 @@
+=== 라이브 무접촉 게이트 — 팔 검증 (콜드 재실행) 2026-08-13 01:08:32 KST ===
+host=DESKTOP-OHCRL7O  설치본=/root/.local/bin/hmb-tunnel-heal.sh
+설치본 본문 md5 = 98a4d408d1c5280cfd965ae5c1c89e3b  (리포 본문 = 98a4d408d1c5280cfd965ae5c1c89e3b)
+실 heal.conf(출하): export PAGES_PROJECT=hmb-online-lab
+⚠️ 음성 팔은 전부 HMB_HEAL_CONF 샌드박스로 돈다 — 실제 heal.conf 는 건드리지 않는다.
+
+── [검사 층] tunnel-heal.sh --selftest ─────────────────────────
+
+--- A1 (음성) heal.conf 없음 → ✗ 여야 한다
+✗ heal.conf 없음: /tmp/nope.conf — 전파가 기본값 'hmb-online'(라이브)로 나간다
+    처방:  printf 'export PAGES_PROJECT=hmb-online-lab\n' > /tmp/nope.conf
+rc=1
+
+--- A2 (음성) export 누락 → ✗
+✓ heal.conf 있음 (/tmp/noexport.conf)
+✗ heal.conf 의 PAGES_PROJECT 에 export 가 없다 — heal.conf 를 source 하는 다른 경로가 샌다
+✓ 전파 대상 = 'hmb-online-lab' (라이브 'hmb-online' 아님)
+rc=1
+
+--- A3 (음성) 라이브 프로젝트 지정 → ✗
+✓ heal.conf 있음 (/tmp/live.conf)
+✓ heal.conf 에 'export PAGES_PROJECT' 선언
+✗ PAGES_PROJECT='hmb-online' = 라이브 프로젝트다. 랩탑은 별도 프로젝트여야 한다(단계3.5 고정 제약: 맥 무중단)
+rc=1
+
+--- A4 (컷오버 옵트아웃) 라이브 + HMB_ALLOW_LIVE=1 → 통과하되 사실을 찍는다
+! 전파 대상 게이트 우회 (HMB_ALLOW_LIVE=1) — 대상 = hmb-online (라이브 허용 모드)
+rc=0
+
+--- A5 (양성) 출하 heal.conf → rc=0
+✓ heal.conf 있음 (/root/.local/state/hmb/heal.conf)
+✓ heal.conf 에 'export PAGES_PROJECT' 선언
+✓ 전파 대상 = 'hmb-online-lab' (라이브 'hmb-online' 아님)
+rc=0
+
+── [생성 층] install-heal-systemd.sh ───────────────────────────
+
+--- B1 heal.conf 부재 → 설치기가 만든다
+[install] heal.conf 생성 → /tmp/fresh.conf (export PAGES_PROJECT=hmb-online-lab)
+── 사전점검 (⚠️ 타이머 기동 **전**) ──
+✓ heal.conf 있음 (/tmp/fresh.conf)
+✓ heal.conf 에 'export PAGES_PROJECT' 선언
+✓ 전파 대상 = 'hmb-online-lab' (라이브 'hmb-online' 아님)
+install_rc=0
+  만들어진 내용:
+    # HMB 워치독 런타임 노브 — install-heal-systemd.sh 가 생성 (#489 단계3.5)
+    # 워치독이 매 틱 source 한다. 아래 한 줄이 '랩탑은 라이브 web 을 건드리지 않는다' 의 근거다.
+    # ⚠️ export 필수 — heal.conf 를 source 하는 다른 경로(수동 deploy-web.sh 등)까지 전달되어야 한다.
+    # 컷오버(단계4) = 이 줄을 지우고  HMB_ALLOW_LIVE=1 로 재설치·재점검.
+    export PAGES_PROJECT=hmb-online-lab
+
+--- B2 이미 있으면 덮어쓰지 않는다
+  전 md5=8f4617d8ae02778dd3228d0b76118921 / 후 md5=8f4617d8ae02778dd3228d0b76118921 / 보존=YES
+
+--- B3 (음성·가장 강함) 타이머를 내린 상태에서 게이트 ✗ → 설치 실패 + 타이머 미기동
+  팔 시작 timer = inactive
+  install_rc=1
+    ✗ PAGES_PROJECT='hmb-online' = 라이브 프로젝트다. 랩탑은 별도 프로젝트여야 한다(단계3.5 고정 제약: 맥 무중단)
+    [install] ✗ 사전점검 실패 — **타이머를 기동하지 않았다**(유닛 파일만 기록됨).
+  설치 실패 후 timer = inactive  ← inactive 여야 한다
+  복구(정상 설치):
+    rc=0  timer=active/enabled
+
+── [전달 층] publish_verified 가 자식에게 무엇을 넘기나 ─────────
+  방법: $PUBLISH 를 '받은 env 를 적고 끝나는' 스텁으로 갈아끼우고 **설치본의** publish_verified 를 호출.
+  카나리아: publish_verified 정의=1(1) · pass_env 참조=3(3) · 모드 case 제거=0(0)
+  export 있음              → STUB_SAW PAGES_PROJECT=[hmb-online-lab] HMB_LOCK_HELD=[1] src=[arm-C1]
+  export 누락(렌즈② 시나리오) → STUB_SAW PAGES_PROJECT=[hmb-online-lab] HMB_LOCK_HELD=[1] src=[arm-C2]
+  선언 자체가 없음(대조군) → STUB_SAW PAGES_PROJECT=[<미전달>] HMB_LOCK_HELD=[1] src=[arm-C3]
+  ⚠️ C3 이 <미전달> 인 것이 의도다 — 값이 없을 때의 동작을 바꾸면 컷오버가 코드 변경이 된다.
+  ⚠️ 픽스 전 코드의 C2 대조군(맥에서 git HEAD 판본으로 같은 하네스): PAGES_PROJECT=[<미전달>]
+     = export 한 글자가 빠지면 publish 가 기본값 'hmb-online'(라이브)로 떨어지던 경로.
+
+--- 마무리 상태 ---
+  실 heal.conf : export PAGES_PROJECT=hmb-online-lab
+  timer        : active/enabled
+  DEGRADED     : 없음
+=== AC5_GUARD_ARMS_COMPLETE 2026-08-13 01:10:07 KST ===

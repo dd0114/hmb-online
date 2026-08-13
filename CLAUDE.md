@@ -406,5 +406,5 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
   **CF 배포 토큰은 spider 전역** `~/.config/hmb/deploy.env`(리포 밖·gitignore·chmod 600, `CLOUDFLARE_API_TOKEN`+`CLOUDFLARE_ACCOUNT_ID`) — 모든 워크트리 공유, `deploy-pages.sh` 자동 source.
 - **web 배포**: `bash infra/deploy-pages.sh <백엔드URL>` = CF Pages(고정 `hmb-online.pages.dev`, 토큰 배포·로그인X). 표준 = **백엔드 터널 배포 → 웹 그 주소로 재배포**. quick-tunnel web(`deploy-quicktunnel.sh`)은 폴백.
 - **디버깅 순서**: `status.sh`(인프라 배제) → 터널 인스펙터(실 요청/응답) → 코드. `/api/deck 404`=새유저 빈덱(정상). `Failed to fetch`(응답 없음)=터널/네트워크.
-- **상시 고정 URL 승격(선택)**: named tunnel(도메인 필요) 또는 ngrok 유료 — deploy.md §5.2·§6.
+- **🛑 상시 고정 URL 승격 = 중단(2026-07-31 hero 확정, 2026-08-13 재확인)**: named tunnel·ngrok 유료 **둘 다 살아 있는 선택지가 아니다**. 결정문에 "**다시 제안하지 않는다**"가 박혀 있다(`docs/plan-v4/deploy-playbook.md` §6). 현행 = **quick tunnel + 워치독 + 런타임 config 전파** 유지. URL 회전은 감수하기로 확정된 성질이고 워치독이 `config.json` 을 갱신해 흡수한다 — 승격 견적을 다시 쓰는 대신 **그 전파 경로를 고친다**. (§6.1 = 2026-08-03 재검토 때 산출한 견적, 참고 이력.)
 - **⚠️ 배포 기록 필수(P4-D5 / #171)**: **배포할 때마다 `docs/deploy-log.md` 맨 위에 항목 append + 커밋**한다(배포시각·git SHA·모듈별 버전 engine/server-java/web/servants·이미지 다이제스트·URL·결과). `infra/version-manifest.sh` 산출을 옮겨 적는다. "언제 뭐 배포됐나" 조회 = `docs/deploy-log.md`(SoT). #164(버전 매니페스트)는 이 정책으로 승계·종결.

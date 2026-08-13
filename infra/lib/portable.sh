@@ -86,3 +86,15 @@ watchdog_installed() {
     launchctl print "gui/$(id -u)/${HMB_HEAL_LABEL}" >/dev/null 2>&1
   fi
 }
+
+# 워치독의 **마지막 종료코드** — 서비스 관리자마다 출처가 다르다(#497 에서 78/EX_CONFIG 을 읽어야 했다).
+# 관측을 여기 두는 이유는 `watchdog_installed` 와 같다: 소비자(status.sh)가 launchctl 을 직접 부르면
+# 리눅스에서 항상 빈 값이 되어 이사 후 그 게이트가 조용히 죽는다.
+watchdog_last_exit() {
+  if is_linux; then
+    systemctl --user show "${HMB_HEAL_UNIT}.service" -p ExecMainStatus --value 2>/dev/null
+  else
+    launchctl print "gui/$(id -u)/${HMB_HEAL_LABEL}" 2>/dev/null \
+      | awk -F'= *' '/last exit code|LastExitStatus/{print $2; exit}' | tr -d ' '
+  fi
+}

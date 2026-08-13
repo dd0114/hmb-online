@@ -1,0 +1,269 @@
+
+==================================================================
+=== AC5 반복 재현 배치 시작 2026-08-13 00:53:18 KST ===
+  워치독 틱 간격 = { OnUnitActiveUSec=1min ; next_elapse=1h 20min 48.948921s }{ OnBootUSec=1min 30s ; next_elapse=1min 34.559897s }
+  폴링: 새URL 1초 / lab 전파 2초 / live 확인 매 회차 전·후 + 배치 끝
+  개입 = kill -9 <cloudflared PID> 뿐. 수동 publish/deploy 0회.
+  heal.conf(출하): export PAGES_PROJECT=hmb-online-lab
+  MAX_HEALS_PER_HOUR = 기본 3 (heal.conf 무override)
+
+--- 배치 전 상태 ---
+  live  config.json = {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+  lab   config.json = {"apiBase":"https://urge-monitoring-twisted-twiki.trycloudflare.com","updatedAt":"2026-08-12T15:05:48Z","source":"heal"}
+  캐시 index.html mtime = 2026-08-13 00:03:21.204444310 +0900
+  캐시 assets  mtime = 2026-08-13 00:03:21.204444310 +0900
+  heals.tsv(전):
+    1786547128	2026-08-12T15:05:28Z	attempt
+  → heals.tsv 초기화·DEGRADED 제거 (상한 회계만 격리, 치유 로직 무접촉)
+
+==================================================================
+=== 회차 2 — 목표 타이머 위상 = 다음 틱까지 55s (틱 직후 kill — 검출까지 최장 대기) ===
+  시작 2026-08-13 00:53:19 KST
+  old_url = https://urge-monitoring-twisted-twiki.trycloudflare.com   (cloudflared pid=12499)
+  캐시 index.html 나이 = 49 분  (mtime 2026-08-13 00:03:21)
+  ⚠️ 이 배치는 deploy-web.sh 를 **한 번도 돌리지 않는다** = 캐시는 손으로 갓 시딩한 것이 아니다
+  캐시 config.json(전) = {"apiBase":"https://urge-monitoring-twisted-twiki.trycloudflare.com","updatedAt":"2026-08-12T15:05:48Z","source":"heal"}
+  lab (전) = https://urge-monitoring-twisted-twiki.trycloudflare.com
+  live(전) = https://holly-satisfied-measures-refine.trycloudflare.com
+  kill 시점 위상: 다음 워치독 틱까지 56.0s
+  ▶ kill -9 12499  at 2026-08-13 00:54:01 KST  (T0)  — PID 로만, pkill 금지
+  t=+75s (±1s)  새 URL = https://rates-reviews-undefined-template.trycloudflare.com  (pid=30833)
+  t=+108s (±2s)  ✓ lab 전파 도달
+
+  --- 회차 2 판정 재료 ---
+    old_url            = https://urge-monitoring-twisted-twiki.trycloudflare.com
+    new_url            = https://rates-reviews-undefined-template.trycloudflare.com
+    old≠new            = YES
+    kill→새URL         = 75s   (폴링 1s)
+    kill→lab 전파      = 108s   (폴링 2s)
+    lab config.json    = {"apiBase":"https://rates-reviews-undefined-template.trycloudflare.com","updatedAt":"2026-08-12T15:55:40Z","source":"heal"}
+    source 값          = heal
+    PUBLISH_UNVERIFIED = 0 건 (이 회차)
+    HEAL_OK            = 0 건
+    DEGRADED           = 없음
+    live(전)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live(후)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live 무변경        = YES
+    이 회차 힐 이벤트:
+      2026-08-12T15:55:12Z	UNHEALTHY	url=https://urge-monitoring-twisted-twiki.trycloudflare.com detail=http:530 ip=104.16.230.132 via=system
+      2026-08-12T15:55:12Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.230.132 via=system old=https://urge-monitoring-twisted-twiki.trycloudflare.com
+    터널 헬스: ✓ 터널 정상 — https://rates-reviews-undefined-template.trycloudflare.com (ok http=401 ip=104.16.230.132 via=1.1.1.1)
+
+==================================================================
+=== 회차 3 — 목표 타이머 위상 = 다음 틱까지 8s (틱 직전 kill — 검출까지 최단 대기) ===
+  시작 2026-08-13 00:56:20 KST
+  old_url = https://rates-reviews-undefined-template.trycloudflare.com   (cloudflared pid=30833)
+  캐시 index.html 나이 = 52 분  (mtime 2026-08-13 00:03:21)
+  ⚠️ 이 배치는 deploy-web.sh 를 **한 번도 돌리지 않는다** = 캐시는 손으로 갓 시딩한 것이 아니다
+  캐시 config.json(전) = {"apiBase":"https://rates-reviews-undefined-template.trycloudflare.com","updatedAt":"2026-08-12T15:55:40Z","source":"heal"}
+  lab (전) = https://rates-reviews-undefined-template.trycloudflare.com
+  live(전) = https://holly-satisfied-measures-refine.trycloudflare.com
+  kill 시점 위상: 다음 워치독 틱까지 9.0s
+  ▶ kill -9 30833  at 2026-08-13 00:56:57 KST  (T0)  — PID 로만, pkill 금지
+  t=+30s (±1s)  새 URL = https://enzyme-sold-rental-walker.trycloudflare.com  (pid=32736)
+  t=+45s (±2s)  ✓ lab 전파 도달
+
+  --- 회차 3 판정 재료 ---
+    old_url            = https://rates-reviews-undefined-template.trycloudflare.com
+    new_url            = https://enzyme-sold-rental-walker.trycloudflare.com
+    old≠new            = YES
+    kill→새URL         = 30s   (폴링 1s)
+    kill→lab 전파      = 45s   (폴링 2s)
+    lab config.json    = {"apiBase":"https://enzyme-sold-rental-walker.trycloudflare.com","updatedAt":"2026-08-12T15:57:34Z","source":"heal"}
+    source 값          = heal
+    PUBLISH_UNVERIFIED = 0 건 (이 회차)
+    HEAL_OK            = 0 건
+    DEGRADED           = 없음
+    live(전)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live(후)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live 무변경        = YES
+    이 회차 힐 이벤트:
+      2026-08-12T15:57:22Z	UNHEALTHY	url=https://rates-reviews-undefined-template.trycloudflare.com detail=http:530 ip=104.16.230.132 via=system
+      2026-08-12T15:57:22Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.230.132 via=system old=https://rates-reviews-undefined-template.trycloudflare.com
+    터널 헬스: ✓ 터널 정상 — https://enzyme-sold-rental-walker.trycloudflare.com (ok http=401 ip=104.16.230.132 via=system)
+
+  [회차4 사전] wrangler 작업 디렉토리 제거 — systemd ExecStartPre 가 되살려야 한다
+
+==================================================================
+=== 회차 4 — 목표 타이머 위상 = 다음 틱까지 30s (틱 중간 kill + wrangler workdir 삭제) ===
+  시작 2026-08-13 00:58:13 KST
+  old_url = https://enzyme-sold-rental-walker.trycloudflare.com   (cloudflared pid=32736)
+  캐시 index.html 나이 = 54 분  (mtime 2026-08-13 00:03:21)
+  ⚠️ 이 배치는 deploy-web.sh 를 **한 번도 돌리지 않는다** = 캐시는 손으로 갓 시딩한 것이 아니다
+  캐시 config.json(전) = {"apiBase":"https://enzyme-sold-rental-walker.trycloudflare.com","updatedAt":"2026-08-12T15:57:34Z","source":"heal"}
+  lab (전) = https://enzyme-sold-rental-walker.trycloudflare.com
+  live(전) = https://holly-satisfied-measures-refine.trycloudflare.com
+  kill 시점 위상: 다음 워치독 틱까지 31.0s
+  ▶ kill -9 32736  at 2026-08-13 00:58:42 KST  (T0)  — PID 로만, pkill 금지
+  t=+152s (±1s)  새 URL = https://current-panel-automobiles-cope.trycloudflare.com  (pid=35483)
+  t=+165s (±2s)  ✓ lab 전파 도달
+
+  --- 회차 4 판정 재료 ---
+    old_url            = https://enzyme-sold-rental-walker.trycloudflare.com
+    new_url            = https://current-panel-automobiles-cope.trycloudflare.com
+    old≠new            = YES
+    kill→새URL         = 152s   (폴링 1s)
+    kill→lab 전파      = 165s   (폴링 2s)
+    lab config.json    = {"apiBase":"https://enzyme-sold-rental-walker.trycloudflare.com","updatedAt":"2026-08-12T15:57:34Z","source":"heal"}
+    source 값          = heal
+    PUBLISH_UNVERIFIED = 0 건 (이 회차)
+    HEAL_OK            = 0 건
+    DEGRADED           = 없음
+    live(전)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live(후)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live 무변경        = YES
+    이 회차 힐 이벤트:
+      2026-08-12T16:01:09Z	UNHEALTHY	url=https://enzyme-sold-rental-walker.trycloudflare.com detail=http:530 ip=104.16.230.132 via=system
+      2026-08-12T16:01:09Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.230.132 via=system old=https://enzyme-sold-rental-walker.trycloudflare.com
+    터널 헬스: ✓ 터널 정상 — https://current-panel-automobiles-cope.trycloudflare.com (ok http=401 ip=104.16.231.132 via=system)
+
+==================================================================
+=== 배치 종료 2026-08-13 01:01:28 KST ===
+  live config.json (최종) = {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+  lab  config.json (최종) = {"apiBase":"https://enzyme-sold-rental-walker.trycloudflare.com","updatedAt":"2026-08-12T15:57:34Z","source":"heal"}
+  live 배치 전            = {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+  cloudflared: 35483 cloudflared tunnel --url http://localhost:18080 --no-autoupdate --protocol http2
+  현재 터널 URL = https://current-panel-automobiles-cope.trycloudflare.com
+  timer: active / enabled
+  DEGRADED: 없음
+  heals.tsv:
+    1786550112	2026-08-12T15:55:12Z	attempt
+    1786550242	2026-08-12T15:57:22Z	attempt
+    1786550469	2026-08-12T16:01:09Z	attempt
+  캐시 index.html mtime = 2026-08-13 00:03:21.204444310 +0900
+  wrangler-work 재생성 = YES
+  selftest(출하 상태):
+    ✓ cloudflared = /usr/local/bin/cloudflared
+    ✓ dig = /usr/bin/dig
+    ✓ curl = /usr/bin/curl
+    ✓ npx = /usr/bin/npx
+    ✓ 쓸 수 있는 해석기: system 8.8.8.8 9.9.9.9 1.1.1.1
+    ✓ CF 자격증명 파일 있음
+    ✓ dist 캐시 있음 (/root/.cache/hmb/dist-current)
+    ✓ 전파 스크립트 /root/.local/bin/hmb-publish-backend-url.sh
+    ✓ heal.conf 있음 (/root/.local/state/hmb/heal.conf)
+    ✓ heal.conf 에 'export PAGES_PROJECT' 선언
+    ✓ 전파 대상 = 'hmb-online-lab' (라이브 'hmb-online' 아님)
+    ✓ 로컬 백엔드 :18080 응답
+  selftest rc=0
+=== AC5_REPEAT_COMPLETE 2026-08-13 01:01:28 KST ===
+
+==================================================================
+=== 회차 5 — workdir 삭제 + kill (WorkingDirectory=- 픽스 **후**) 2026-08-13 01:03:42 KST ===
+  대조: 회차4 = 같은 조건 · 픽스 전 → 200/CHDIR, 워치독 0틱, 사람이 mkdir 할 때까지 무복구
+  유닛 확인: 12:#    WorkingDirectory 를 ExecStartPre 를 포함한 **모든 Exec 줄에** 적용하므로, 디렉토리가 없으면
+19:WorkingDirectory=-/root/.local/state/hmb/wrangler-work
+  폴링: 새URL 1초 / lab 전파 2초
+  heals.tsv(전): 3 행 → 초기화
+  old_url = https://current-panel-automobiles-cope.trycloudflare.com  (pid=35483)
+  캐시 index.html 나이 = 60 분  (⚠️ 이 배치 내내 deploy-web.sh 0회)
+  lab (전) = https://current-panel-automobiles-cope.trycloudflare.com
+  live(전) = https://holly-satisfied-measures-refine.trycloudflare.com
+  kill 시점 위상: 다음 워치독 틱까지 46.0s
+  ▶ rm -rf /root/.local/state/hmb/wrangler-work + kill -9 35483  at 2026-08-13 01:04:20 KST (T0)
+    workdir 존재 = NO
+  t=+67s (±1s)  새 URL = https://authorities-consultancy-liverpool-farming.trycloudflare.com (pid=38304)
+  t=+91s (±2s)  ✓ lab 전파 도달
+
+  --- 회차 5 판정 재료 ---
+    old_url            = https://current-panel-automobiles-cope.trycloudflare.com
+    new_url            = https://authorities-consultancy-liverpool-farming.trycloudflare.com
+    old≠new            = YES
+    kill→새URL         = 67s (폴링 1s)
+    kill→lab 전파      = 91s (폴링 2s)
+    lab config.json(+20s 재확인) = {"apiBase":"https://authorities-consultancy-liverpool-farming.trycloudflare.com","updatedAt":"2026-08-12T16:05:35Z","source":"heal"}
+    source 값          = heal
+    PUBLISH_UNVERIFIED = 0 건
+    HEAL_OK            = 1 건
+    DEGRADED           = 없음
+    live(전)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live(후)           = https://holly-satisfied-measures-refine.trycloudflare.com
+    live 무변경        = YES
+    workdir 자동 재생성 = YES  ← 픽스가 발화한 증거
+    CHDIR 실패(kill 이후) = 0 건 (0 이어야)
+    이 회차 힐 이벤트:
+      2026-08-12T16:05:22Z	UNHEALTHY	url=https://current-panel-automobiles-cope.trycloudflare.com detail=http:530 ip=104.16.231.132 via=system
+      2026-08-12T16:05:22Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.231.132 via=system old=https://current-panel-automobiles-cope.trycloudflare.com
+      2026-08-12T16:05:54Z	HEAL_OK	old=https://current-panel-automobiles-cope.trycloudflare.com new=https://authorities-consultancy-liverpool-farming.trycloudflare.com
+    터널 헬스: ✓ 터널 정상 — https://authorities-consultancy-liverpool-farming.trycloudflare.com (ok http=401 ip=104.16.231.132 via=8.8.8.8)
+=== AC5_RUN5_COMPLETE 2026-08-13 01:06:11 KST ===
+
+==================================================================
+=== 사후 증빙 2026-08-13 01:07:12 KST ===
+
+--- [채널1] 서빙값 ---
+  live = {"apiBase":"https://holly-satisfied-measures-refine.trycloudflare.com","updatedAt":"2026-08-11T13:26:14Z","source":"heal"}
+  lab  = {"apiBase":"https://authorities-consultancy-liverpool-farming.trycloudflare.com","updatedAt":"2026-08-12T16:05:35Z","source":"heal"}
+
+--- [채널2] Pages 배포 이력 (프로덕션 최신 배포 ID·시각) ---
+  ⚠️ 배치 시작 시점(00:53:40) 라이브 최신 = cfa479f6-a01c-4492-8374-c031c8a0a1dd (1 day ago)
+  --- hmb-online ---
+    cfa479f6-a01c-4492-8374-c031c8a0a1dd
+    1 day ago
+    cfa479f6-a01c-4492-8374-c031c8a0a1dd
+    6b6e664e-bd63-46f6-b3f8-4f1ed502a72b
+    1 day ago
+    6b6e664e-bd63-46f6-b3f8-4f1ed502a72b
+    b79bf61a-7f3c-430b-830a-a9d835a42a83
+    1 day ago
+    b79bf61a-7f3c-430b-830a-a9d835a42a83
+    269b7567-d059-4999-af55-3bfd5904b18c
+  --- hmb-online-lab ---
+    3ddf983d-ef4d-40c4-9c3e-88589c61170d
+    1 minute ago
+    3ddf983d-ef4d-40c4-9c3e-88589c61170d
+    8ef6c9d0-f5f2-4b1c-aeae-222da3a894b5
+    5 minutes ago
+    8ef6c9d0-f5f2-4b1c-aeae-222da3a894b5
+    2ee049fe-2b93-4389-8aa4-985fffe052ea
+    9 minutes ago
+    2ee049fe-2b93-4389-8aa4-985fffe052ea
+    0e8e6063-cd76-4cc4-8821-0ef48037e1e2
+
+--- 힐 이벤트 전문(배치 구간) ---
+    2026-08-12T15:55:12Z	UNHEALTHY	url=https://urge-monitoring-twisted-twiki.trycloudflare.com detail=http:530 ip=104.16.230.132 via=system
+    2026-08-12T15:55:12Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.230.132 via=system old=https://urge-monitoring-twisted-twiki.trycloudflare.com
+    2026-08-12T15:55:50Z	HEAL_OK	old=https://urge-monitoring-twisted-twiki.trycloudflare.com new=https://rates-reviews-undefined-template.trycloudflare.com
+    2026-08-12T15:57:22Z	UNHEALTHY	url=https://rates-reviews-undefined-template.trycloudflare.com detail=http:530 ip=104.16.230.132 via=system
+    2026-08-12T15:57:22Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.230.132 via=system old=https://rates-reviews-undefined-template.trycloudflare.com
+    2026-08-12T15:57:47Z	HEAL_OK	old=https://rates-reviews-undefined-template.trycloudflare.com new=https://enzyme-sold-rental-walker.trycloudflare.com
+    2026-08-12T16:01:09Z	UNHEALTHY	url=https://enzyme-sold-rental-walker.trycloudflare.com detail=http:530 ip=104.16.230.132 via=system
+    2026-08-12T16:01:09Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.230.132 via=system old=https://enzyme-sold-rental-walker.trycloudflare.com
+    2026-08-12T16:01:37Z	HEAL_OK	old=https://enzyme-sold-rental-walker.trycloudflare.com new=https://current-panel-automobiles-cope.trycloudflare.com
+    2026-08-12T16:05:22Z	UNHEALTHY	url=https://current-panel-automobiles-cope.trycloudflare.com detail=http:530 ip=104.16.231.132 via=system
+    2026-08-12T16:05:22Z	HEAL_START	reason=unhealthy:http:530 ip=104.16.231.132 via=system old=https://current-panel-automobiles-cope.trycloudflare.com
+    2026-08-12T16:05:54Z	HEAL_OK	old=https://current-panel-automobiles-cope.trycloudflare.com new=https://authorities-consultancy-liverpool-farming.trycloudflare.com
+
+--- 전파 로그 tail ---
+    [publish] config.json: https://rates-reviews-undefined-template.trycloudflare.com → https://enzyme-sold-rental-walker.trycloudflare.com
+    [publish] functions 스냅샷 적재: /root/.cache/hmb/dist-current.functions → /tmp/hmb-wrangler-work/functions
+    [publish] wrangler pages deploy /root/.cache/hmb/dist-current  (/usr/bin/wrangler)
+    [publish] ✓ 검증: https://hmb-online-lab.pages.dev/config.json → https://enzyme-sold-rental-walker.trycloudflare.com
+    [publish] config.json: https://enzyme-sold-rental-walker.trycloudflare.com → https://current-panel-automobiles-cope.trycloudflare.com
+    [publish] functions 스냅샷 적재: /root/.cache/hmb/dist-current.functions → /tmp/hmb-wrangler-work/functions
+    [publish] wrangler pages deploy /root/.cache/hmb/dist-current  (/usr/bin/wrangler)
+    [publish] ✓ 검증: https://hmb-online-lab.pages.dev/config.json → https://current-panel-automobiles-cope.trycloudflare.com
+    [publish] config.json: https://current-panel-automobiles-cope.trycloudflare.com → https://authorities-consultancy-liverpool-farming.trycloudflare.com
+    [publish] functions 스냅샷 적재: /root/.cache/hmb/dist-current.functions → /tmp/hmb-wrangler-work/functions
+    [publish] wrangler pages deploy /root/.cache/hmb/dist-current  (/usr/bin/wrangler)
+    [publish] ✓ 검증: https://hmb-online-lab.pages.dev/config.json → https://authorities-consultancy-liverpool-farming.trycloudflare.com
+
+--- 랩탑 최종 상태 ---
+  cloudflared: 38304 cloudflared tunnel --url http://localhost:18080 --no-autoupdate --protocol http2
+  터널 URL   : https://authorities-consultancy-liverpool-farming.trycloudflare.com
+  타이머     : active/enabled  next={ OnUnitActiveUSec=1min ; next_elapse=1h 34min 3.716822s }
+{ OnBootUSec=1min 30s ; next_elapse=1min 34.559897s }
+  hmb-stack  : active
+  백엔드 :18080 = 401  (401=생존)
+  러너   :18790 = 200
+  docker: hmb-runner Up 2 hours (healthy) hmb-java Up 2 hours (healthy) 
+  DEGRADED   : 없음
+  heals.tsv  :
+    1786550722	2026-08-12T16:05:22Z	attempt
+  heal.conf  : export PAGES_PROJECT=hmb-online-lab
+  캐시       : index.html mtime 2026-08-13 00:03:21 · config.json {"apiBase":"https://authorities-consultancy-liverpool-farming.trycloudflare.com","updatedAt":"2026-08-12T16:05:35Z","source":"heal"}
+  wrangler-work 존재 = YES
+  설치본 md5 = e58634e764c75e922c1b55a3512fa527  /root/.local/bin/hmb-tunnel-heal.sh 60c077f34a4d722e5785c5b2d3b521e3  /root/.local/bin/hmb-publish-backend-url.sh 
+  리포 md5   = b5d629429bba1c3ae83c4a4035287d1d  /opt/hmb/hmb-online/infra/tunnel-heal.sh 7e152d97f7fcbbd2850fda5e84286851  /opt/hmb/hmb-online/infra/laptop/install-heal-systemd.sh d4953d0988cb7ca0bfb4a9a345e885a1  /opt/hmb/hmb-online/infra/laptop/README.md 
+  journal left-over(sleep) 경고 = 266 건 (정상 — KillMode=process)
+=== AC5_FINAL_COMPLETE 2026-08-13 01:07:16 KST ===

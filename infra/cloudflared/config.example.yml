@@ -1,5 +1,11 @@
 # cloudflared named tunnel 설정 템플릿.
 #
+# 🛑 **이 경로는 중단됐다(2026-07-31, hero 확정).** 쓰지 마라.
+#    상시 고정 URL 승격을 하지 않기로 확정했고 "다시 제안하지 않는다" 가 결정문에 박혀 있다
+#    (docs/plan-v4/deploy-playbook.md §6). 현행 = quick tunnel + 워치독 + 런타임 config 전파.
+#    이 파일은 그때 무엇을 하려 했는지 남기는 **역사 기록**으로만 둔다 — 살아 있는 템플릿이
+#    남아 있으면 다음 사람이 "준비돼 있네" 하고 승격을 다시 집어든다.
+#
 #   cp config.example.yml ~/.cloudflared/config.yml   # 후 아래 <...> 치환
 #
 # ⚠️ 이 파일은 **템플릿만** 커밋한다. 실제 config.yml 과 자격증명 JSON

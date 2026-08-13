@@ -8,7 +8,12 @@
 # 실측 CF 8/8 vs ngrok 0/8). 단점=재시작 시 URL 바뀜 → 이 스크립트가 재배포까지 해결.
 #
 # 전제: 백엔드 stack(java 18080)이 이미 떠 있어야 한다(cd infra && docker compose up -d java runner).
-# 상시 URL 이 필요하면 named tunnel(도메인 필요) 또는 ngrok 유료 — deploy.md §5.2 참고.
+#
+# 🛑 URL 이 바뀌는 것은 **감수하기로 확정된 성질**이다 — 고치려 들지 마라.
+#    hero 가 2026-07-31 에 상시 고정 URL(named tunnel) 승격을 **전면 중단**하고
+#    "현행 quick tunnel + 워치독 + 런타임 config 전파를 유지, **다시 제안하지 않는다**" 로
+#    확정했다(docs/plan-v4/deploy-playbook.md §6). URL 회전은 워치독이 config.json 을
+#    갱신해 흡수한다 — 승격 견적을 다시 쓰는 대신 그 전파 경로를 고쳐라.
 
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
