@@ -42,10 +42,13 @@ public class OnboardingController {
         OnboardingService.Result result = onboardingService.complete(userId);
         // #492: 훅이 **컨트롤러**인 이유 = OnboardingService.complete 는 메서드 전체가 트랜잭션이라
         // (덱 지급이 그 안에서 일어난다) 안에 넣으면 기록 실패가 덱 지급을 롤백시킨다.
-        // ⚠️ 이 엔드포인트는 멱등이라 여러 번 불릴 수 있고, 그때마다 1행을 남긴다 —
-        //    "완료를 눌렀다"는 사실 자체가 이벤트이고, 덱이 실제로 생겼는지는 grantedDeck 이 말한다.
-        //    퍼널의 tutorial 칸은 "1건 이상"이라 재호출에 영향받지 않는다.
-        events.record(online.hmb.events.BusinessEvent.TUTORIAL_COMPLETE, userId,
+        // #496: 이 엔드포인트는 **멱등**이라 여러 번 불린다(모달을 다시 닫기·건너뛰기 재시도). 예전엔
+        //    그때마다 1행을 남겨 스트림 상단이 같은 "튜토리얼 완료"로 도배됐다 — 퍼널의 tutorial 칸은
+        //    "1건 이상"이라 수치는 멀쩡했지만, 스트림을 읽는 유일한 이유("이 유저가 무엇을 했나"를
+        //    시간순으로 본다)가 갉힌다. `recordOnce` 가 **유저당 1행**으로 좁힌다.
+        //    ⚠️ 게이트는 `users.tutorial_done` 플래그가 아니라 **스트림에 그 행이 있는가**다 —
+        //    근거는 recordOnce javadoc(첫 기록이 실패하면 플래그 방식은 영영 결손된다).
+        events.recordOnce(online.hmb.events.BusinessEvent.TUTORIAL_COMPLETE, userId,
                 () -> java.util.Map.of("grantedDeck", result.deckGranted()));
         if (result.deckGranted()) {
             // 가입 직후 첫 경기가 곧바로 이어지는 경로다 — 덱을 받은 그 순간 A 를 돌려두지 않으면
