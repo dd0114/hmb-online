@@ -178,7 +178,7 @@ public class MatchService {
                            /**
                             * #493 W6-v3 — 이 매치가 <b>튜토리얼 고정 매치</b>인가. true 면 AI 잡·러너를
                             * 타지 않고 미리 구운 로그({@code TutorialMatchAsset})가 적재된다.
-                            * {@code mode} 는 그대로 {@code practice} 다(V43 머리말 참조).
+                            * {@code mode} 는 그대로 {@code practice} 다(V45 머리말 참조).
                             */
                            boolean tutorial) {
     }
@@ -280,7 +280,7 @@ public class MatchService {
      * 덱으로 만든 매치이고(정산·성장이 그 스냅샷을 읽는다), 다른 것은 <b>시뮬 입력</b>뿐이다.
      *
      * <p><b>1회 제한</b>: 이미 FINISHED 인 튜토리얼 매치가 있으면 409. 구운 로그는 언제나 크게 이기므로
-     * 반복 생성이 열려 있으면 승리 보상이 무한 발행된다(V43 머리말). ABANDONED·FAILED 는 사고 회수
+     * 반복 생성이 열려 있으면 승리 보상이 무한 발행된다(V45 머리말). ABANDONED·FAILED 는 사고 회수
      * 경로라 재시도를 막지 않는다.
      */
     public MatchRow createMatch(String userId, String botId, JsonNode teamTactics, boolean tutorial) {
@@ -333,7 +333,7 @@ public class MatchService {
      * 튜토리얼 고정 매치를 만들 수 있는 상태인가 (#493 W6-v3).
      *
      * <p>두 가지를 본다: ①자산이 실려 있나(없으면 이 기능 자체가 없는 배포다 — 400 으로 끊고 화면이
-     * 일반 연습으로 폴백하게 한다) ②이미 <b>끝낸</b> 튜토리얼 매치가 있나(파밍 차단, V43 머리말).
+     * 일반 연습으로 폴백하게 한다) ②이미 <b>끝낸</b> 튜토리얼 매치가 있나(파밍 차단, V45 머리말).
      */
     private void requireTutorialAvailable(String userId) {
         if (!tutorialAsset.available()) {

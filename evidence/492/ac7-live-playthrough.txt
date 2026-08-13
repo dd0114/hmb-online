@@ -1,0 +1,102 @@
+# AC7 라이브 관측 증빙 — 실제 플레이로 7종 발화 (2026-08-10 UTC)
+
+대상: https://peninsula-rules-postcard-telephony.trycloudflare.com (백엔드) / https://hmb-online.pages.dev/event-board (화면)
+계정: ac7live6376891 (일회용, local provider) · 조회 계정: hmbadmin (비번 마스킹 ***)
+
+## 플레이 트레이스 — 요청 경로 · HTTP 코드 · 응답 핵심 필드
+(전부 라이브 백엔드 직접 호출. 비번/토큰 전문은 기록하지 않는다 = ***)
+
+  [가입]
+  POST /api/auth/register            400  VALIDATION_ERROR "닉네임은 2~16자…"  (nickname 17자 — 재시도)
+  POST /api/auth/register            200  user={id:01KZP5RB3NVV4CC048VXTGM60G, nickname:ac7live6376891} isNew=true token=***
+                                          → user_signup
+  GET  /api/me                       200  tutorialDone=false wallet={points:3000, gems:12000}
+  GET  /api/me/starter-grant         200  granted=true player=P182(오시야스, GK, LEGEND)
+
+  [튜토리얼]
+  POST /api/me/tutorial-complete     200  tutorialDone=true deckGranted=true deck=01KZP5RH484DFYF4MVGM2CYVJG(4-3-3)
+                                          → tutorial_complete
+  GET  /api/me                       200  tutorialDone=true
+
+  [덱 저장]  ※ 튜토리얼 지급덱은 deck_save 를 남기지 않는다(훅이 DeckController) — 명시적 PUT 필요
+  GET  /api/deck                     200  formation=4-3-3 teamPrompt=null slots=15
+  PUT  /api/deck                     200  teamPrompt="AC7 라이브 검증용 팀 지시" slots=15
+                                          → deck_save (created=false, slotCount=15)
+
+  [뽑기]  ※ 신규 지급 젬 12000 안에서 single 1회(300)
+  POST /api/shop/gacha {"kind":"single"}   200  results=[P120 알빈 로카스/BRONZE, isNew] wallet.gems=11700
+                                          → gacha_pull
+
+  [연습매치]  matchId=01KZP5SS62FRFQ2AMWTNTM1ZAJ  bot=BOT_DEF(블루 월)
+  POST /api/matches {}               201  state=BRIEFING       → match_start (mode=practice)
+  POST /api/matches/{id}/kickoff     202  state=GEN1 → FIRST_HALF (AI 인풋 생성 후 자동 전이)
+  POST /api/matches/{id}/skip {"phase":"FIRST_HALF"}   200  state=HALFTIME
+  POST /api/matches/{id}/resume      202  state=SECOND_HALF
+  POST /api/matches/{id}/skip {"phase":"SECOND_HALF"}  200  state=FINISHED
+                                          → match_finish (mode=practice)
+  GET  /api/matches/{id}/result      200  5:2 WIN pointsAwarded=500 shots=33:14
+
+  [리그]
+  POST /api/league/start             200  season=01KZP5X3PYP19YCBD4HZEC4JEZ seasonNo=1 division=10 teams=10 fixtures=90
+                                          → league_season_start
+  POST /api/league/next-match        201  matchId=01KZP5XFXF4DF27JEANK8SK95Y round=1 state=BRIEFING
+                                          → match_start (mode=league, LEAGUE-D10-T9)
+  POST kickoff/skip/resume/skip      202/200/202/200  → FINISHED, 3:0 WIN
+                                          → match_finish (mode=league)
+
+  [원정]  ※ 상대는 서버가 고른다(지목 불가). 후보 2명 전원 rating=0 인 테스트 계정, remainingToday=10
+  GET  /api/away/candidates          200  candidates=[d202p7393, 리허설kbnq] streak=0 seasonNo=2
+  POST /api/away/matches {}          201  matchId=01KZP5YC483MSCWQ5PYNR3CKK0 state=BRIEFING
+                                          → match_start (mode=away, defenderId=01KYQ492PR3SC76CCC79VWQZYC)
+  POST kickoff/skip/resume/skip      202/200/202/200  → FINISHED, 0:2 LOSS
+                                          → match_finish (mode=away)
+
+  [관측]  ※ admin(hmbadmin/local, 비번 ***) Bearer 토큰으로 조회
+  GET  /api/admin/events?limit=100   200  total=14, items=14
+  GET  /api/admin/events/funnel      200  users=4 (아래)
+
+## 이벤트 타입별 건수 (전체 스트림)
+total=14
+  deck_save: 2
+  gacha_pull: 1
+  league_season_start: 1
+  match_finish: 3
+  match_start: 3
+  tutorial_complete: 2
+  user_signup: 2
+
+## ac7live6376891 스트림 (시간 오름차순)
+  2026-08-10T15:48:11.523452550Z  user_signup          mode=None      nickname=ac7live6376891 provider=local
+  2026-08-10T15:48:17.680157928Z  tutorial_complete    mode=None      grantedDeck=True
+  2026-08-10T15:48:25.130416293Z  deck_save            mode=None      created=False source=deck slotCount=15 formation=4-3-3
+  2026-08-10T15:48:31.481590212Z  gacha_pull           mode=None      grades=['BRONZE'] currency=GEM count=1 kind=single cost=300
+  2026-08-10T15:48:58.707389044Z  match_start          mode=practice  matchId=01KZP5SS62FRFQ2AMWTNTM1ZAJ botId=BOT_DEF
+  2026-08-10T15:50:28.536837044Z  match_finish         mode=practice  result=WIN matchId=01KZP5SS62FRFQ2AMWTNTM1ZAJ goalsFor=5 pointsAwarded=500 goalsAgainst=2
+  2026-08-10T15:50:47.797309762Z  league_season_start  mode=None      division=10 seasonId=01KZP5X3PYP19YCBD4HZEC4JEZ seasonNo=1
+  2026-08-10T15:51:00.282427503Z  match_start          mode=league    matchId=01KZP5XFXF4DF27JEANK8SK95Y botId=LEAGUE-D10-T9 leagueFixtureId=01KZP5X3QD6WMJV6DMC
+  2026-08-10T15:51:11.861996467Z  match_finish         mode=league    result=WIN matchId=01KZP5XFXF4DF27JEANK8SK95Y goalsFor=3 pointsAwarded=5000 goalsAgainst=0
+  2026-08-10T15:51:29.172056170Z  match_start          mode=away      matchId=01KZP5YC483MSCWQ5PYNR3CKK0 botId=GHOST_01KYQ492PR3SC76CCC79VWQZYC_1b1ac7263fcf rev
+  2026-08-10T15:52:03.383181130Z  match_finish         mode=away      result=LOSS matchId=01KZP5YC483MSCWQ5PYNR3CKK0 goalsFor=0 pointsAwarded=1000 goalsAgainst=
+
+## 퍼널 (D6 1급 지표 — 유저별 도달 단계)
+  ac7live6376891       events= 11 matchesFinished=3 lastSeenAt=2026-08-10T15:52:03.383181130Z
+    reached: {"signup": true, "tutorial": true, "deck": true, "gacha": true, "practice": true, "league": true, "away": true}
+  hmbadmin             events=  1 matchesFinished=0 lastSeenAt=2026-08-10T15:11:09.581544218Z
+    reached: {"signup": false, "tutorial": true, "deck": false, "gacha": false, "practice": false, "league": false, "away": false}
+  deploy-smoke         events=  1 matchesFinished=0 lastSeenAt=2026-08-10T07:53:21.984950295Z
+    reached: {"signup": false, "tutorial": false, "deck": true, "gacha": false, "practice": false, "league": false, "away": false}
+  ev492p21902          events=  1 matchesFinished=0 lastSeenAt=2026-08-10T07:48:46.049848417Z
+    reached: {"signup": true, "tutorial": false, "deck": false, "gacha": false, "practice": false, "league": false, "away": false}
+
+## ac7live6376891 단독 타입별 건수 (7종 전부 발화)
+  user_signup          1
+  tutorial_complete    1
+  deck_save            1
+  gacha_pull           1
+  match_start          3
+  match_finish         3
+  league_season_start  1
+  (match_start 3 = practice/league/away · match_finish 3 = 동일 3경기)
+
+## /api/admin/events/funnel — 해당 유저 행 원문 (generatedAt=2026-08-10T15:52:23.857187209Z)
+{"userId": "01KZP5RB3NVV4CC048VXTGM60G", "nickname": "ac7live6376891", "firstSeenAt": "2026-08-10T15:48:11.523452550Z", "lastSeenAt": "2026-08-10T15:52:03.383181130Z", "reached": {"signup": true, "tutorial": true, "deck": true, "gacha": true, "practice": true, "league": true, "away": true}, "matchesFinished": 3, "eventCount": 11}

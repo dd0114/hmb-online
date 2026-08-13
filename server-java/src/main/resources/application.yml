@@ -154,6 +154,15 @@ hmb:
         # 즉시 200 재생/409 로 수렴한다(재시도 대상이 아니다).
         max-attempts: 8              # 최초 시도 포함 총 시도 횟수. 운영 도구라 동시 생성 폭은 작다
         backoff-ms: 20               # 회차 비례 선형 백오프(20/40/60…ms)
+  events:                            # #492 비즈니스 이벤트 보드 — 수치 하드코딩 금지(전부 여기).
+    # 롤백 스위치. false = 계측 전량 정지(훅은 남아 있지만 아무 것도 쓰지 않고 사전 조회도 안 돈다).
+    # 계측이 문제를 일으키면 재배포 없이(env HMB_EVENTS_ENABLED=false) 끄고 #492 이전 동작으로 돌아간다.
+    enabled: true
+    page-size-default: 50            # GET /api/admin/events 기본 페이지 크기 (admin.catalog 와 같은 규약)
+    page-size-max: 200               # 상한 — 운영 도구라도 전량 덤프는 막는다
+    # 퍼널은 파라미터가 없는 계약이라(D6 동결) 상한을 서버가 쥔다. 최근 움직인 순으로 자르므로
+    # 심사 규모에서는 전원이 들어온다. 유저가 이 수를 넘기면 화면이 "최근 N명"이 된다.
+    funnel-max-users: 500
   deck:
     bench-max: 7
     player-prompt-max-chars: 500

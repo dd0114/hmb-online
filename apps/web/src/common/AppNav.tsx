@@ -41,10 +41,23 @@ export const NAV_ITEMS: readonly NavItem[] = [
 
 /** 운영자 전용 항목 (PRD-v4 §C) — admin 계정에만 붙인다. 비admin 에겐 DOM 에도 없다. */
 export const ADMIN_NAV_ITEM: NavItem = { key: "admin", label: "운영", icon: "🛠", to: "/admin" };
+/**
+ * 이벤트 보드(#492) — 같은 admin 전용 항목. 운영 탭 안의 서브탭이 아니라 **별도 진입점**인 것은
+ * 이 화면의 독자가 다르기 때문이다(운영 액션이 아니라 "심사위원이 어디까지 갔나"를 보는 자리).
+ *
+ * ⚠️ 라벨은 3글자를 넘기지 마라 — 모바일 하단탭은 `flex:1 1 0` 균등분할이고 항목이 8칸이면
+ * 390px 에서 칸당 ~48px 다. 라벨이 `nowrap` 이라 길어지면 그대로 가로 오버플로가 된다.
+ */
+export const EVENTS_NAV_ITEM: NavItem = {
+  key: "events",
+  label: "이벤트",
+  icon: "📊",
+  to: "/event-board",
+};
 
-/** 표시할 항목 = 기본 6개 + (admin 이면) 운영. */
+/** 표시할 항목 = 기본 6개 + (admin 이면) 운영 · 이벤트. */
 export function navItemsFor(isAdmin: boolean): readonly NavItem[] {
-  return isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
+  return isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM, EVENTS_NAV_ITEM] : NAV_ITEMS;
 }
 
 /**

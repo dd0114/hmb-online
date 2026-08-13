@@ -23,6 +23,7 @@ import { MatchPage } from "./match/MatchPage";
 import type { MatchEndContinuation } from "./match/flow/match-flow";
 import { MatchRewardFlow } from "./rewards/MatchRewardFlow";
 import { AdminPage } from "./admin/AdminPage";
+import { EventBoardPage } from "./eventboard/EventBoardPage";
 import { AdminFlagProvider } from "./admin/AdminFlagProvider";
 import { StagePreview } from "./design/StagePreview";
 import { CardArtPreview } from "./design/CardArtPreview";
@@ -218,6 +219,20 @@ function AppRoutes() {
             <RequireAuth>
               <RequireAdmin>
                 <AdminPage />
+              </RequireAdmin>
+            </RequireAuth>
+          }
+        />
+        {/* 이벤트 보드(#492) — 운영자 전용 관측 화면. 가드는 `/admin` 과 **같은 두 층**이다:
+            RequireAuth(미로그인→/login) → RequireAdmin(비admin→/home) → 서버 403 이면 페이지가
+            배너 후 /home. ⚠️ `MatchLockGate` 로 감싸지 않는다(= `LOCKED_ROUTES` 미포함) —
+            `/admin` 과 같은 이유로, 운영 관측은 경기 진행 여부와 무관하게 열려야 한다. */}
+        <Route
+          path="/event-board"
+          element={
+            <RequireAuth>
+              <RequireAdmin>
+                <EventBoardPage />
               </RequireAdmin>
             </RequireAuth>
           }

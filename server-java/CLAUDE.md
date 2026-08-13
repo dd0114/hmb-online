@@ -1060,12 +1060,12 @@ gain 이 큰 쪽은 **낮은 스탯**이라 화면이 유도하는 선택(gain �
   역할 축(shooting·tackling…)과 겹치지 않게 고른 이유: 겹치면 `wResult` 가 `wPosition` 의
   그림자가 되어 **운영자가 따로 조정할 수 없는 노브**가 된다.
 
-## 온레일 튜토리얼 — 쿠폰 · 스타터 재료 · 고정 매치 (#493 W6-v3, V42·V43)
+## 온레일 튜토리얼 — 쿠폰 · 스타터 재료 · 고정 매치 (#493 W6-v3, V44·V45 — #492 V42 와 겹쳐 개번)
 
 hero 리플랜 v3: *"거의 정해진화면에서 유저가 선택할 여유가 없이 강제해야돼. 게임도 이겨야해. …
 선수도 보유 선수말고 그냥 튜토리얼선수로. 그래야 시드값이 안바뀌어. … 모든유저가 같은 결과를 보는거야."*
 
-### 무료 쿠폰(V42) = **1회성 권리 원장**. 지갑도 재화 원장도 아니다
+### 무료 쿠폰(V44) = **1회성 권리 원장**. 지갑도 재화 원장도 아니다
 
 - V33/V40 의 *"지급 표를 새로 만들지 마라"* 규율과 **충돌하지 않는다** — 그 규율은 **재화**에 관한
   것이고, 쿠폰이 나타내는 것은 잔액이 아니라 *"이번 한 번은 값을 안 낸다"* 는 권리다. 쿠폰이 소비되면
@@ -1100,7 +1100,7 @@ hero 리플랜 v3: *"거의 정해진화면에서 유저가 선택할 여유가 
 - 튜토리얼 순서가 계수에 걸려 있다: **승급(2★) → 잠재 해금 → 강화(다이스)**. 다이스는 `star < 2` 면
   `POTENTIAL_LOCKED` 다.
 
-### 튜토리얼 고정 매치(V43 `matches.is_tutorial`) — **미리 구운 로그**를 적재한다
+### 튜토리얼 고정 매치(V45 `matches.is_tutorial`) — **미리 구운 로그**를 적재한다
 
 - **`mode` 값을 새로 만들지 않았다.** `mode` 는 보상 곡선·모드별 전적·리그/원정 분기가 전부 읽는 축이라
   값을 더하면 그 소비자들이 "모르는 모드"를 만나 조용히 폴백한다(= 보상 0 · 전적 누락).
@@ -1201,6 +1201,75 @@ web 이 고정 카드 id 를 *"대기 중인 3지선다의 주인"* 으로 **추
 문구 계약 7개가 red 였다. 그 계약들(값을 내면 차감된다 · 등급은 확률 롤이다)은 **쿠폰을 다 쓴 뒤에도
 참**이라, 임계를 흔들지 않고 **출발 상태**를 고정했다 — `TestDbSupport.disableTutorialStarter`
 (`disableMatchClock` 과 같은 규율: *"이 테스트의 주제는 튜토리얼이 아니다"*).
+## 비즈니스 이벤트 보드 (#492, V42)
+
+계약 SoT = **이슈 #492 §Plan 확정 코멘트**(`docs/**` 는 이 모듈 밖 → openapi 편입은 매니저 경유,
+`/api/growth/*`·`/api/away/*` 와 같은 상태). 목적은 종류별 총량이 아니라 **유저별 도달 지점**이다
+(hero: *"심사위원들이 게임을 어디까지 플레이해봤나"*) — 그래서 1급 화면이 `/funnel` 이다.
+
+- **이벤트 7종 · 매치는 쪼개지 않는다.** `user_signup` · `tutorial_complete` · `deck_save` ·
+  `gacha_pull` · `match_start` · `match_finish` · `league_season_start`. 연습·리그·원정은 전부
+  `match_start`/`match_finish` + `props.mode` 다 — 별도 이벤트로 쪼개면 원정 1건이 두 번 세어져
+  총량과 퍼널이 서로 다른 말을 한다. 열거의 SoT = `events/BusinessEvent`(DB CHECK 없음).
+
+- 🚨 **"best effort" 는 try/catch 로 성립하지 않는다.** 이 리포엔 `@Transactional` 이 **0개**고
+  트랜잭션은 `common/TxRunner`(TransactionTemplate, **PROPAGATION_REQUIRED**)로 명시적이다.
+  `txRunner.run(...)` 람다 **안**에서 이벤트 INSERT 가 실패하면 예외를 삼켜도 **바깥 트랜잭션이
+  같이 롤백**되고 SQLite 트랜잭션이 오염된다 = 계측이 가입·저장·뽑기·정산을 되돌린다.
+  → 무영향은 **훅 위치라는 구조**로 보장한다:
+  - **훅은 전부 비-tx 경계**다. 그래서 대부분 **컨트롤러**에 있다 — 서비스에 두면 안 되는 이유가
+    경로마다 있다: `UserOnboardingService.createUser`·`OnboardingService.complete`·
+    `GachaService.pull`·`LeagueService.startSeason/nextMatch` 는 **메서드 전체가 tx** 이고,
+    `DeckService.replaceDeck` 은 튜토리얼 덱 지급의 tx 안에서도 불리며,
+    `MatchService.createAwayMatch` 는 `AwayService.startRevenge` 의 tx(예약+생성 원자성)에 합류한다.
+  - **예외는 매치 종료 하나** — 결과·득점·지급 포인트가 tx 안에서만 확정되므로
+    `MatchOrchestrator.finishMatch` 가 `FinishOutcome` sink 로 값을 넘기고,
+    `settleFinishedIfDue` 가 **커밋 후**에 기록한다. 이 훅을 람다 안으로 옮기면 보상·리그 픽스처·
+    레이팅·성장이 통째로 롤백된다.
+  - 3층 방어 = ①훅 위치(소스 스캔 `BusinessEventHookPlacementTest`) ②런타임 게이트(recorder 가
+    `isActualTransactionActive()` 면 **쓰지 않고 warn**) ③예외 봉인(`record`·`probe` 가 전부 삼킨다).
+    ②가 발화하면 그 이벤트는 **영영 안 남는다** — 그래서 ①이 1차이고 ②는 백스톱이다.
+  - **props 조립도 봉인 안**이다(`record(event, userId, Supplier<Map>)`). 호출부가 값 하나
+    조회하다 던지면 그것만으로 본 동작이 깨진다. 본 동작 **전**에만 알 수 있는 값
+    (덱이 새로 생겼나 · 시즌이 새로 생겼나)은 `recorder.probe(read, fallback)` 로 감싼다.
+
+- **재진입·재사용 분기는 이벤트가 아니다.** `POST /api/league/start` 의 재진입(이미 ACTIVE 인 시즌
+  반환)과 `POST /api/league/next-match` 의 픽스처 재사용(진행 중 매치로 재입장)은 0건이어야 한다 —
+  세면 "몇 판 시작했나"가 새로고침 횟수를 센다. 두 멱등 메서드는 응답만으로 구분이 안 되므로
+  호출 **전** 상태를 읽는다(`LeagueService.activeSeasonIdOrNull` ·
+  `activeNextFixtureMatchIdOrNull` — 후자의 살아있음 판정은 `MatchService.ACTIVE_STATES` 로,
+  `FINISHED 아님`이 아니다. #217 이 그 형태로 물렸다).
+  ⚠️ 반대로 `POST /api/me/tutorial-complete` 는 **부를 때마다 1행**을 남긴다(멱등이지만 "완료를
+  눌렀다"가 이벤트다). 퍼널의 tutorial 칸은 "1건 이상"이라 영향받지 않는다.
+
+- **admin API 2종** — `GET /api/admin/events?event=&userId=&mode=&limit=&offset=`(props 는 **파싱된
+  객체**로 · 미지 `event` 400 · limit 기본 50/최대 200 = `hmb.events.*` config) ·
+  `GET /api/admin/events/funnel`(유저 1행 × 단계 도달 boolean, 정렬 `lastSeenAt DESC`).
+  `mode` 필터와 퍼널의 practice/league/away 는 **`json_extract(props_json,'$.mode')`** 다(sqlite-jdbc
+  JSON1). 기간 필터(`from`/`to`)는 스코프에서 **뺐다**(hero 승인안 B 축소) — 넣으려면 web 과 함께
+  계약을 다시 얼려야 한다. 퍼널은 파라미터가 없어 상한을 서버가 쥔다(`funnel-max-users` 500).
+  ⚠️ **쓰기(`BusinessEventRecorder`)와 조회(`BusinessEventQueryService`)는 일부러 별개 빈**이다 —
+  조회 빈만 `AdminRouteGuard.ADMIN_ONLY_BEANS` 에 있고, 합치면 훅이 붙은 덱·상점·매치·리그·원정
+  컨트롤러가 전부 게이트 위반이 되어 **부팅이 죽는다**.
+  새 admin 컨트롤러 필수 3등록(`AdminErrorHandler.assignableTypes` · `ADMIN_ONLY_BEANS` ·
+  `FlywayMigrationTest` 인벤토리) 완료. 401/403 은 `AdminGateTest` 가 자동 커버한다.
+
+- **롤백 스위치** = `hmb.events.enabled: false`(env `HMB_EVENTS_ENABLED`). 훅은 남고 아무 것도 쓰지
+  않으며 `probe` 의 사전 조회도 돌지 않는다(오버헤드 0).
+- **V42 는 CHECK·FK 를 일부러 안 건다** — 둘 다 "기록 실패 = 본 동작 실패"가 되는 경로다. append-only.
+- 실측 지연(콜드): 훅 1건 **0.12 ms** vs `POST /api/matches` 7.9~9.2 ms · 정산 5.2~5.3 ms
+  → **시작 +1.3~1.6% · 종료 +2.3~2.4%**(계약 = `BusinessEventFlowTest` 가 매 실행 로그로 남긴다).
+- ✅ **롤백 경로(`hmb.match.clock.enabled=false`)도 `match_finish` 를 남긴다.** 이 경로는 후반 진입이
+  곧 종료라 정산이 `simulateAndStore` 의 **tx 안**에서 끝난다 — 한때 그 자리에 커밋 후 훅이 없어
+  **시계를 끄면 이 이벤트만 조용히 사라졌다**(퍼널이 `match_start` 까지만 찍힌 유저를 "경기를 끝내지
+  못한 사람"으로 그렸다). 훅은 예고대로 `finishMatch` **안**이 아니라 **호출부의 커밋 경계**에 있다:
+  `simulateAndStore` 가 `FinishOutcome[] finishSink` 를 `enterSecondHalf` 로 내려보내고,
+  `txRunner.run(...)` 이 **반환된 뒤** 기록한다(시계가 켜져 있으면 sink 가 비어 no-op).
+  props 조립은 `recordMatchFinish` **한 곳**이 소유한다 — 갈라 두면 같은 이벤트인데 롤백 경로에서만
+  `mode` 필터·퍼널이 다르게 동작한다.
+  ⚠️ 계약 = `MatchClockDisabledTest.matchFinishIsRecordedEvenWhenTheClockIsDisabled`
+  (**건수 1건 + props 값**까지 본다). **변이체 킬 확인** — sink 를 `null` 로 되돌리면 죽는다.
+  이 갭이 오래 살아남은 이유는 시계를 끈 채 **종료까지 태우는 계약이 없었기 때문**이다.
 
 ## 규칙
 - 테스트 먼저(전이표·검증 매트릭스), `./gradlew test` green이 웨이브 완료 조건. JPA 금지(JdbcClient).

@@ -30,16 +30,36 @@ public class AwayController {
     private final MatchLockService lockService;
     private final AwaySeasonService seasonService;
     private final online.hmb.match.MatchOrchestrator orchestrator;
+    private final online.hmb.events.BusinessEventRecorder events;
 
     public AwayController(AwayService awayService, MatchService matchService,
                           MatchLockService lockService,
                           AwaySeasonService seasonService,
-                          online.hmb.match.MatchOrchestrator orchestrator) {
+                          online.hmb.match.MatchOrchestrator orchestrator,
+                          online.hmb.events.BusinessEventRecorder events) {
         this.awayService = awayService;
         this.matchService = matchService;
         this.lockService = lockService;
         this.seasonService = seasonService;
         this.orchestrator = orchestrator;
+        this.events = events;
+    }
+
+    /**
+     * 원정·복수 매치 생성 이벤트(#492). <b>연습·리그와 같은 {@code match_start}</b> 이고
+     * {@code props.mode='away'} 가 가른다 — 별도 이벤트로 쪼개면 원정 1건이 away 이벤트와 match
+     * 이벤트로 <b>두 번</b> 세어져 총량과 퍼널이 서로 다른 말을 한다(D1).
+     *
+     * <p>수비자 id 는 매치가 아니라 <b>도전장</b>이 갖고 있다({@code matches.user_id} 는 공격자다).
+     * 그 조회가 여기서 던져도 원정은 이미 성공했다 — supplier 안이라 recorder 가 삼킨다.
+     */
+    private void recordAwayStart(String userId, MatchService.MatchRow row, boolean revenge) {
+        events.record(online.hmb.events.BusinessEvent.MATCH_START, userId, () -> java.util.Map.of(
+                "mode", online.hmb.events.BusinessEvent.MODE_AWAY,
+                "matchId", row.id(),
+                "botId", row.botId(),
+                "defenderId", awayService.defenderOf(row.id()).orElse(""),
+                "revenge", revenge));
     }
 
     /**
@@ -65,6 +85,10 @@ public class AwayController {
         // 전부 "그 id 의 A 행이 DB 에 아예 없음"이었다. 수비자가 A 를 갖고 있으면 AC1(키 정렬)이
         // 그걸 재사용하고, 없으면(구 규약 유저) 여기서 킥오프 임계경로 밖에 만들기 시작한다.
         orchestrator.prefetchBaseInputs(row.id());
+        // #492: 훅이 **컨트롤러**인 이유 = AwayService.startRevenge 는 예약+매치생성을 한 트랜잭션에
+        // 묶고(PROPAGATION_REQUIRED 로 createAwayMatch 가 합류한다) 그 안에 기록을 넣으면 실패가
+        // 원정을 롤백시킨다. 두 경로의 훅을 같은 층에 둔다.
+        recordAwayStart(userId, row, false);
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 
@@ -112,8 +136,9 @@ public class AwayController {
             @RequestAttribute("userId") String userId,
             @PathVariable("reportId") String reportId) {
         lockService.assertCanCreateMatch(userId);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(matchService.toDetail(awayService.startRevenge(userId, reportId)));
+        MatchService.MatchRow row = awayService.startRevenge(userId, reportId);
+        recordAwayStart(userId, row, true);
+        return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 
     /**

@@ -1,0 +1,203 @@
+# #492 server-java 최종 게이트 — COLD (`./gradlew test --rerun-tasks`)
+# 2026-08-13T11:41 · feat/492-event-board · 측정 트리 HEAD=cf74d312
+# (origin/main 리베이스 후 콜드 재실행 — 수치 동일. 리베이스가 바꾼 것은 docs/deploy-log.md 4줄뿐이다.)
+TOTAL classes=178 tests=1216 skipped=1 failures=0 errors=0
+RESULT BUILD SUCCESSFUL in 2m 36s
+
+## ⚠️ 이 수치가 무엇에 대한 것인가 (읽는 법)
+#
+# 측정 대상 = `server-java/src/**`(main + test). **문서·증빙 파일은 이 수치를 바꾸지 않는다**
+# — `evidence/**` · `docs/**` · `*.md` 만 바꾼 커밋 뒤에도 위 숫자는 그대로다.
+#
+# 그래서 `HEAD=` 가 리포의 현재 HEAD 보다 **뒤에 있어도 스테일이 아니다**(문서 커밋이 그 사이에
+# 있는 경우). 스테일 판정은 커밋 해시 일치가 아니라 아래 명령으로 한다:
+#
+#     git diff --stat cf74d312..HEAD -- server-java/src
+#
+# 출력이 비어 있으면 이 수치는 현재 코드의 것이다. 비어 있지 않으면 콜드 재실행이 필요하다.
+# (AC7 패널 5R 증빙무결성 렌즈 — 헤더 갱신만으로는 다음 docs 커밋에서 같은 지적이 재발한다.)
+#
+# ⚠️ 리베이스하면 이 해시가 끊긴다(커밋이 재작성된다) — 그때는 리베이스 후의 대응 커밋으로
+#    바꿔 적고, 위 명령이 다시 빈 출력을 내는지 확인해라. 2026-08-13 origin/main 리베이스에서
+#    bf549b72 → cf74d312 로 갱신했고 코드 트리는 리베이스 전후 바이트 동일이다
+#    (`git diff --stat 5bf04c6d HEAD -- server-java/src apps/web` 빈 출력으로 확인).
+
+## 전 클래스
+  online.hmb.AdminAccessSingleDecisionPointTest           tests=3 skipped=0 failures=0 errors=0 time=0.198s
+  online.hmb.AdminBootstrapTest                           tests=2 skipped=0 failures=0 errors=0 time=2.488s
+  online.hmb.AdminBootstrapTest$WhenSet                   tests=3 skipped=0 failures=0 errors=0 time=0.177s
+  online.hmb.AdminBootstrapTest$WhenUnset                 tests=1 skipped=0 failures=0 errors=0 time=0.025s
+  online.hmb.AdminEconomyOpsTest                          tests=7 skipped=0 failures=0 errors=0 time=0.254s
+  online.hmb.AdminEngineConfigTest                        tests=13 skipped=0 failures=0 errors=0 time=0.211s
+  online.hmb.AdminEventsApiTest                           tests=4 skipped=0 failures=0 errors=0 time=0.17s
+  online.hmb.AdminGateTest                                tests=9 skipped=0 failures=0 errors=0 time=0.451s
+  online.hmb.AdminGrowthConfigTest                        tests=12 skipped=0 failures=0 errors=0 time=0.727s
+  online.hmb.AdminMailSendTest                            tests=17 skipped=0 failures=0 errors=0 time=1.614s
+  online.hmb.AdminNoticeOpsTest                           tests=20 skipped=0 failures=0 errors=0 time=0.491s
+  online.hmb.AdminPointsTest                              tests=11 skipped=0 failures=0 errors=0 time=0.524s
+  online.hmb.AdminUnitActiveFilterTest                    tests=8 skipped=0 failures=0 errors=0 time=0.695s
+  online.hmb.AdminUnitCatalogTest                         tests=21 skipped=0 failures=0 errors=0 time=0.466s
+  online.hmb.AdminUnitContaminatedIdemTest                tests=1 skipped=0 failures=0 errors=0 time=0.031s
+  online.hmb.AdminUnitCreateConcurrencyTest               tests=2 skipped=0 failures=0 errors=0 time=0.069s
+  online.hmb.AdminUnitExportRoundTripTest                 tests=1 skipped=0 failures=0 errors=0 time=1.364s
+  online.hmb.AdminUnitPurgeTest                           tests=10 skipped=0 failures=0 errors=0 time=0.197s
+  online.hmb.AdminUsersApiTest                            tests=7 skipped=0 failures=0 errors=0 time=0.125s
+  online.hmb.AiJobLeaseRecoveryTest                       tests=3 skipped=0 failures=0 errors=0 time=0.272s
+  online.hmb.AiJobSupersedeTxTest                         tests=3 skipped=0 failures=0 errors=0 time=0.089s
+  online.hmb.AiModeConfigTest                             tests=7 skipped=0 failures=0 errors=0 time=0.085s
+  online.hmb.ApiRouteNotFoundTest                         tests=3 skipped=0 failures=0 errors=0 time=0.045s
+  online.hmb.AuthAndModesTest                             tests=6 skipped=0 failures=0 errors=0 time=0.053s
+  online.hmb.AuthProviderSwapTest                         tests=1 skipped=0 failures=0 errors=0 time=0.014s
+  online.hmb.AwayBasePrefetchTest                         tests=2 skipped=0 failures=0 errors=0 time=0.173s
+  online.hmb.AwayEligibilityTest                          tests=2 skipped=0 failures=0 errors=0 time=0.077s
+  online.hmb.AwayGhostBaseKeyTest                         tests=4 skipped=0 failures=0 errors=0 time=0.179s
+  online.hmb.AwayLoopFailurePropagationTest               tests=1 skipped=0 failures=0 errors=0 time=0.051s
+  online.hmb.AwayNoEligibleOpponentTest                   tests=1 skipped=0 failures=0 errors=0 time=0.073s
+  online.hmb.AwayRaidTest                                 tests=24 skipped=0 failures=0 errors=0 time=1.418s
+  online.hmb.AwayRevengeTest                              tests=25 skipped=0 failures=0 errors=0 time=0.673s
+  online.hmb.AwayV2Test                                   tests=24 skipped=0 failures=0 errors=0 time=0.737s
+  online.hmb.BaseContextKeyReproTest                      tests=2 skipped=0 failures=0 errors=0 time=0.001s
+  online.hmb.BaseKeyTacticsSplitTest                      tests=6 skipped=0 failures=0 errors=0 time=0.171s
+  online.hmb.BusinessEventFlowTest                        tests=4 skipped=0 failures=0 errors=0 time=0.426s
+  online.hmb.BusinessEventHookPlacementTest               tests=3 skipped=0 failures=0 errors=0 time=0.215s
+  online.hmb.BusinessEventNoImpactTest                    tests=3 skipped=0 failures=0 errors=0 time=0.119s
+  online.hmb.BusinessEventPropsResilienceTest             tests=3 skipped=0 failures=0 errors=0 time=0.786s
+  online.hmb.BusinessEventSettlementRollbackTest          tests=2 skipped=0 failures=0 errors=0 time=0.063s
+  online.hmb.CatalogCreateIdemBackstopMigrationTest       tests=1 skipped=0 failures=0 errors=0 time=0.315s
+  online.hmb.CharBundleApiTest                            tests=20 skipped=0 failures=0 errors=0 time=0.456s
+  online.hmb.ConditionDailyRollTest                       tests=8 skipped=0 failures=0 errors=0 time=0.002s
+  online.hmb.ConditionsTodayApiTest                       tests=4 skipped=0 failures=0 errors=0 time=0.055s
+  online.hmb.CorsDefaultConfigTest                        tests=7 skipped=0 failures=0 errors=0 time=0.042s
+  online.hmb.CorsEnvConfigTest                            tests=3 skipped=0 failures=0 errors=0 time=0.009s
+  online.hmb.CurrencyConfigApiTest                        tests=8 skipped=0 failures=0 errors=0 time=0.102s
+  online.hmb.CurrencyMetaTest                             tests=10 skipped=0 failures=0 errors=0 time=0.062s
+  online.hmb.DataVersionParityTest                        tests=4 skipped=0 failures=0 errors=0 time=0.007s
+  online.hmb.DeckApiTest                                  tests=15 skipped=0 failures=0 errors=0 time=0.116s
+  online.hmb.DeckPrewarmDisabledTest                      tests=2 skipped=0 failures=0 errors=0 time=0.019s
+  online.hmb.DeckPrewarmTest                              tests=10 skipped=0 failures=0 errors=0 time=0.161s
+  online.hmb.DeckReadEnsureWarmTest                       tests=5 skipped=0 failures=0 errors=0 time=0.086s
+  online.hmb.DeckRequiredCodeTest                         tests=4 skipped=0 failures=0 errors=0 time=0.061s
+  online.hmb.DeckTeamPromptTest                           tests=8 skipped=0 failures=0 errors=0 time=0.282s
+  online.hmb.DiceBurnMigrationTest                        tests=2 skipped=0 failures=0 errors=0 time=0.271s
+  online.hmb.EconomyLegacyFallbackTest                    tests=13 skipped=0 failures=0 errors=0 time=0.015s
+  online.hmb.EligibilityDisabledTest                      tests=2 skipped=0 failures=0 errors=0 time=0.022s
+  online.hmb.EngineConfigSnapshotTest                     tests=12 skipped=0 failures=0 errors=0 time=0.619s
+  online.hmb.FirstHalfPreResolveTest                      tests=7 skipped=0 failures=0 errors=0 time=0.467s
+  online.hmb.FlywayGrowthMigrationsTest                   tests=3 skipped=0 failures=0 errors=0 time=0.008s
+  online.hmb.FlywayMigrationTest                          tests=6 skipped=0 failures=0 errors=0 time=0.011s
+  online.hmb.FlywayV16EconomyRescaleTest                  tests=2 skipped=0 failures=0 errors=0 time=0.356s
+  online.hmb.FlywayV17LegacyDataMigrationTest             tests=1 skipped=0 failures=0 errors=0 time=0.136s
+  online.hmb.FlywayV19LegacyDataMigrationTest             tests=1 skipped=0 failures=0 errors=0 time=0.205s
+  online.hmb.FlywayV2MigrationTest                        tests=5 skipped=0 failures=0 errors=0 time=0.006s
+  online.hmb.FlywayV32CatalogAuditRebuildTest             tests=6 skipped=0 failures=0 errors=0 time=1.377s
+  online.hmb.FlywayV4MigrationTest                        tests=3 skipped=0 failures=0 errors=0 time=0.004s
+  online.hmb.FlywayV5MigrationTest                        tests=4 skipped=0 failures=0 errors=0 time=0.008s
+  online.hmb.FlywayV8LegacyDataMigrationTest              tests=1 skipped=0 failures=0 errors=0 time=0.296s
+  online.hmb.FlywayV8MigrationTest                        tests=5 skipped=0 failures=0 errors=0 time=0.014s
+  online.hmb.FlywayVersionContinuityTest                  tests=2 skipped=0 failures=0 errors=0 time=0.004s
+  online.hmb.GachaApiTest                                 tests=6 skipped=0 failures=0 errors=0 time=0.101s
+  online.hmb.GrowthApiTest                                tests=14 skipped=0 failures=0 errors=0 time=0.185s
+  online.hmb.GrowthCandidateDeterminismTest               tests=18 skipped=0 failures=0 errors=0 time=0.05s
+  online.hmb.GrowthCardLevelSettlementTest                tests=4 skipped=0 failures=0 errors=0 time=0.114s
+  online.hmb.GrowthChoiceApiTest                          tests=10 skipped=0 failures=0 errors=0 time=0.261s
+  online.hmb.GrowthConsumerGuardTest                      tests=3 skipped=0 failures=0 errors=0 time=2.719s
+  online.hmb.GrowthHardcodeGuardTest                      tests=3 skipped=0 failures=0 errors=0 time=0.021s
+  online.hmb.GrowthLegacyBackfillTest                     tests=7 skipped=0 failures=0 errors=0 time=0.067s
+  online.hmb.GrowthProgressionContractTest                tests=6 skipped=0 failures=0 errors=0 time=0.005s
+  online.hmb.GrowthServiceTest                            tests=33 skipped=0 failures=0 errors=0 time=0.251s
+  online.hmb.GrowthSettlementFlowTest                     tests=1 skipped=0 failures=0 errors=0 time=0.069s
+  online.hmb.GrowthShippedProgressionTest                 tests=3 skipped=0 failures=0 errors=0 time=0.462s
+  online.hmb.GrowthTuningLiveTest                         tests=14 skipped=0 failures=0 errors=0 time=0.178s
+  online.hmb.GrowthTuningRegistryTest                     tests=9 skipped=0 failures=0 errors=0 time=0.045s
+  online.hmb.HalftimeShapeTest                            tests=15 skipped=0 failures=0 errors=0 time=0.821s
+  online.hmb.HalftimeTacticsTest                          tests=10 skipped=0 failures=0 errors=0 time=0.588s
+  online.hmb.HomeNavBoardsTest                            tests=14 skipped=0 failures=0 errors=0 time=0.548s
+  online.hmb.InactiveUnitMatchFlowTest                    tests=1 skipped=0 failures=0 errors=0 time=0.105s
+  online.hmb.InternalJobApiTest                           tests=8 skipped=0 failures=0 errors=0 time=3.872s
+  online.hmb.KickoffRecaptureTest                         tests=2 skipped=0 failures=0 errors=0 time=0.047s
+  online.hmb.LeagueApiTest                                tests=17 skipped=0 failures=0 errors=0 time=0.758s
+  online.hmb.LeagueBasePrefetchTest                       tests=3 skipped=0 failures=0 errors=0 time=0.124s
+  online.hmb.LeagueDailyRewardEconomyProbeTest            tests=5 skipped=0 failures=0 errors=0 time=0.009s
+  online.hmb.LeagueDailyRewardTest                        tests=12 skipped=0 failures=0 errors=0 time=0.298s
+  online.hmb.LeagueDivisionRollbackTest                   tests=2 skipped=0 failures=0 errors=0 time=0.071s
+  online.hmb.LeagueDivisionRosterDumpTest                 tests=1 skipped=1 failures=0 errors=0 time=0.0s
+  online.hmb.LeagueDivisionTest                           tests=22 skipped=0 failures=0 errors=0 time=1.366s
+  online.hmb.LeagueFixedBotPoolTest                       tests=6 skipped=0 failures=0 errors=0 time=0.282s
+  online.hmb.LeagueLegacyRosterTest                       tests=4 skipped=0 failures=0 errors=0 time=0.05s
+  online.hmb.LeagueLegacySeasonTest                       tests=2 skipped=0 failures=0 errors=0 time=0.181s
+  online.hmb.LeagueMatchLockTest                          tests=3 skipped=0 failures=0 errors=0 time=0.111s
+  online.hmb.LocalAuthRaceTest                            tests=1 skipped=0 failures=0 errors=0 time=0.019s
+  online.hmb.LocalAuthTest                                tests=17 skipped=0 failures=0 errors=0 time=0.469s
+  online.hmb.LogsApiTest                                  tests=5 skipped=0 failures=0 errors=0 time=0.052s
+  online.hmb.MailCampaignDetailTest                       tests=2 skipped=0 failures=0 errors=0 time=0.058s
+  online.hmb.MailFanoutCapTest                            tests=1 skipped=0 failures=0 errors=0 time=0.017s
+  online.hmb.MailboxApiTest                               tests=9 skipped=0 failures=0 errors=0 time=0.222s
+  online.hmb.MatchAbBranchTest                            tests=7 skipped=0 failures=0 errors=0 time=0.298s
+  online.hmb.MatchAbandonSchedulerTest                    tests=1 skipped=0 failures=0 errors=0 time=0.239s
+  online.hmb.MatchAbandonTest                             tests=16 skipped=0 failures=0 errors=0 time=0.362s
+  online.hmb.MatchAutoManualResumeSwitchTest              tests=2 skipped=0 failures=0 errors=0 time=0.17s
+  online.hmb.MatchAutoModeSwitchesTest                    tests=1 skipped=0 failures=0 errors=0 time=0.045s
+  online.hmb.MatchAutoModeTest                            tests=13 skipped=0 failures=0 errors=0 time=0.788s
+  online.hmb.MatchBotPrefetchTest                         tests=3 skipped=0 failures=0 errors=0 time=0.184s
+  online.hmb.MatchClockDisabledTest                       tests=2 skipped=0 failures=0 errors=0 time=0.152s
+  online.hmb.MatchClockDuePredicateTest                   tests=5 skipped=0 failures=0 errors=0 time=0.0s
+  online.hmb.MatchClockFlowTest                           tests=12 skipped=0 failures=0 errors=0 time=0.733s
+  online.hmb.MatchClockSchedulerTest                      tests=1 skipped=0 failures=0 errors=0 time=0.65s
+  online.hmb.MatchClockShippedDefaultsTest                tests=2 skipped=0 failures=0 errors=0 time=0.003s
+  online.hmb.MatchConditionDateAnchorTest                 tests=1 skipped=0 failures=0 errors=0 time=0.027s
+  online.hmb.MatchDeckSnapshotApiTest                     tests=5 skipped=0 failures=0 errors=0 time=0.109s
+  online.hmb.MatchDeltaDisabledTest                       tests=1 skipped=0 failures=0 errors=0 time=0.061s
+  online.hmb.MatchFailureTest                             tests=5 skipped=0 failures=0 errors=0 time=0.27s
+  online.hmb.MatchFlowE2ETest                             tests=5 skipped=0 failures=0 errors=0 time=0.253s
+  online.hmb.MatchLockApiTest                             tests=20 skipped=0 failures=0 errors=0 time=0.515s
+  online.hmb.MatchOverhaulKnobsTest                       tests=1 skipped=0 failures=0 errors=0 time=0.077s
+  online.hmb.MatchOverhaulRoutingTest                     tests=9 skipped=0 failures=0 errors=0 time=0.441s
+  online.hmb.MatchPromptDeltaTest                         tests=6 skipped=0 failures=0 errors=0 time=0.3s
+  online.hmb.MatchPromptsReadApiTest                      tests=7 skipped=0 failures=0 errors=0 time=0.193s
+  online.hmb.MatchSideNamesTest                           tests=2 skipped=0 failures=0 errors=0 time=0.05s
+  online.hmb.MatchSkipDisabledTest                        tests=1 skipped=0 failures=0 errors=0 time=0.05s
+  online.hmb.MatchSkipTest                                tests=9 skipped=0 failures=0 errors=0 time=0.49s
+  online.hmb.MatchSkipTransitionFailureTest               tests=1 skipped=0 failures=0 errors=0 time=0.073s
+  online.hmb.MatchSnapshotTacticsTest                     tests=3 skipped=0 failures=0 errors=0 time=0.04s
+  online.hmb.MatchSubsTest                                tests=2 skipped=0 failures=0 errors=0 time=0.128s
+  online.hmb.MatchTransitionMatrixTest                    tests=78 skipped=0 failures=0 errors=0 time=1.098s
+  online.hmb.MissionDailyTest                             tests=35 skipped=0 failures=0 errors=0 time=0.885s
+  online.hmb.MissionFinishHookWiringTest                  tests=2 skipped=0 failures=0 errors=0 time=0.164s
+  online.hmb.MissionMatchFlowTest                         tests=6 skipped=0 failures=0 errors=0 time=0.279s
+  online.hmb.MissionRollbackOffTest                       tests=2 skipped=0 failures=0 errors=0 time=0.014s
+  online.hmb.NoticeActiveApiTest                          tests=8 skipped=0 failures=0 errors=0 time=0.04s
+  online.hmb.NoticeAssetApiTest                           tests=14 skipped=0 failures=0 errors=0 time=0.237s
+  online.hmb.NoticeByIdApiTest                            tests=6 skipped=0 failures=0 errors=0 time=0.038s
+  online.hmb.NoticeByIdStatusTest                         tests=10 skipped=0 failures=0 errors=0 time=0.039s
+  online.hmb.OAuthMockTest                                tests=6 skipped=0 failures=0 errors=0 time=0.034s
+  online.hmb.OverhaulDetectorTest                         tests=15 skipped=0 failures=0 errors=0 time=0.002s
+  online.hmb.Phase2W1FlowTest                             tests=3 skipped=0 failures=0 errors=0 time=0.142s
+  online.hmb.PlayerCatalogAdminLockTest                   tests=2 skipped=0 failures=0 errors=0 time=0.018s
+  online.hmb.PlayerCatalogMissingFileTest                 tests=1 skipped=0 failures=0 errors=0 time=0.002s
+  online.hmb.PlayerCatalogSeedImportTest                  tests=3 skipped=0 failures=0 errors=0 time=0.005s
+  online.hmb.PlayerCatalogV22SeedTest                     tests=1 skipped=0 failures=0 errors=0 time=0.002s
+  online.hmb.PlayerCatalogV23SeedTest                     tests=2 skipped=0 failures=0 errors=0 time=0.002s
+  online.hmb.PlayerCatalogV24SeedTest                     tests=2 skipped=0 failures=0 errors=0 time=0.007s
+  online.hmb.PlayerCatalogV27SeedTest                     tests=8 skipped=0 failures=0 errors=0 time=0.011s
+  online.hmb.PlayerCatalogV281SeedTest                    tests=6 skipped=0 failures=0 errors=0 time=0.011s
+  online.hmb.PlayerPersonalityImportTest                  tests=2 skipped=0 failures=0 errors=0 time=0.002s
+  online.hmb.PresetApiTest                                tests=4 skipped=0 failures=0 errors=0 time=0.06s
+  online.hmb.RankingApiTest                               tests=5 skipped=0 failures=0 errors=0 time=0.069s
+  online.hmb.RankingEligibilityTest                       tests=4 skipped=0 failures=0 errors=0 time=0.057s
+  online.hmb.ReuseOnNoChangeDisabledTest                  tests=1 skipped=0 failures=0 errors=0 time=0.04s
+  online.hmb.RewardBundleFlowTest                         tests=5 skipped=0 failures=0 errors=0 time=0.321s
+  online.hmb.SeasonIncomeProbeTest                        tests=1 skipped=0 failures=0 errors=0 time=1.035s
+  online.hmb.SecondHalfPrefetchTest                       tests=8 skipped=0 failures=0 errors=0 time=0.449s
+  online.hmb.SqliteBusyMappingTest                        tests=3 skipped=0 failures=0 errors=0 time=0.0s
+  online.hmb.StarterPackAndMeTest                         tests=2 skipped=0 failures=0 errors=0 time=0.021s
+  online.hmb.StarterReworkTest                            tests=9 skipped=0 failures=0 errors=0 time=0.123s
+  online.hmb.StarterTopMissingPlayerTest                  tests=2 skipped=0 failures=0 errors=0 time=0.019s
+  online.hmb.TeamPresetApiTest                            tests=8 skipped=0 failures=0 errors=0 time=0.062s
+  online.hmb.TradeApiTest                                 tests=20 skipped=0 failures=0 errors=0 time=0.246s
+  online.hmb.TradeBusyRetryTest                           tests=2 skipped=0 failures=0 errors=0 time=0.028s
+  online.hmb.TradeConcurrencyTest                         tests=1 skipped=0 failures=0 errors=0 time=0.145s
+  online.hmb.TradeWaitSecondsOverrideTest                 tests=1 skipped=0 failures=0 errors=0 time=0.015s
+  online.hmb.UserSquadApiTest                             tests=11 skipped=0 failures=0 errors=0 time=0.196s
+  online.hmb.chars.CharBundleEntryNameTest                tests=7 skipped=0 failures=0 errors=0 time=0.002s
+  online.hmb.league.LegacyRosterFillTest                  tests=3 skipped=0 failures=0 errors=0 time=0.003s
+  online.hmb.meta.StarterDeckBuilderTest                  tests=6 skipped=0 failures=0 errors=0 time=0.003s

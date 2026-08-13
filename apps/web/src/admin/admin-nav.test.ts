@@ -8,7 +8,14 @@ import { createElement as h } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
-import { ADMIN_NAV_ITEM, AppNav, NAV_ITEMS, activeNavKey, navItemsFor } from "../common/AppNav";
+import {
+  ADMIN_NAV_ITEM,
+  AppNav,
+  EVENTS_NAV_ITEM,
+  NAV_ITEMS,
+  activeNavKey,
+  navItemsFor,
+} from "../common/AppNav";
 import { AdminFlagContext } from "./admin-flag";
 
 afterEach(() => cleanup());
@@ -28,10 +35,13 @@ describe("navItemsFor", () => {
     expect(navItemsFor(false)).toEqual(NAV_ITEMS);
   });
 
-  it("admin 은 운영 항목이 마지막에 추가", () => {
+  it("admin 은 운영·이벤트 항목이 뒤에 추가 (#492 로 하나 늘었다)", () => {
+    // ⚠️ 이 단언은 원래 `+1 / 마지막 = 운영` 이었다. #492 가 이벤트 보드 진입점을 더하면서
+    //    **개수와 마지막 항목이 둘 다 바뀌었다** — 상수만 늘리고 이 계약을 안 고치면 red 다.
     const items = navItemsFor(true);
-    expect(items.length).toBe(NAV_ITEMS.length + 1);
-    expect(items[items.length - 1]).toEqual(ADMIN_NAV_ITEM);
+    expect(items.length).toBe(NAV_ITEMS.length + 2);
+    expect(items.at(-2)).toEqual(ADMIN_NAV_ITEM);
+    expect(items.at(-1)).toEqual(EVENTS_NAV_ITEM);
   });
 
   it("/admin 은 admin 항목 목록에서만 활성 키를 갖는다", () => {
@@ -55,5 +65,13 @@ describe("AppNav admin 링크 노출", () => {
     renderNav(true);
     // 단일 소스라 두 nav 표현 모두에 렌더된다(CSS 로 하나만 보임).
     expect(screen.getAllByTestId("nav-admin").length).toBe(2);
+  });
+
+  it("이벤트 보드(#492) 링크도 admin 에게만, 양쪽 nav 에", () => {
+    renderNav(false);
+    expect(screen.queryAllByTestId("nav-events").length).toBe(0);
+    cleanup();
+    renderNav(true);
+    expect(screen.getAllByTestId("nav-events").length).toBe(2);
   });
 });

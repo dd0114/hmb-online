@@ -1,0 +1,219 @@
+/*
+ * `/event-board` (#492). AdminPage.module.css 의 표/헤더 토큰을 같은 값으로 따라간다 —
+ * 운영 화면 둘이 서로 다른 표처럼 보이면 운영자가 매번 다시 읽어야 한다.
+ *
+ * ⚠️ 가로 오버플로 규율: 넓은 표(퍼널 그리드 = 12열)는 `.tableScroll` **안에서만** 가로로
+ * 스크롤한다. 페이지 body 는 절대 가로 스크롤하지 않는다(계약 = e2e 모바일 오버플로 0).
+ */
+
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.back {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 4px;
+}
+
+.pageTitle {
+  margin: 0;
+  font-size: 17px;
+}
+
+.badge {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.section {
+  margin-top: 16px;
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0 0 10px;
+  font-size: 16px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* 표는 이 컨테이너 안에서만 가로 스크롤 — body 가로 오버플로 0(모바일 우선). */
+.tableScroll {
+  margin-top: 12px;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.table th,
+.table td {
+  padding: 9px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 12px;
+  background: var(--bg-elevated);
+}
+
+.table tbody tr:last-child td,
+.table tbody tr:last-child th {
+  border-bottom: none;
+}
+
+.rowActive td,
+.rowActive th {
+  background: rgba(79, 140, 255, 0.12);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* ── 퍼널 그리드 ─────────────────────────────────────── */
+
+.stageHead {
+  text-align: center;
+}
+
+/* 도달/미도달을 **색과 글자 둘 다**로 구분한다 — 색만 쓰면 흑백 캡처(심사 제출물)에서 읽히지 않는다. */
+.stageCell {
+  text-align: center;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text-muted);
+  opacity: 0.35;
+}
+
+.stageCell[data-reached="true"] {
+  color: var(--accent);
+  opacity: 1;
+}
+
+.userCell {
+  font-weight: 500;
+}
+
+.userBtn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 필터 / 페이저 ───────────────────────────────────── */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.select {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.rowBtn {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+
+.rowBtn:disabled {
+  opacity: 0.4;
+}
+
+.pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.modeBadge {
+  margin-left: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 6px;
+}
+
+/* props 요약은 길어질 수 있다 — 셀 안에서만 잘리고 표 폭을 밀지 않게 상한을 둔다. */
+.props {
+  color: var(--text-muted);
+  max-width: 380px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 서버 403 배너 ───────────────────────────────────── */
+
+.forbidden {
+  margin-top: 32px;
+  text-align: center;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 16px;
+  background: var(--bg-elevated);
+}
+
+.forbiddenTitle {
+  margin: 0 0 6px;
+  font-size: 16px;
+  color: var(--danger);
+}
+
+.forbiddenBody {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--text-muted);
+}

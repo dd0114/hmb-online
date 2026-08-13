@@ -129,7 +129,14 @@ public class AdminRouteGuard implements ApplicationRunner {
             // 가중치를 바꿀 수 있다** — 카드 유효스탯이 곧 전력이므로 경제 표면이기도 하다.
             // 유저 쪽 조회(GrowthService, /api/growth/*)는 LiveGrowthConfigService 에만 의존하므로
             // 영향이 없다 — 그 방향(admin → growth) 한 방향을 유지하는 것이 구조의 전부다.
-            AdminGrowthConfigService.class);
+            AdminGrowthConfigService.class,
+            // #492 비즈니스 이벤트 조회. 게이트 밖으로 나가면 **아무나 전 유저의 행동 이력**
+            // (닉네임 · 가입/뽑기/매치 시각 · 유저별 진행도)을 통째로 읽을 수 있다 — 경제 표면은
+            // 아니지만 개인 활동 기록이고, 퍼널은 그걸 유저 단위로 정리해 주기까지 한다.
+            // 쓰기 쪽(BusinessEventRecorder)은 **일부러 별개 빈**이다: 훅이 붙는 컨트롤러(덱·상점·
+            // 매치·리그·원정)는 admin 이 아니라서, 한 빈으로 합치면 그 전부가 게이트 위반이 되어
+            // 부팅이 죽는다. 방향(admin 조회 → events 쓰기 아님)을 유지하는 것이 구조의 전부다.
+            online.hmb.events.BusinessEventQueryService.class);
 
     private final RequestMappingHandlerMapping handlerMapping;
     private final ConfigurableApplicationContext context;

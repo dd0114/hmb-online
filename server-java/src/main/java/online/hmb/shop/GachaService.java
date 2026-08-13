@@ -322,6 +322,25 @@ public class GachaService {
                 new WalletInfo(walletService.points(userId), walletService.gems(userId)));
     }
 
+    /**
+     * #492 계측용 — 이 {@code kind} 의 결제 금액(economy config). 뽑기 자체가 이미 성공한 뒤에
+     * <b>이벤트 props 를 채우려고</b> 부른다.
+     *
+     * <p>값을 응답에 새로 싣지 않는 이유: {@code GachaResponse} 는 web 이 소비하는 계약이라
+     * 계측 편의로 넓히면 계약이 계측을 따라 움직인다. 대신 config 를 한 번 더 읽는다(캐시된 스냅샷).
+     * economy 가 없으면 여기서 던지지만, 호출부가 {@code BusinessEventRecorder} 의 supplier 안이라
+     * 뽑기 응답에는 영향이 없다.
+     */
+    public int costOf(String kind) {
+        EconomyService.Gacha gacha = gachaConfig();
+        return KIND_TEN.equals(kind) ? gacha.tenCost() : gacha.singleCost();
+    }
+
+    /** #492 계측용 — 결제 재화 코드(POINT|GEM). 위와 같은 규율. */
+    public String currencyCode() {
+        return gachaConfig().currency();
+    }
+
     private EconomyService.Gacha gachaConfig() {
         return economyService.get()
                 .map(EconomyService.Economy::gacha)
