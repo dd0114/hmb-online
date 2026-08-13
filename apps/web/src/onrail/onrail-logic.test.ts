@@ -8,6 +8,7 @@ import {
   resolveTarget,
   screenLockedFor,
   shieldFor,
+  stageNotReadyFor,
   stepAfterSkip,
   stepById,
   stepPosition,
@@ -205,6 +206,47 @@ describe("전제가 깨진 스텝은 건너뛴다 (#493 W9)", () => {
     expect(isLockedScreen("/match")).toBe(false);
     expect(isLockedScreen(ANY_SCREEN)).toBe(false);
     expect(screenLockedFor(step({ screen: ANY_SCREEN }), { match: { id: "m", state: "X" }, locked: true, abandonable: false })).toBe(false);
+  });
+
+  /*
+   * #493 W11 — 무대가 아직 안 열린 창에서는 투어의 부재 스킵을 유예한다.
+   * 라이브에서 이 판정이 없어 S3 투어 6스텝이 10초 만에 전부 소진됐다(BRIEFING·GEN1 에는 무대
+   * 손잡이가 하나도 없다). e2e 는 BRIEFING·GEN1 만 밟으므로 **끝난·실패한 매치**는 여기서 문다.
+   */
+  describe("무대가 열리기 전에는 기다린다 (#493 W11)", () => {
+    const tour = step({ screen: "/match", freezeMatch: true, skipIfMissing: true });
+    const at = (state: string) => ({ match: { id: "m1", state }, locked: true, abandonable: false });
+
+    it("BRIEFING·GEN1·GEN2 = 아직 안 열린 것이므로 유예한다", () => {
+      for (const s of ["BRIEFING", "GEN1", "GEN2"]) {
+        expect(stageNotReadyFor(tour, at(s)), s).toBe(true);
+      }
+    });
+
+    it("⚠️ 끝났거나 실패한 매치에서는 기다리지 않는다 — 거기서 기다리면 탈출구 없는 하드스톱이다", () => {
+      for (const s of ["FIRST_HALF", "HALFTIME", "SECOND_HALF", "FINISHED", "FAILED", "ABANDONED"]) {
+        expect(stageNotReadyFor(tour, at(s)), s).toBe(false);
+      }
+      expect(stageNotReadyFor(tour, undefined)).toBe(false);
+      expect(stageNotReadyFor(tour, { match: null, locked: false, abandonable: false })).toBe(false);
+    });
+
+    it("무대 손잡이를 겨누는 스텝(=투어)에만 걸린다 — 브리핑 스텝 자신은 그 화면에 대상이 있다", () => {
+      expect(stageNotReadyFor(stepById("match-brief")!, at("BRIEFING"))).toBe(false);
+      expect(stageNotReadyFor(step({ screen: "/deck", skipIfMissing: true }), at("BRIEFING"))).toBe(false);
+      expect(stageNotReadyFor(null, at("BRIEFING"))).toBe(false);
+      // 투어 스텝은 전부 걸려야 한다(하나라도 빠지면 그 스텝만 라이브에서 다시 타 버린다).
+      for (const s of ONRAIL_SCRIPT.filter((x) => x.freezeMatch)) {
+        expect(stageNotReadyFor(s, at("BRIEFING")), s.id).toBe(true);
+      }
+    });
+
+    it("각본이 브리핑 스텝을 투어 **앞**에 둔다 — 순서가 뒤집히면 안내가 무대 뒤로 간다", () => {
+      const ids = ONRAIL_SCRIPT.map((s) => s.id);
+      expect(ids).toContain("match-brief");
+      expect(ids.indexOf("match-brief")).toBeLessThan(ids.indexOf("match-scoreboard"));
+      expect(stepById("match-brief")!.targetTestId).toBe("kickoff-button");
+    });
   });
 
   it("비활성은 **그 스텝만** 넘긴다 — 나머지 S2 는 그 유저도 할 수 있다", () => {

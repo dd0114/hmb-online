@@ -211,6 +211,31 @@ export function screenLockedFor(
 }
 
 /**
+ * 무대가 **아직 안 열린** 상태 — 그렇다면 손잡이의 부재는 "이 유저에겐 없다"가 아니라
+ * "아직 없다"이므로 `skipIfMissing` 을 **유예한다**(#493 W11).
+ *
+ * ⚠️ 이 함수가 없던 동안 라이브에서 S3 투어가 통째로 사라졌다. 서버는 튜토리얼 매치도
+ * `BRIEFING` 으로 만들고 킥오프는 `GEN1` 을 한 창 지난다(`MatchService.createMatch`·`kickoffCas`).
+ * 그 두 화면에는 무대 손잡이가 하나도 없는데 투어 6스텝이 전부 `skipIfMissing` 이라, 1.5초 유예가
+ * 연쇄 발화해 **10초 만에** 투어를 다 태우고 레일이 결과 스텝으로 가 버렸다(실서버 실측).
+ *
+ * **끝난·실패한 매치에는 걸지 않는다** — 거기서 기다리면 그거야말로 탈출구 없는 하드스톱이다
+ * (W9 이 없앤 바로 그 형태). 판정 대상은 "곧 열릴 것"뿐이다.
+ */
+const PRE_STAGE_STATES = new Set(["BRIEFING", "GEN1", "GEN2"]);
+
+export function stageNotReadyFor(
+  step: OnRailStep | null,
+  active: ActiveMatchInfo | undefined | null,
+): boolean {
+  // 무대 손잡이를 겨누는 스텝 = 투어(그 스텝들만 `freezeMatch` 다). 브리핑 스텝 자신은 제외 —
+  // 그 대상(킥오프 버튼)은 바로 그 화면에 **있다**.
+  if (!step || step.screen !== "/match" || step.freezeMatch !== true) return false;
+  const state = active?.match?.state;
+  return typeof state === "string" && PRE_STAGE_STATES.has(state);
+}
+
+/**
  * 건너뛴 뒤 설 스텝. **앞으로만 간다** — 인덱스가 단조 증가하므로 어떤 조합에서도 각본 끝
  * (= 완주 스텝)에 닿는다. 이것이 이 웨이브의 AC 다.
  *

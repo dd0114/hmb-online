@@ -17,6 +17,7 @@ import {
   resolveStepId,
   resolveTarget,
   screenLockedFor,
+  stageNotReadyFor,
   stepAfterSkip,
   stepById,
   stepPosition,
@@ -304,6 +305,12 @@ export function OnRailProvider({
   // 튜토리얼이 사라진 것으로 보인다(W8-v3 blocker B3).
   const activeMatch = useActiveMatch();
   const lockedOut = running && screenLockedFor(step, activeMatch.data);
+  /*
+   * 무대가 아직 안 열린 창(BRIEFING·GEN1·GEN2) — 투어 스텝의 부재 스킵을 유예한다(#493 W11).
+   * 같은 `activeMatch` 를 읽지만 **문이 다르다**: `lockedOut` 은 "갈 수 없는 화면"이라 넘기고,
+   * 이쪽은 "곧 열릴 화면"이라 **기다린다**.
+   */
+  const stageNotReady = running && stageNotReadyFor(step, activeMatch.data);
   const lockGraceMs = missingGraceMs ?? 1500;
 
   useEffect(() => {
@@ -386,6 +393,8 @@ export function OnRailProvider({
           index={pos.index}
           total={pos.total}
           missingGraceMs={missingGraceMs}
+          /* 무대가 아직 안 열렸으면 손잡이의 부재는 "아직"이지 "없음"이 아니다(#493 W11). */
+          holdMissing={stageNotReady}
           note={ctaError}
           onAdvance={() => {
             if (step.advance.kind === "cta") runCta(step.advance.cta);

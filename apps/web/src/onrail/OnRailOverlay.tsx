@@ -31,6 +31,14 @@ interface OnRailOverlayProps {
    * 쓰면 유저는 튜토리얼을 버린 줄 알고, 실제로는 홈에 이어하기 카드가 떠 혼란이 된다.
    */
   exitLabel?: string;
+  /**
+   * 지금은 부재를 **확정하지 않는다**(#493 W11) — `skipIfMissing` 스텝이어도 기다린다.
+   *
+   * 호출부가 "손잡이가 없는 것이 이 유저의 사정이 아니라 **화면이 아직 안 열린 것**"임을 아는
+   * 경우에만 참이다(무대가 열리기 전 브리핑·GEN 창). 부재 판정은 DOM 만 보므로 그 구분을
+   * 오버레이 혼자서는 할 수 없다 — 그래서 프로바이더가 알려 준다.
+   */
+  holdMissing?: boolean;
   /** 대상 부재를 '없음'으로 확정하기까지의 유예(ms). 0 이면 즉시(테스트). */
   missingGraceMs?: number;
   /**
@@ -96,6 +104,7 @@ export function OnRailOverlay({
   onTargetDisabled,
   onExit,
   exitLabel = "나중에",
+  holdMissing = false,
   missingGraceMs = 1500,
   disabledGraceMs = 2500,
   note = null,
@@ -189,8 +198,9 @@ export function OnRailOverlay({
         lastScrollAt.current = performance.now();
         el.scrollIntoView({ block: "center", inline: "center" });
       }
-      // ⚠️ 기다리는 것이 기본이다. 넘기는 것은 그렇게 하겠다고 **각본에 적힌** 스텝뿐이다.
-      if (!step.skipIfMissing) {
+      // ⚠️ 기다리는 것이 기본이다. 넘기는 것은 그렇게 하겠다고 **각본에 적힌** 스텝뿐이고,
+      //    그마저도 화면이 아직 안 열린 동안에는 유예한다(`holdMissing`, #493 W11).
+      if (!step.skipIfMissing || holdMissing) {
         missSince.current = null;
         return;
       }
@@ -206,6 +216,7 @@ export function OnRailOverlay({
     targetTestId,
     centered,
     step.skipIfMissing,
+    holdMissing,
     missingGraceMs,
     onMissingTarget,
     disabledGraceMs,

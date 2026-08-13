@@ -158,6 +158,25 @@ const DECK_STEPS: OnRailStep[] = [
  * 때만, 시크바는 스냅샷이 2개 이상일 때만), 여기서 막히면 유저는 **경기를 못 본다**.
  */
 const MATCH_TOUR_STEPS: OnRailStep[] = [
+  /**
+   * ⚠️ **무대 앞에 브리핑이 한 겹 있다** (#493 W11 — 라이브 실주행에서만 보였다).
+   *
+   * 서버는 튜토리얼 매치도 `state='BRIEFING'` 으로 만든다(`MatchService.createMatch` 의 INSERT 는
+   * 한 줄이고 튜토리얼 분기가 상태를 바꾸지 않는다). 그래서 `[경기 시작]` 이 데려가는 첫 화면은
+   * 무대가 아니라 **경기 전 브리핑**이고, 아래 투어가 겨누는 손잡이는 하나도 없다. 이 스텝이
+   * 없던 동안 유저는 딤에 막힌 채 안내 없이 킥오프 버튼을 스스로 찾아야 했다.
+   *
+   * `skipIfMissing` 인 이유: 이미 전반이 도는 매치로 재진입하면(재개·구 매치) 이 버튼이 없다.
+   */
+  {
+    id: "match-brief",
+    screen: "/match",
+    targetTestId: "kickoff-button",
+    title: "경기 전 브리핑",
+    body: "상대 정보를 보고 마지막으로 라인업을 점검하는 자리입니다. [킥오프]를 누르면 경기가 시작돼요.",
+    advance: { kind: "action", action: "match-kickoff" },
+    skipIfMissing: true,
+  },
   {
     id: "match-scoreboard",
     screen: "/match",

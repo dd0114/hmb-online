@@ -1,7 +1,7 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import { skipSplash } from "./splash-mock";
-import { mockAppConfig } from "./app-config-mock";
+import { appConfigPayload, mockAppConfig } from "./app-config-mock";
 
 /**
  * #493 W9 — 온레일이 **못 하는 일 앞에서 멈추지 않는다**(skip-when-disabled).
@@ -194,13 +194,17 @@ async function mockApi(page: Page, over: Partial<Harness> = {}): Promise<Harness
   await mockAppConfig(page, {});
   if (h.declareStarterCard) {
     // ⚠️ 캐치올·`mockAppConfig` **뒤에** 등록한다(나중에 등록한 핸들러가 이긴다).
+    // ⚠️ `route.fetch()` 로 원본을 받아 오지 마라 — 그건 목을 우회해 **vite dev 프록시**로 나가고
+    //    그 타깃은 데모 백엔드(`localhost:8080`)다. 데모가 떠 있던 세션에서는 초록이었다가
+    //    없는 세션에서는 핸들러가 던져 `/api/config` 가 영영 안 오고 S5 가 그리드로 내려앉는다
+    //    (실측: 데모를 내린 뒤 이 한 건만 red). 목 스펙은 **백엔드 없이** 성립해야 하므로
+    //    같은 페이로드 소스(`appConfigPayload`)에 필드만 얹는다.
     await page.route(
       (url) => url.pathname === "/api/config",
-      async (route) => {
-        const res = await route.fetch();
-        const body = (await res.json()) as Record<string, unknown>;
-        return route.fulfill(json({ ...body, tutorial: { starterCardId: STARTER_CARD } }));
-      },
+      (route) =>
+        route.fulfill(
+          json({ ...appConfigPayload({}), tutorial: { starterCardId: STARTER_CARD } }),
+        ),
     );
   }
   return h;

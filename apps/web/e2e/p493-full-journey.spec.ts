@@ -223,7 +223,14 @@ async function mockJourney(page: Page, opts: { deckReady?: boolean } = {}): Prom
     coupons: { FREE_ENHANCE: 1, FREE_TRADE_RUSH: 1, FIRST_TRADE_EPIC: 1 },
     deck: { formation: DECK.formation, slots: DECK.slots, teamPrompt: null },
     creates: [],
-    matchState: "FIRST_HALF",
+    /*
+     * ⚠️ **서버는 튜토리얼 매치도 `BRIEFING` 으로 만든다** (#493 W11 — `MatchService.createMatch`
+     * 의 INSERT 가 한 줄이고 튜토리얼 분기가 상태를 바꾸지 않는다). 이 목이 `FIRST_HALF` 를
+     * 주던 동안 여정은 **브리핑 화면이 없는 세계**를 검증했고, 그래서 라이브에서 S3 투어 6스텝이
+     * `target-missing` 으로 10초 만에 전부 소진되는 것을 한 번도 못 봤다(무대 손잡이가 브리핑
+     * 화면엔 없다). 목이 서버 모양을 지켜야 계약이 실제 화면을 본다(#342 선례).
+     */
+    matchState: "BRIEFING",
     acked: [],
     star: 1,
     potentialUnlocked: false,
@@ -316,6 +323,21 @@ async function mockJourney(page: Page, opts: { deckReady?: boolean } = {}): Prom
       j.creates.push(req.postDataJSON() ?? {});
       // 서버는 **201** 로 만든다(`MatchController.create`) — 목이 200 이면 여정이 겪지 않는 응답이다.
       return route.fulfill(json(matchDetail(j), 201));
+    }
+    /*
+     * 킥오프 — 서버는 `BRIEFING → GEN1` 로 CAS 하고(`MatchService.kickoffCas`), 튜토리얼은 AI 왕복이
+     * 0 이라 곧바로 전반이 뜬다. 그 **한 창(GEN1)** 을 목도 그대로 만든다: 그 사이 무대 손잡이는
+     * 여전히 없으므로, 투어가 그 창에서 스스로 타 버리지 않는지가 이 여정의 검사 대상이다.
+     */
+    if (p === `/api/matches/${MATCH_ID}/kickoff` && method === "POST") {
+      j.matchState = "GEN1";
+      /*
+       * ⚠️ **부재 유예(1.5s)보다 길어야 이 창이 검사 대상이 된다.** 짧게 잡으면 무대가 곧바로
+       * 떠서 `holdMissing` 을 지우는 변이가 살아남는다(실측으로 확인하고 4초로 잡았다) — 라이브
+       * GEN1 은 이보다 길 수도 있다.
+       */
+      setTimeout(() => { j.matchState = "FIRST_HALF"; }, 4000);
+      return route.fulfill(json(matchDetail(j)));
     }
     if (p === `/api/matches/${MATCH_ID}`) return route.fulfill(json(matchDetail(j)));
     if (/\/api\/matches\/.+\/halves\/[12]\/log$/.test(p)) return route.fulfill(json(HALF_LOG));
@@ -641,6 +663,25 @@ test("신규 유저 온레일 풀 저니 S0→S7 — 한 번도 갇히지 않고
   await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
   expect(j.creates).toHaveLength(1);
   expect(j.creates[0]).toMatchObject({ tutorial: true });
+
+  /*
+   * ⚠️ **경기 전 브리핑을 먼저 지난다** (#493 W11). 서버가 매치를 `BRIEFING` 으로 만들므로
+   * `[경기 시작]` 이 데려가는 첫 화면은 무대가 아니라 브리핑이다. 그 화면에 안내가 없으면 유저는
+   * 딤에 막힌 채 시작 버튼을 스스로 찾아야 한다.
+   */
+  await expectStep(page, "match-brief");
+  await expect(page.getByTestId("kickoff-button")).toBeVisible();
+
+  /*
+   * 🚨 **이 여정이 라이브에서 잃고 있던 것** — 투어 6스텝이 전부 `skipIfMissing` 이라, 무대가
+   * 아직 없는 동안(BRIEFING·GEN1) 유예가 연쇄 발화하면 ~10초 만에 투어가 통째로 타고 레일이
+   * `result-view` 로 가 버린다(실서버 실측). 무대가 안 열린 것은 **이 유저에게 그 손잡이가 없는
+   * 것이 아니라 아직 안 열린 것**이므로 기다려야 한다.
+   */
+  await page.waitForTimeout(5_000); // 유예(1.5s) × 스텝수를 훌쩍 넘긴다
+  expect(await stepId(page), "브리핑에 머무는 동안 투어가 타 버리면 안 된다").toBe("match-brief");
+
+  await page.getByTestId("kickoff-button").tap();
 
   // 투어 첫 스텝이 잡히면 [스킵]이 실제로 잠긴다(hero: "게임중에 바로 스킵 못누르게").
   await expectStep(page, "match-scoreboard");
