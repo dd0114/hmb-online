@@ -22,10 +22,13 @@ public class TeamPresetController {
 
     private final TeamPresetService service;
     private final MatchLockService lockService;
+    private final online.hmb.events.BusinessEventRecorder events;
 
-    public TeamPresetController(TeamPresetService service, MatchLockService lockService) {
+    public TeamPresetController(TeamPresetService service, MatchLockService lockService,
+                                online.hmb.events.BusinessEventRecorder events) {
         this.service = service;
         this.lockService = lockService;
+        this.events = events;
     }
 
     @GetMapping("/api/presets/team")
@@ -45,6 +48,15 @@ public class TeamPresetController {
                               @PathVariable("slot") int slot) {
         // apply 는 활성 덱 통짜 덮어쓰기 = PUT /api/deck 과 같은 쓰기다(#217 AC2).
         lockService.assertNotLocked(userId, "preset.apply");
-        return service.apply(userId, slot);
+        // #492: 프리셋 적용은 활성 덱 통짜 덮어쓰기 = 덱 저장이다. **같은 이벤트**에 source 로 가른다
+        // (별도 이벤트로 쪼개면 "덱을 만졌다"를 세는 곳이 둘이 된다).
+        DeckResponse applied = service.apply(userId, slot);
+        events.record(online.hmb.events.BusinessEvent.DECK_SAVE, userId, () -> java.util.Map.of(
+                "source", "preset",
+                "formation", applied.formation(),
+                "slotCount", applied.slots() == null ? 0 : applied.slots().size(),
+                // 프리셋 적용은 정의상 기존 덱을 덮는 경로다(스냅샷이 있으려면 덱을 저장한 적이 있다).
+                "created", false));
+        return applied;
     }
 }

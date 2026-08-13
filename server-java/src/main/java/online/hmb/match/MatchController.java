@@ -22,10 +22,13 @@ public class MatchController {
     private final MatchLockService lockService;
     private final MatchSkipService skipService;
     private final MatchPromptsService promptsService;
+    private final online.hmb.events.BusinessEventRecorder events;
 
     public MatchController(MatchService matchService, MatchOrchestrator orchestrator,
                            MatchClockService clockService, MatchLockService lockService,
-                           MatchSkipService skipService, MatchPromptsService promptsService) {
+                           MatchSkipService skipService, MatchPromptsService promptsService,
+                           online.hmb.events.BusinessEventRecorder events) {
+        this.events = events;
         this.matchService = matchService;
         this.orchestrator = orchestrator;
         this.clockService = clockService;
@@ -53,6 +56,13 @@ public class MatchController {
         // A 프리페치(#95): 유저팀 A + 봇 A(덱 베이스)를 브리핑 진입 즉시 크로스매치 캐시로 enqueue.
         // 유저가 프롬프트 쓰는 동안 A 생성 → 킥오프 때 프롬프트 없으면 콜0 재사용, 있으면 가벼운 B 패치.
         orchestrator.prefetchBaseInputs(row.id());
+        // #492: 훅이 **컨트롤러**인 이유 = MatchService.createMatch 자체는 비-tx 지만, 같은 패밀리의
+        // createLeagueMatch/createAwayMatch 는 LeagueService.nextMatch·AwayService.startRevenge 의
+        // 트랜잭션 **안**에서 불린다. 세 모드의 훅을 같은 층(컨트롤러)에 두어야 규칙이 하나로 남는다.
+        events.record(online.hmb.events.BusinessEvent.MATCH_START, userId, () -> java.util.Map.of(
+                "mode", online.hmb.events.BusinessEvent.MODE_PRACTICE,
+                "matchId", row.id(),
+                "botId", row.botId()));
         return ResponseEntity.status(HttpStatus.CREATED).body(matchService.toDetail(row));
     }
 

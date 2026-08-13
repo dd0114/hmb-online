@@ -264,6 +264,34 @@ public class LeagueService {
         });
     }
 
+    /**
+     * 지금 ACTIVE 인 시즌 id — 없으면 {@code null}. (#492 계측용, 읽기 전용·비-tx)
+     *
+     * <p>{@link #startSeason} 이 <b>멱등</b>이라 응답만 봐서는 "새 시즌이 생겼다"와 "이미 있던
+     * 시즌으로 돌아왔다"를 구분할 수 없다. 재진입까지 이벤트로 남기면 시즌 화면을 열 때마다
+     * 시작이 한 번씩 쌓인다.
+     */
+    public String activeSeasonIdOrNull(String userId) {
+        return activeSeason(userId).map(SeasonRow::id).orElse(null);
+    }
+
+    /**
+     * 다음 유저 픽스처에 <b>이미 살아 있는</b> 매치 id — 없으면 {@code null}. (#492 계측용)
+     *
+     * <p>{@link #nextMatch} 의 재사용 분기(진행 중 매치로 되돌아가기)를 "매치 시작"으로 세지 않기
+     * 위한 사전 상태다. 판정은 {@code FINISHED 가 아님}이 아니라 {@link MatchService#ACTIVE_STATES} —
+     * 그 함수와 <b>같은 조건</b>이어야 두 판정이 갈리지 않는다(#217 이 그 형태로 물렸다).
+     */
+    public String activeNextFixtureMatchIdOrNull(String userId) {
+        return activeSeason(userId)
+                .flatMap(season -> nextUserFixtureRow(season.id()))
+                .map(FixtureRow::matchId)
+                .filter(matchId -> matchService.find(matchId)
+                        .filter(m -> MatchService.ACTIVE_STATES.contains(m.state()))
+                        .isPresent())
+                .orElse(null);
+    }
+
     // ── GET /api/league (AC-F3) ─────────────────────────────────────────
 
     /** 최신 시즌(ACTIVE 우선, 없으면 최근 FINISHED) 상태·순위·일정·다음 유저 경기. 없으면 season=null. */

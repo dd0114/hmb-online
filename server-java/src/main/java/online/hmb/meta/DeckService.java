@@ -66,6 +66,16 @@ public class DeckService {
     }
 
     /**
+     * 활성 덱이 이미 있는가 — <b>덱 부재가 에러가 아닌</b> 호출측용(#492 계측의 {@code created} 판정).
+     *
+     * <p>{@link #getActiveDeck}/{@link #requireActiveDeck} 을 쓰면 없을 때 던지므로, "새로 만든
+     * 것인가"를 알려고 예외를 잡는 코드가 생긴다 — 그 catch 가 곧 계측이 본 동작을 가릴 자리다.
+     */
+    public boolean hasActiveDeck(String userId) {
+        return findActiveDeck(userId).isPresent();
+    }
+
+    /**
      * <b>매치를 만들려는 경로 전용</b> 활성 덱 조회 — 없으면 {@code 400 DECK_REQUIRED}(#319).
      *
      * <p>왜 {@link #getActiveDeck} 을 고치지 않고 메서드를 새로 두나: 그 메서드는

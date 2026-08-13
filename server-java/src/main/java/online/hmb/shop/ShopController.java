@@ -22,16 +22,29 @@ public class ShopController {
 
     private final GachaService gachaService;
     private final GrowthService growthService;
+    private final online.hmb.events.BusinessEventRecorder events;
 
-    public ShopController(GachaService gachaService, GrowthService growthService) {
+    public ShopController(GachaService gachaService, GrowthService growthService,
+                          online.hmb.events.BusinessEventRecorder events) {
         this.gachaService = gachaService;
         this.growthService = growthService;
+        this.events = events;
     }
 
     @PostMapping("/api/shop/gacha")
     public GachaResponse gacha(@RequestAttribute("userId") String userId,
                                 @RequestBody GachaRequest request) {
-        return gachaService.pull(userId, request == null ? null : request.kind());
+        String kind = request == null ? null : request.kind();
+        GachaResponse response = gachaService.pull(userId, kind);
+        // #492: 훅이 **컨트롤러**인 이유 = GachaService.pull 은 메서드 전체가 트랜잭션이다
+        // (차감·원장·보유풀이 한 단위). 그 안에 기록을 넣으면 실패 시 뽑기가 통째로 롤백된다.
+        events.record(online.hmb.events.BusinessEvent.GACHA_PULL, userId, () -> java.util.Map.of(
+                "kind", kind,
+                "count", response.results().size(),
+                "cost", gachaService.costOf(kind),
+                "currency", gachaService.currencyCode(),
+                "grades", response.results().stream().map(r -> r.player().grade()).toList()));
+        return response;
     }
 
     @PostMapping("/api/shop/gems/topup")

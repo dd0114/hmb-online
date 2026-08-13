@@ -2,6 +2,68 @@
 - 증상: Docker Desktop 프로세스 종료(원인: 업데이트/크래시 추정) → hmb-java·hmb-runner 다운, 백엔드 405. 워치독은 BACKEND_DOWN 기록만 가능(터널 전용). 웹은 점검 안내(#477) 노출.
 - 복구: Docker Desktop 재기동(6s) → compose up java runner → healthy 12s → status 전항목 ✓. DB 볼륨 무손상.
 - 재발 방지: usage-guard 사이클에 docker 데몬 liveness 체크 추가(죽으면 매니저 세션 통지) — 이번 커밋.
+## 2026-08-10T07:53Z — **배포 v3.27 — 풀스택(java + web)** — 비즈니스 이벤트 원장 + `/event-board` (#492)
+
+- **git**: `21b95629` (브랜치 `feat/492-event-board`) **+ uncommitted feat/492-event-board (#492)**
+  ⚠️ **미커밋 워킹트리에서 발차했다** — `version.json.git.dirty: true`. 머지는 매니저 소관이고,
+  이 배포물은 `21b95629` + 미커밋 diff(server-java `events/**`·V42 · apps/web `eventboard/**`)다.
+  라이브에 뜬 것의 SoT 는 SHA 가 아니라 **이미지 digest**(아래).
+- **모듈 버전**: engine **0.43.0 (무접촉)** · server-java 0.1.0(재빌드) · web 0.0.0(재배포) · servants 0.0.1(**무접촉**)
+- **이미지**: java **`sha256:1c1f281e4864d2e9c0f4e16bd8ecba19b7e50c64ff09f19ba5ae8690d283176b`**
+  / runner `sha256:97a82f3f362b2864eb95f2e9b002816090d75bd177d5c028f9511a41657648d1`(**무변경**)
+  / 롤백 핀 `hmb/server-java:prev-live` = `sha256:2bd0958c78e8…`(v3.26)
+- **Flyway**: **V41 → V42** (`business_events`). additive only · `.sql.conf` 없음 · UPDATE/DELETE/DROP **0**.
+- **터널**: `https://peninsula-rules-postcard-telephony.trycloudflare.com` (pid 3948, **회전 없음**)
+- **web**: `https://hmb-online.pages.dev` 재배포(`69874f30`). `version.json` = 로컬 `dist/version.json` 과 **동일**(CDN 스테일 아님).
+- **배포자**: 배포 실행 세션(#492 AC7 선결). hero 승인 = *"같이올려 케릭터 공개 상관없어 배포해"*.
+
+**무엇이 올라갔나**: 유저 행동을 기록하는 원장(`business_events`) + 운영자 조회 API
+(`GET /api/admin/events` · `/api/admin/events/funnel`) + 운영자 전용 화면 `/event-board`.
+계측 훅은 가입·튜토리얼·덱저장·뽑기·매치·리그·원정 컨트롤러에 붙는다. 롤백 스위치 =
+`HMB_EVENTS_ENABLED=false`(**재배포 없이** 계측 전량 정지).
+
+**동승분(라이브에 처음 올라가는 것)** — `c24dbba8..21b95629` 범위. 마이그레이션 0건 · `data/**` 0건:
+- **AI 모드 표시**(server-java `AiModeService`/`InternalAiModeController` · web `/api/config` aiMode 안내) — #472 계보
+- #471 로컬 스택 원커맨드(`scripts/local-stack.sh`)·README·infra 이사 스크립트 = **런타임 무영향**
+- ⚠️ `packages/server/src/executor/ai-mode.*` 가 같이 들어왔으나 **executor 는 재기동하지 않았다**
+  (호스트 프로세스, `spider12` 체크아웃 소유 · 4 proc 정상 가동 중). 서버 쪽은 additive 라 미재기동이
+  기존 동작을 깨지 않는다 — AI 모드 배선의 executor 절반만 **미반영**이다(§0.5-6 미충족, 의도적).
+
+**절차**: §0.5 체크리스트 → §8 백업·검증·**리허설** → 이미지 전환 → 검증.
+- **백업**: `~/.local/state/hmb/db-backups/pre-v492-20260810T074443Z.db` (708,366,336 B)
+  `sha256 a4233e1da314a7dab04f3f29f7a316df0dc967c2bb7eca76429b16d0bdce599b`
+  검증 = `integrity_check: ok` · `flyway max: 41` · users **213**
+- **리허설**(별도 볼륨 + 포트 18085 — 18081 은 타 세션 점유): V42 적용 성공, 무손실 확인
+  (users 213 · user_players 3580 · matches 124 · `foreign_key_check` **11** = §8 기재 선행 상태와 동일)
+- **재기동 안전성**: 진행 중 매치(state ∉ {FINISHED,FAILED,ABANDONED}) **0건** 확인 후 전환.
+  엔진 무접촉이라 #241 `resumeState` 축은 애초에 무관.
+
+**⚠️ §0.7 함정이 실제로 발화했다 — `infra/.env`**: 이 워크트리(`spider22`)에 `.env` 가 **아예 없었다**.
+그대로 `compose up` 했으면 `SERVANT_TOKEN` 미설정으로 죽거나 admin 이 회수됐다. 라이브 컨테이너를
+만든 `spider15` 의 `.env` 를 복사했고, **해시 대조로 동일 확인**(servant token · admin password 둘 다
+라이브 컨테이너 env 와 일치). 리허설 컨테이너는 admin env 가 없어 `admins=0 (revoked=1)` 이 찍혔다 —
+**이 함정이 실재한다는 실물 증거**다. 라이브는 전환 후·web 재배포 후 **두 번 다 `admins=1`** 확인.
+
+**검증(전부 콜드 실측)**
+
+| 축 | 결과 |
+|---|---|
+| Flyway | `Current version: 41` → `Successfully applied 1 migration … now at version v42` |
+| `GET /api/admin/events` | 미인증 **401** / admin **200** `{"items":[],"total":0,…}` |
+| `GET /api/admin/events/funnel` | 미인증 **401** / admin **200** `{"generatedAt":…,"users":[]}` |
+| 터널 경유 동일 | config 200 · events 미인증 401 · events admin **200** · CORS `access-control-allow-origin: https://hmb-online.pages.dev` |
+| **계측 실발화 ①** | 신규 가입(`ev492p21902`) → `user_signup` 즉시 기록, 퍼널에 `reached.signup: true` |
+| **계측 실발화 ②** | `deploy-smoke` 덱 재저장(PUT 200, 동일 덱 왕복) → `deck_save` `{created:false, formation:"4-4-2", slotCount:15}` |
+| `/event-board` 화면 | admin 로그인 후 **정상 렌더** — 퍼널 표(가입/튜토리얼/덱/뽑기/연습/리그/원정) + 이벤트 스트림 2행. 미인증은 `/login` 리다이렉트(404 아님) |
+| 무회귀 스모크 | `/api/config` `/api/players` `/api/deck` `/api/me` `/api/league` `/api/league/rankings` `/api/away/candidates` `/api/away/season` `/api/me/record` `/api/me/matches` `/api/presets` `/api/modes` **전부 200** |
+| `status.sh` | **전 항목 ✓** |
+
+- ⚠️ **§0.55 준수**: 가입 확인은 **새 계정**(`ev492p21902`, 경기 **미완주** → #296 자격 필터로 랭킹 밖),
+  게임 행동 스모크는 **고정 계정 `deploy-smoke`**(`isNew:false`). 랭킹 오염 **0줄**.
+- **economy**: `source: OVERRIDE` 유지(`initialGems=12000`) — economy 발행물 무접촉이라 §0.6 처리 불필요.
+- **미검증**: 매치 완주 경로의 `match_start`/`match_finish`, 뽑기(`gacha_pull`), 리그 시즌 시작 훅은
+  **라이브에서 발화시키지 않았다**(경기 완주는 §0.55 오염 축, 뽑기는 젬 소모). 컨트롤러 훅 배치는
+  브랜치 계약(`BusinessEventHookPlacementTest`·`BusinessEventFlowTest`) 소관으로 남긴다.
 
 ## 2026-08-09T17:40Z — **배포 v3.26 — 백엔드 단독** — 개명 캐리오버 수리 v2.8.1 (#483 / 패널 blocker A)
 

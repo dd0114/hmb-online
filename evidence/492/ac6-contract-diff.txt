@@ -1,0 +1,12 @@
+OK  eventPage
+OK  eventItem
+OK  funnel
+OK  funnelUser
+OK  funnelReached
+OK  props is object
+OK  reached values are bool
+OK  occurredAt ISO-8601
+OK  funnel sorted lastSeenAt DESC
+OK  stream sorted occurredAt DESC
+OK  event names ⊆ contract
+VERDICT PASS

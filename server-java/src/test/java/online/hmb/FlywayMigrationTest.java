@@ -128,7 +128,12 @@ class FlywayMigrationTest {
             //   daily_mission_progress  = 경기 × 미션의 진행 델타. **멱등**(재정산 이중 가산 차단)과
             //     결과 화면의 `missions` 배열(누적값에서 사후 분해 불가)이 둘 다 이 행에 걸려 있다.
             "daily_missions",
-            "daily_mission_progress"
+            "daily_mission_progress",
+            // V42 비즈니스 이벤트(1) — #492: "심사위원이 게임을 어디까지 플레이했나"의 원장.
+            //   범용 event 문자열 + props_json 이라 V18(admin_ops_audit)과 형태가 같다. 다만 그쪽은
+            //   **운영자가 한 일**(actor=admin)이고 여기는 **유저가 한 일**이라 재사용하지 않았다.
+            //   ⚠️ CHECK·FK 를 일부러 안 걸었다 — 둘 다 "기록 실패가 곧 본 동작 실패"가 되는 경로다.
+            "business_events"
     );
 
     /**

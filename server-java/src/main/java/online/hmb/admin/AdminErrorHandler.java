@@ -39,7 +39,10 @@ import org.springframework.web.method.annotation.MethodArgumentTypeMismatchExcep
  * 도메인은 열려 있다. 후속 이슈 소관.)
  */
 @RestControllerAdvice(assignableTypes = {AdminController.class, AdminCatalogController.class,
-        AdminCharsController.class})
+        AdminCharsController.class,
+        // #492 이벤트 보드. admin 패키지 밖(online.hmb.events)이지만 경로가 /api/admin/** 이라
+        // 같은 노출 표면이다 — 빠뜨리면 ?limit=abc 가 전역 핸들러의 ex.getMessage() 를 타고 샌다.
+        online.hmb.events.AdminEventsController.class})
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class AdminErrorHandler {
 
