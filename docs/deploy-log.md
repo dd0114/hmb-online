@@ -1,3 +1,71 @@
+## 2026-08-13T14:01Z — **배포 v3.29 — java 단독** — 멱등 튜토리얼 호출의 이벤트 중복 (#496)
+
+- **git**: `d76c6c68ee03292f81a20d854403f403a967d1bf` (`origin/main`, `dirty: false`) ← 라이브 `b851bdcc`(v3.28)
+- **모듈 버전**: engine **0.43.0 (무접촉)** · server-java 0.1.0(재빌드) · web 0.0.0(**무접촉 — 재배포 안 함, 아래 §web**) · servants 0.0.1(**무접촉**)
+- **이미지**: java **`sha256:68c90a8548dec85f18817fdd91eaf34f9aa7b2f64ff9953fb67d903f957e1831`**
+  / runner `sha256:97a82f3f362b2864eb95f2e9b002816090d75bd177d5c028f9511a41657648d1`(**무변경**)
+  / 롤백 핀 `hmb/server-java:prev-live` = `sha256:5043de472c20…`(v3.28) · `hmb/servants:prev-live` = `sha256:97a82f3f…`
+- **Flyway**: **V44 유지 — 새 마이그레이션 0건.** 부팅 로그 `Current version of schema "main": 44`(적용 0).
+- **배포시각**: java 전환 `2026-08-13T14:01:31Z` → healthy 30초
+- **URL**: web `https://hmb-online.pages.dev` / 백엔드 터널 `https://pack-pipe-python-madrid.trycloudflare.com` (pid 3562, **회전 없음**)
+- **스코프**: `b851bdcc..d76c6c68` 에서 `apps/web/**` **0건** · `packages/**` **0건** · `data/**` **0건** ·
+  `application.yml`/`Dockerfile` 발행물 핀 **무변경** → **runner 재빌드·executor 재기동·web 재배포 전부 불필요**.
+  실질 코드 변경은 **server-java 2파일**(`BusinessEventRecorder`·`OnboardingController`)뿐이다.
+
+**무엇이 올라갔나**: **#496** — `POST /api/me/tutorial-complete` 는 **멱등**이라 여러 번 불리는데(모달 재닫기·
+건너뛰기 재시도) 그때마다 `business_events` 에 1행을 남겨 **이벤트 보드 스트림 상단이 같은 "튜토리얼 완료"로
+도배**됐다. 새 `BusinessEventRecorder.recordOnce` 가 **유저당 1행**으로 좁힌다. 게이트를 `users.tutorial_done`
+플래그가 아니라 **스트림에 그 행이 있는가**로 둔 것이 설계의 핵심 — `record` 는 예외를 삼키는 best-effort 라
+첫 기록이 실패하면 플래그 방식은 **영영 결손**되고 퍼널이 그 유저를 "튜토리얼 미도달"로 오독한다(스트림을 보면
+자가 치유한다). 실패는 **fail-open**(중복 검사가 던지면 그냥 기록 — 잡음 제거보다 이벤트 보존이 우선).
+
+**동승 — infra (PR #501, `#497`/`#489`)**: **라이브에는 이미 적용돼 있었다.** 워치독은 리포가 아니라 설치 사본
+(`~/.local/bin/hmb-tunnel-heal.sh`)이 도는데, #497 세션이 이미 재설치를 끝냈다 — 이번 배포에서 **동기 확인만** 했다
+(`diff` 로 `origin/main` 판과 **SYNCED**, plist 의 `WorkingDirectory` **부재**, 심박 `last-tick` 갱신 중).
+새 `status.sh` 가 그 사실을 처음으로 화면에 보여준다: `자가복구 워치독: 가동 중 (심박 39초 전, exit=0)`.
+
+**§web — 재배포하지 않았다(판단 근거)**
+
+`b851bdcc..d76c6c68` 의 `apps/web/**`·`packages/**` diff 가 **0건**이라 재빌드해도 **바이트가 같은 번들**이 나오고,
+바뀌는 것은 `version.json` 의 git SHA 각인뿐이다. 반면 재배포에는 실비용이 있다 — `deploy-pages.sh` 가 CORS
+재결선으로 **java 를 한 번 더 recreate** 한다(v3.28 에서 `.env` 함정이 두 번 발화한 그 경로다). 얻는 것 0 · 위험 >0
+이라 **하지 않았다.** 그래서 **라이브 `version.json` 은 `b851bdcc` 로 남아 있고 그게 정상이다** — 라이브 결선의
+SoT 는 `version.json` 이 아니라 `/config.json` 이며(`{"apiBase": "https://pack-pipe-python-madrid…", "source":"heal"}`
+= 12:18Z 치유값 그대로), `status.sh` 의 `web→백엔드 결선` 항목이 그것을 본다.
+⇒ **미오픈 캐릭터 유출 게이트(§0.7)는 발화 자체를 안 한다** — 배포물을 만들지 않았으므로.
+
+**절차**: §0.5 체크리스트 → 백업 → 롤백 핀 → 이미지 전환 → 검증. (마이그레이션 0건이라 §8 리허설은 불요.)
+- **백업**(마이그레이션이 없어도 떴다 — 라이브 **Flyway 44 시점의 복원점이 아직 없었다**):
+  `~/.local/state/hmb/db-backups/pre-v496-20260813T135841Z.db` (729,063,424 B)
+  `sha256 493d11a3f54e528da06d77a8a3d4a3ebaddfcf95e4e0c7560b7f8940d87a2c0a`
+  검증 = `integrity_check: ok` · flyway `max(CAST(version AS INTEGER))` **44**
+  ⚠️ 검증 시 `?mode=ro` 는 **에러 14 로 죽는다** — `.backup` 산출물이 WAL 모드 헤더를 물고 있어 `-shm` 생성이
+  필요한데 마운트가 읽기전용이다. **`?immutable=1`** 로 열어야 한다(v3.28 이 남긴 함정이 그대로 재발화).
+- **재기동 안전성**: 진행 중 매치(state ∉ {FINISHED,FAILED,ABANDONED}) **0건** 확인 후 전환. 엔진·`resumeState`
+  무접촉이라 #241 축 무관. **recreate 는 1회뿐**(web 재배포를 안 했으므로) — `admins=1` 확인도 1회.
+
+**검증(전부 콜드 실측)**
+
+| 축 | 결과 |
+|---|---|
+| `.env` 함정(§0.7) | 이번엔 **발화 안 함** — `spider18` 에 `.env` 존재, 라이브 생성 워크트리 `spider2` 와 **md5 동일**(`0ba73623…`) · `HMB_ADMIN_NICKNAME` 존재 |
+| AdminBootstrap | `admin bootstrap: nickname='hmbadmin' … — **admins=1**` |
+| Flyway | `Current version of schema "main": 44` · 적용 **0건** |
+| economy | `Loaded economy v4 from /var/lib/hmb/economy.override.json (initialGems=12000)` — **OVERRIDE 유지**(§0.6 무처리) |
+| 이미지 내용물 | 전환 **전에** jar 바이트코드 확인 — `BusinessEventRecorder.recordOnce` 존재 · `OnboardingController` 가 그것을 **호출** |
+| **#496 실동작** | 신규 프로브 계정으로 `/api/me/tutorial-complete` **4회** 호출(1회차 `deckGranted:true`, 2~4회차 `false`) → `business_events` 에 `tutorial_complete` **정확히 1행** |
+| **#496 전수** | 라이브 전체 `tutorial_complete` **9행 / 9유저** · **`rows_per_user > 1` 인 유저 0명**. 대조군으로 `deck_save` 는 같은 유저에 **2행**이 그대로 남아 있다(반복이 의미를 갖는 이벤트엔 안 걸렸다 = 과적용 아님) |
+| 이벤트 보드 API | 미인증 `/api/admin/events` **401** · admin `?event=tutorial_complete&size=50` → **9행, 중복 유저 NONE** |
+| 퍼널 무회귀 | 프로브 계정이 `reached.tutorial: true` 로 **정상 계상** · `eventCount: 2`(signup+tutorial_complete, 4회 호출에도 2) — 중복 제거가 **계측을 죽이지 않았다** |
+| 무회귀 스모크 | `/api/config` `/api/players` `/api/deck` `/api/me` `/api/league` `/api/league/rankings` `/api/away/candidates` `/api/away/season` `/api/me/record` `/api/me/matches` `/api/presets` `/api/modes` `/api/me/starter-grant` — **로컬 13/13 200 · 터널 경유 13/13 200** |
+| 튜토리얼 계약 | `/api/config` → `tutorial.starterCardId: "P122"` (로컬·터널 양쪽) |
+| 워치독(#497) | `status.sh` 신판이 **심박**을 보여준다 — `가동 중 (심박 39초 전, exit=0)`. 설치본 = `origin/main` 판과 SYNCED |
+| `status.sh` | **전 항목 ✓** (10/10) |
+
+⚠️ **§0.55 준수** — 경기 완주 스모크는 **고정 계정 `deploy-smoke`** 로 돌았다(`isNew: false` = 재사용, 랭킹에
+새 줄 안 생김). #496 프로브 계정(`dep0813v496*`)은 **가입 + 튜토리얼 완료까지만** 밟았고 경기를 완주하지 않아
+#296 자격 필터로 랭킹·원정 풀에 잡히지 않는다.
+
 ## 2026-08-13T11:58Z — **배포 v3.28 — 풀스택(java + web)** — 온레일 튜토리얼 (#493) + 이벤트 보드 (#492)
 
 - **git**: `b851bdcc0f710daf89fa85b123f4dfe9c1017646` (`origin/main`, `dirty: false`)
