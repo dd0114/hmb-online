@@ -1,3 +1,76 @@
+## 2026-08-13T11:58Z — **배포 v3.28 — 풀스택(java + web)** — 온레일 튜토리얼 (#493) + 이벤트 보드 (#492)
+
+- **git**: `b851bdcc0f710daf89fa85b123f4dfe9c1017646` (`origin/main`, `dirty: false`)
+  — v3.27 과 달리 **커밋된 트리에서 발차**했다. PR #495 머지분(11:47:43Z) + #492 는 이미 main(PR #494).
+- **모듈 버전**: engine **0.43.0 (무접촉)** · server-java 0.1.0(재빌드) · web 0.0.0(재배포) · servants 0.0.1(**무접촉**)
+- **이미지**: java **`sha256:5043de472c208f8bb9c12f6aaeb2e27a3db4c3fcf4d70eec2177084bfae27806`**
+  / runner `sha256:97a82f3f362b2864eb95f2e9b002816090d75bd177d5c028f9511a41657648d1`(**무변경**)
+  / 롤백 핀 `hmb/server-java:prev-live` = `sha256:1c1f281e4864…`(v3.27) · `hmb/servants:prev-live` = `sha256:97a82f3f…`
+- **Flyway**: **V42 → V44** (V43 `user_coupons` · V44 `matches.is_tutorial`). additive only · `.sql.conf` 없음 · UPDATE/DELETE/DROP **0**.
+- **배포시각**: java 전환 `11:58:07Z` · web `deployedAt 2026-08-13T11:59:54Z`
+- **URL**: web `https://hmb-online.pages.dev` / 백엔드 터널 = 발차 시 `smtp-statements-tomorrow-awards…`
+  → **12:09Z 회전**(아래 §터널) → 현재 `https://pack-pipe-python-madrid.trycloudflare.com` (pid 3562)
+- **스코프**: `21b95629..b851bdcc` 에서 `packages/**` **0건** · `data/**` **0건** → 엔진 무접촉이라
+  **runner 재빌드·executor 재기동 불필요**(§0.5-6 자동 충족) · 발행물 핀 무변경(`players.v2.8.1`/`economy.v4`/`bots.v4`/`league.v2`,
+  yml·Dockerfile 양쪽 일치) · economy `source: OVERRIDE` 유지(§0.6 처리 불필요).
+
+**무엇이 올라갔나**: **온레일 튜토리얼(#493)** — 신규 유저를 22스텝으로 안내하는 스포트라이트 코치마크
+(`apps/web/src/onrail/**`, `data-testid` 로 대상을 겨눈다). 덱(자동채우기→선수→한마디→저장) → 경기 전 브리핑 →
+경기화면 투어 6종 → 결과 → 성장 → 영입. 서버는 `matches.is_tutorial`(V44)로 튜토리얼 매치를 구분하고
+`user_coupons`(V43)가 보상 지급 키를 잡는다. **이벤트 보드(#492)** 는 PR #494 로 이미 main 에 있었고 이 빌드에 동승.
+
+**절차**: §0.5 체크리스트 → §8 백업·검증·**리허설** → 이미지 전환 → 검증.
+- **백업**: `~/.local/state/hmb/db-backups/pre-v493-20260813T115431Z.db` (724,869,120 B)
+  `sha256 00db0387ff51ddbe1b9c4bf7489b014c1170231298d815a4bcc663c94f5dda25`
+  검증 = `integrity_check: ok` · flyway `max(CAST(version AS INTEGER))` **42** · users **216** · user_players **3626** · matches **128** · `foreign_key_check` **11**(선행 상태 그대로)
+- **리허설**(별도 볼륨 `hmb-rehearsal-db` + 포트 18085): `Current version: 42` → `Successfully applied 2 migrations … now at version v44`.
+  무손실 = users 216 · user_players 3626 · matches 128 **전부 동일** · `user_coupons` 신설 0행 · 기존 128 매치 `is_tutorial=0` 기본값 ·
+  fk_check 11 · integrity ok · **기존 유저 로그인 `isNew:false`** · `/api/config` 200 · `/api/me/matches` 200(20행).
+- **재기동 안전성**: 진행 중 매치(state ∉ {FINISHED,FAILED,ABANDONED}) **0건** 확인 후 전환. 엔진 무접촉이라 #241 축은 무관.
+
+**⚠️ §0.7 함정이 또 발화했다 — `infra/.env`**: 이 워크트리(`spider18`)에도 `.env` 가 **없었다**(v3.27 `spider22` 와 동일).
+라이브 컨테이너를 만든 `spider2` 의 `.env` 를 복사하고 **라이브 컨테이너 env 와 값 해시 대조**로 4키
+(`SERVANT_TOKEN`·`HMB_ADMIN_NICKNAME`·`HMB_ADMIN_PASSWORD`·`WEB_ORIGINS`) 전부 MATCH 확인 후 발차했다.
+⚠️ **recreate 가 두 번 일어난다** — 이미지 전환 1회 + `deploy-pages.sh` 가 CORS 재결선으로 1회. **두 번 다 `admins=1`** 확인
+(최종 `12:00:10Z AdminBootstrap … admins=1`). 리허설 컨테이너는 admin env 가 없어 `admins=0 (revoked=1)` — 함정의 실물 증거.
+
+**검증(전부 콜드 실측)**
+
+| 축 | 결과 |
+|---|---|
+| Flyway | `Current version: 42` → `Successfully applied 2 migrations … now at version v44` |
+| 무회귀 스모크 | `/api/config` `/api/players` `/api/deck` `/api/me` `/api/league` `/api/league/rankings` `/api/away/candidates` `/api/away/season` `/api/me/record` `/api/me/matches` `/api/presets` `/api/modes` `/api/me/starter-grant` **13/13 200** |
+| 튜토리얼 계약 | `/api/config` → `tutorial.starterCardId: "P122"` (로컬·터널 양쪽) |
+| 이벤트보드 API | `/api/admin/events` · `/api/admin/events/funnel` 미인증 **401** / admin **200** |
+| `version.json` | 배포본이 로컬 `dist/version.json` 과 **완전 동일**(CDN 스테일 아님) · `git.dirty: false` |
+| CORS | `access-control-allow-origin: https://hmb-online.pages.dev` |
+| **① 튜토리얼 진입**(실브라우저) | 신규 가입 → 스타터 팩(**선수 15명 · 3,000 G · 12,000 Z**) → 홈 온보딩 7스텝 → **"같이 한 판 해볼까요?"** 제안 → 수락 시 온레일 **[1/22] deck-auto** 진입 |
+| **② 브리핑 + [킥오프]**(W11 회귀 자리) | **[6/22] `match-brief`** 말풍선 *"경기 전 브리핑 … [킥오프]를 누르면 경기가 시작돼요"* + `kickoff-button` **링 하이라이트**(딤 뚫림) — 실캡처로 눈 확인 |
+| **③ 경기화면 투어 · [스킵] 잠김** | `[7/22]`①스코어보드 → `[8]`②경기장면 → `[9]`③타임라인 → `[10]`④재생·배속 → `[11]`⑤통계 → **`[12]`⑥건너뛰기에서 `match-skip` `disabled = true`** |
+| ④ 이벤트 보드 화면 | admin 로그인 → `/event-board` **정상 렌더** — 퍼널 표(가입/튜토리얼/덱/뽑기/연습/리그/원정 도달) + 이벤트 스트림(종류 필터·페이지네이션). 신규 가입·튜토리얼 진입이 **즉시 계상**(probe 계정이 `튜토리얼까지`로 표시) |
+| `status.sh` | **전 항목 ✓** (10/10) |
+
+⚠️ **§0.55 준수** — 실브라우저 검증은 **경기를 완주하지 않았다**(`match-skip` 스텝에서 중단). 온레일은 그 뒤
+`result-view → growth → trade` 로 이어지지만 그건 경기 종료를 요구하므로 랭킹 오염 방지를 위해 밟지 않았다.
+가입 확인용 계정 3개(`dep0813*`)는 미완 매치만 남고 #296 필터로 랭킹에 안 잡힌다.
+
+**§터널 — 배포 후 quick tunnel 이 회전했다(배포물과 무관)**
+
+`12:09:26Z` 워치독이 `http:530` 감지 → 자가치유 시작. 발급이 **3회 실패**(1차 = 맥 웨이크 직후
+`lookup api.trycloudflare.com: no such host`, 2·3차 = `Post https://api.trycloudflare.com/tunnel: context deadline exceeded`)
+후 `12:18:57Z` **HEAL_OK** — 새 URL `pack-pipe-python-madrid`. **MTTR 9분 31초, 수동 개입 0.**
+web 은 재배포하지 않았다 — 런타임 config(#183)가 `config.json` 을 `{"apiBase": …, "source": "heal"}` 로 갱신해
+**빌드 없이 결선이 따라간다**(`status.sh` 의 `web→백엔드 결선` 항목이 이걸 본다).
+⚠️ 그래서 **배포본 `version.json` 의 `tunnel.apiUrl` 은 낡는다**(빌드 시점 각인). 라이브 결선의 SoT 는
+`version.json` 이 아니라 **`/config.json`** 이다.
+⚠️ **오늘 하루 URL 회전 2회 · 발급 실패 3회** — quick tunnel 상시 취약점 정리와 고정 URL 승격 권고는 #122 코멘트에 남겼다(결정은 hero).
+
+**⚠️ 운영자 함정(이 머신 한정, 테스터 무관)**: 회전 직후 이 맥의 `getaddrinfo` 가 새 터널 호스트를
+못 풀었다(mDNSResponder 가 AAAA 만 캐시 → `curl`/`ping` 은 `Could not resolve host`, `dig`/`host` 는 정상).
+`status.sh` 는 `dig +short` → `curl --resolve` 로 **시스템 리졸버를 우회**해서 영향을 안 받는다.
+같은 이유로 **운영자가 `curl <터널>` 로 확인할 때만** 실패한다 — `--resolve` 로 핀하거나 `status.sh` 를 믿어라.
+mDNSResponder 플러시는 머신 전역 상태라 **하지 않았다**(다른 fleet 세션과 공유).
+
 ## 2026-08-12 23:34 KST — [장애] Docker 데몬 사망 → 백엔드 전체 다운, 수동 복구
 - 증상: Docker Desktop 프로세스 종료(원인: 업데이트/크래시 추정) → hmb-java·hmb-runner 다운, 백엔드 405. 워치독은 BACKEND_DOWN 기록만 가능(터널 전용). 웹은 점검 안내(#477) 노출.
 - 복구: Docker Desktop 재기동(6s) → compose up java runner → healthy 12s → status 전항목 ✓. DB 볼륨 무손상.
