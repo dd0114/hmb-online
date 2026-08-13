@@ -1,0 +1,178 @@
+
+Running 7 tests using 1 worker
+
+  ✘  1 [chromium] › e2e/p493-onrail-skip.spec.ts:261:1 › ⓐ 단축을 쓸 수 없는 유저는 그 스텝을 건너뛰고 완주에 닿는다 (21.3s)
+  ✘  2 [chromium] › e2e/p493-onrail-skip.spec.ts:289:1 › ⓑ [자동 채우기]가 비활성이면 그 스텝만 건너뛰고 S2 는 계속된다 (21.8s)
+  ✘  3 [chromium] › e2e/p493-onrail-skip.spec.ts:320:1 › ⓑ ⚠️ 잠깐 잠긴 대상은 건너뛰지 않는다 — [저장]은 저장 중에 스스로 잠긴다 (3.0m)
+  ✘  4 [chromium] › e2e/p493-onrail-skip.spec.ts:359:1 › ⓒ 잠긴 화면의 스텝은 신 단위로 건너뛴다(그 화면에 갈 방법이 없다) (20.6s)
+  ✘  5 [chromium] › e2e/p493-onrail-skip.spec.ts:378:1 › ⓓ 레일 시작 = 빈 보드에서 출발한다(서버 덱은 무접촉) (16.2s)
+  ✓  6 [chromium] › e2e/p493-onrail-skip.spec.ts:399:1 › ⓓ 레일에 안 들어온 유저의 덱 화면은 그대로다(부작용 0) (616ms)
+  ✘  7 [chromium] › e2e/p493-onrail-skip.spec.ts:411:1 › ⓔ 스타터 카드 id 를 서버가 알려 주면 추론 없이 그 카드를 겨눈다 (581ms)
+
+
+  1) [chromium] › e2e/p493-onrail-skip.spec.ts:261:1 › ⓐ 단축을 쓸 수 없는 유저는 그 스텝을 건너뛰고 완주에 닿는다 ─────────
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  getByTestId('onrail-bubble')
+    Expected: "finish"
+    Received: "trade-rush"
+    Timeout:  20000ms
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 20000ms
+      - waiting for getByTestId('onrail-bubble')
+        44 × locator resolved to <div data-placement="below" class="_bubble_1kgz7_42" data-step-id="trade-rush" data-testid="onrail-bubble">…</div>
+           - unexpected value "trade-rush"
+
+
+      270 |
+      271 |   // 그래도 레일은 앞으로 간다 — 완주 스텝까지.
+    > 272 |   await expect(step(page)).toHaveAttribute("data-step-id", "finish", { timeout: 20_000 });
+          |                            ^
+      273 |
+      274 |   /*
+      275 |    * 두 칸을 **서로 다른 사유로** 넘었다. 그 구분이 곧 이 기능의 값이다 — [단축]은 이 유저에게
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-a8e90c5a822c49b8d/apps/web/e2e/p493-onrail-skip.spec.ts:272:28
+
+    Error Context: test-results/p493-onrail-skip-ⓐ-단축을-쓸-수-없는-유저는-그-스텝을-건너뛰고-완주에-닿는다-chromium/error-context.md
+
+  2) [chromium] › e2e/p493-onrail-skip.spec.ts:289:1 › ⓑ [자동 채우기]가 비활성이면 그 스텝만 건너뛰고 S2 는 계속된다 ──────
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator:  getByTestId('onrail-bubble')
+    Expected: "deck-player"
+    Received: "deck-auto"
+    Timeout:  20000ms
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 20000ms
+      - waiting for getByTestId('onrail-bubble')
+        44 × locator resolved to <div data-placement="below" class="_bubble_1kgz7_42" data-step-id="deck-auto" data-testid="onrail-bubble">…</div>
+           - unexpected value "deck-auto"
+
+
+      312 |   await expect(page.getByTestId("auto-fill")).toBeDisabled();
+      313 |   // 신 전체가 아니라 **그 스텝만** 넘어간다 — 나머지 S2 는 이 유저도 할 수 있다.
+    > 314 |   await expect(step(page)).toHaveAttribute("data-step-id", "deck-player", { timeout: 20_000 });
+          |                            ^
+      315 |
+      316 |   const skips = await skipLog(page);
+      317 |   expect(skips.map((s) => `${s.stepId}:${s.reason}`)).toContain("deck-auto:target-disabled");
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-a8e90c5a822c49b8d/apps/web/e2e/p493-onrail-skip.spec.ts:314:28
+
+    Error Context: test-results/p493-onrail-skip-ⓑ-자동-채우기-가-비활성이면-그-스텝만-건너뛰고-S2-는-계속된다-chromium/error-context.md
+
+  3) [chromium] › e2e/p493-onrail-skip.spec.ts:320:1 › ⓑ ⚠️ 잠깐 잠긴 대상은 건너뛰지 않는다 — [저장]은 저장 중에 스스로 잠긴다 
+
+    Test timeout of 180000ms exceeded.
+
+    Error: locator.click: Test timeout of 180000ms exceeded.
+    Call log:
+      - waiting for getByTestId('auto-fill')
+        - locator resolved to <button disabled type="button" data-testid="auto-fill" title="보유 선수를 모두 배치했습니다" class="_autoFill_1mgoa_46">⚡ 자동 채우기</button>
+      - attempting click action
+        2 × waiting for element to be visible, enabled and stable
+          - element is not enabled
+        - retrying click action
+        - waiting 20ms
+        2 × waiting for element to be visible, enabled and stable
+          - element is not enabled
+        - retrying click action
+          - waiting 100ms
+        345 × waiting for element to be visible, enabled and stable
+            - element is not enabled
+          - retrying click action
+            - waiting 500ms
+
+
+      340 |   await page.getByTestId("home-tile-game").click();
+      341 |   await page.getByTestId("practice-tutorial-accept").click();
+    > 342 |   await page.getByTestId("auto-fill").click();
+          |                                       ^
+      343 |   await page.getByTestId("token-GK1").click();
+      344 |   const input = page.getByTestId("rail-prompt-input");
+      345 |   await input.fill("오늘 너만 믿는다");
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-a8e90c5a822c49b8d/apps/web/e2e/p493-onrail-skip.spec.ts:342:39
+
+    Error Context: test-results/p493-onrail-skip-ⓑ-⚠️-잠깐-잠-7aaab-뛰지-않는다-—-저장-은-저장-중에-스스로-잠긴다-chromium/error-context.md
+
+  4) [chromium] › e2e/p493-onrail-skip.spec.ts:359:1 › ⓒ 잠긴 화면의 스텝은 신 단위로 건너뛴다(그 화면에 갈 방법이 없다) ─────
+
+    Error: expect(locator).toHaveAttribute(expected) failed
+
+    Locator: getByTestId('onrail-bubble')
+    Expected: "finish"
+    Timeout: 20000ms
+    Error: element(s) not found
+
+    Call log:
+      - Expect "toHaveAttribute" with timeout 20000ms
+      - waiting for getByTestId('onrail-bubble')
+
+
+      366 |   await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`), { timeout: 20_000 });
+      367 |
+    > 368 |   await expect(step(page)).toHaveAttribute("data-step-id", "finish", { timeout: 20_000 });
+          |                            ^
+      369 |
+      370 |   const skips = await skipLog(page);
+      371 |   expect(skips.map((s) => `${s.stepId}:${s.reason}`)).toContain("growth-open:screen-locked");
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-a8e90c5a822c49b8d/apps/web/e2e/p493-onrail-skip.spec.ts:368:28
+
+    Error Context: test-results/p493-onrail-skip-ⓒ-잠긴-화면의-스텝은-신-단위로-건너뛴다-그-화면에-갈-방법이-없다--chromium/error-context.md
+
+  5) [chromium] › e2e/p493-onrail-skip.spec.ts:378:1 › ⓓ 레일 시작 = 빈 보드에서 출발한다(서버 덱은 무접촉) ────────────
+
+    Error: expect(locator).toBeEnabled() failed
+
+    Locator:  getByTestId('auto-fill')
+    Expected: enabled
+    Received: disabled
+    Timeout:  15000ms
+
+    Call log:
+      - Expect "toBeEnabled" with timeout 15000ms
+      - waiting for getByTestId('auto-fill')
+        34 × locator resolved to <button disabled type="button" data-testid="auto-fill" title="보유 선수를 모두 배치했습니다" class="_autoFill_1mgoa_46">⚡ 자동 채우기</button>
+           - unexpected value "disabled"
+
+
+      386 |
+      387 |   // 11명이 이미 저장된 덱인데도 AUTO 가 **살아 있다** — 이게 S2 각본의 전제다.
+    > 388 |   await expect(page.getByTestId("auto-fill")).toBeEnabled();
+          |                                               ^
+      389 |   await expect(step(page)).toHaveAttribute("data-step-id", "deck-auto");
+      390 |   // 보드는 비어 있다(드래프트만 비웠다 — 서버 덱은 그대로).
+      391 |   await expect(page.getByTestId("token-GK1")).toHaveCount(0);
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-a8e90c5a822c49b8d/apps/web/e2e/p493-onrail-skip.spec.ts:388:47
+
+    Error Context: test-results/p493-onrail-skip-ⓓ-레일-시작-빈-보드에서-출발한다-서버-덱은-무접촉--chromium/error-context.md
+
+  6) [chromium] › e2e/p493-onrail-skip.spec.ts:411:1 › ⓔ 스타터 카드 id 를 서버가 알려 주면 추론 없이 그 카드를 겨눈다 ─────
+
+    Error: expect(received).toBeLessThan(expected)
+
+    Expected: < 20
+    Received:   856.796875
+
+      423 |   expect(hole).not.toBeNull();
+      424 |   // 구멍이 그 카드다(그리드로 착지하면 폭이 몇 배로 벌어진다).
+    > 425 |   expect(Math.abs(hole!.width - card!.width)).toBeLessThan(20);
+          |                                               ^
+      426 |   expect(Math.abs(hole!.x - card!.x)).toBeLessThan(20);
+      427 | });
+      428 |
+        at /Users/peter.park/spider/hmb-online/.claude/worktrees/agent-a8e90c5a822c49b8d/apps/web/e2e/p493-onrail-skip.spec.ts:425:47
+
+    Error Context: test-results/p493-onrail-skip-ⓔ-스타터-카드-id-를-서버가-알려-주면-추론-없이-그-카드를-겨눈다-chromium/error-context.md
+
+  6 failed
+    [chromium] › e2e/p493-onrail-skip.spec.ts:261:1 › ⓐ 단축을 쓸 수 없는 유저는 그 스텝을 건너뛰고 완주에 닿는다 ──────────
+    [chromium] › e2e/p493-onrail-skip.spec.ts:289:1 › ⓑ [자동 채우기]가 비활성이면 그 스텝만 건너뛰고 S2 는 계속된다 ───────
+    [chromium] › e2e/p493-onrail-skip.spec.ts:320:1 › ⓑ ⚠️ 잠깐 잠긴 대상은 건너뛰지 않는다 — [저장]은 저장 중에 스스로 잠긴다 
+    [chromium] › e2e/p493-onrail-skip.spec.ts:359:1 › ⓒ 잠긴 화면의 스텝은 신 단위로 건너뛴다(그 화면에 갈 방법이 없다) ──────
+    [chromium] › e2e/p493-onrail-skip.spec.ts:378:1 › ⓓ 레일 시작 = 빈 보드에서 출발한다(서버 덱은 무접촉) ─────────────
+    [chromium] › e2e/p493-onrail-skip.spec.ts:411:1 › ⓔ 스타터 카드 id 를 서버가 알려 주면 추론 없이 그 카드를 겨눈다 ──────
+  1 passed (4.5m)

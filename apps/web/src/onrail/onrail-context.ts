@@ -17,6 +17,17 @@ export interface OnRailControls {
    * 소비 = `match/MatchPage` 한 곳. 투어가 끝나면 거짓이 되고 그 뒤는 일반 관전이다.
    */
   matchFrozen: boolean;
+  /**
+   * **덱 드래프트를 비우고 시작하라**는 일회성 지시 (#493 W9). 소비 = `DeckPage` 가 에디터를
+   * 초기화하는 그 한 번뿐이고, 소비하면 `consumeDeckDraftReset()` 으로 끈다.
+   *
+   * ⚠️ 서버 덱이 아니라 **클라 드래프트**다 — 이 신호를 받은 화면이 `PUT /api/deck` 을 부르면
+   * 유저가 저장한 적 없는 빈 덱이 진짜로 저장된다(= 되돌릴 수 없는 손실). 비우는 것은 화면뿐이고,
+   * 저장은 유저가 [저장]을 누를 때만 일어난다.
+   */
+  deckDraftReset: boolean;
+  /** 위 지시를 소비했다고 알린다(멱등 — 두 번 불러도 안전). */
+  consumeDeckDraftReset: () => void;
   /** 온레일을 시작한다(S1 모달 [시작하기]). */
   start: () => void;
   /** 사양한다(S1 모달 [건너뛰기] · 진행 중 [그만두기]) — 다시 묻지 않는다(조정 ⑥). */
@@ -33,6 +44,8 @@ const NOOP: OnRailControls = {
   running: false,
   stepId: null,
   matchFrozen: false,
+  deckDraftReset: false,
+  consumeDeckDraftReset: () => {},
   start: () => {},
   skip: () => {},
 };

@@ -49,6 +49,14 @@ export interface AppConfig {
    *   창에서 스텁 배너가 번쩍이면 로그인한 사용자에게 거짓말이 된다.
    */
   ai?: { mode: "live" | "stub" | "unknown"; reason: string | null } | null;
+  /**
+   * 튜토리얼 고정 자산 (#493 W9). **옵셔널이다** — 이 필드를 모르는 구 서버에 붙으면 `undefined`
+   * 이고, 그때 온레일은 종전의 추론으로 내려간다(`onrail-logic.tutorialCardIdFrom`).
+   *
+   * - `starterCardId` — 가입 지급에 고정으로 실리는 카드(`hmb.tutorial.starter.card-id`).
+   *   S5 "이 선수를 키워 봅시다"가 겨눌 카드이고, **web 이 추측하던 값**이었다.
+   */
+  tutorial?: { starterCardId?: string | null } | null;
 }
 
 export const CONFIG_QUERY_KEY = ["config"] as const;

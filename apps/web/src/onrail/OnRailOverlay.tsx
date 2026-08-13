@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { computeBubbleLayout, isTargetUsable } from "../common/tutorial-logic";
 import type { BubbleLayout, Rect } from "../common/tutorial-logic";
-import { shieldFor } from "./onrail-logic";
+import { shieldFor, targetRefusesInput } from "./onrail-logic";
 import type { OnRailShield } from "./onrail-logic";
 import type { OnRailStep } from "./onrail-script";
 import styles from "./OnRail.module.css";
@@ -16,6 +16,14 @@ interface OnRailOverlayProps {
   onAdvance: () => void;
   /** `skipIfMissing` 스텝의 대상이 끝내 안 나타났다. */
   onMissingTarget: () => void;
+  /**
+   * 대상이 **화면에 있는데 입력을 거절한다**(#493 W9) — 유예 내내 그랬다.
+   *
+   * ⚠️ `onMissingTarget` 과 **다른 문**이다. 없는 것은 나타날 수 있으니 각본이 허락한 스텝만
+   * 넘기지만(hold 가 기본), 거절하는 것은 이 유저에게 **열리지 않는다** — 쿠폰이 없고 후보가
+   * 없으니 기다려도 오지 않는다. 그래서 `skipIfMissing` 과 무관하게 걸린다.
+   */
+  onTargetDisabled?: () => void;
   /** 탈출구 — 갇힘 방지. 무엇을 하는지는 호출부가 정한다(라벨도 같이 넘긴다). */
   onExit: () => void;
   /**
@@ -25,6 +33,15 @@ interface OnRailOverlayProps {
   exitLabel?: string;
   /** 대상 부재를 '없음'으로 확정하기까지의 유예(ms). 0 이면 즉시(테스트). */
   missingGraceMs?: number;
+  /**
+   * 비활성을 '못 한다'로 확정하기까지의 유예(ms) — **부재보다 길다**.
+   *
+   * `disabled` 는 순간적일 수 있다: [저장]은 저장 중에 잠기고(`busy`), AUTO 도 뮤테이션이 도는
+   * 동안 잠긴다. 짧게 잡으면 **느린 네트워크에서 정상 스텝이 건너뛰어진다** — 스킵은 되돌릴 수
+   * 없으니 이쪽 오판이 훨씬 비싸다. 그래서 "잠깐 잠긴 것"과 "이 유저에겐 안 열리는 것"을
+   * 가르는 값은 넉넉하게 둔다.
+   */
+  disabledGraceMs?: number;
   /**
    * 말풍선이 대신 말해 주는 실패 한 줄 (#493 W8-v3).
    *
@@ -76,9 +93,11 @@ export function OnRailOverlay({
   total,
   onAdvance,
   onMissingTarget,
+  onTargetDisabled,
   onExit,
   exitLabel = "나중에",
   missingGraceMs = 1500,
+  disabledGraceMs = 2500,
   note = null,
 }: OnRailOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
@@ -94,6 +113,17 @@ export function OnRailOverlay({
   /** 대상을 놓치기 시작한 시각(ms) — **경과 시간**으로 유예를 판단한다(폴링 횟수로 세면
    *  스크롤/리사이즈로 measure 가 잦을 때 수십 ms 만에 소진된다, TutorialOverlay 선례). */
   const missSince = useRef<number | null>(null);
+  /** 대상이 입력을 거절하기 시작한 시각(ms) — 위와 같은 이유로 **경과 시간**으로 잰다. */
+  const refuseSince = useRef<number | null>(null);
+  /**
+   * 이 스텝에서 대상이 **한 번이라도 눌릴 수 있었나**.
+   *
+   * ⚠️ 이 래치가 "잠깐 잠긴 것"과 "이 유저에겐 안 열리는 것"을 실제로 가른다. [저장]은 저장 중에
+   * `busy` 로 잠기는데(`DeckPage.saveDisabled`), 서버가 느려 그 잠금이 유예를 넘기면 **정상적으로
+   * 저장을 누른 유저의 스텝이 건너뛰어진다**. 그래서 **도착한 뒤 줄곧 거절해 온 대상만** 넘긴다 —
+   * 쿠폰 없음·후보 없음은 처음부터 끝까지 거절이므로 이 래치가 서지 않는다.
+   */
+  const everUsableRef = useRef(false);
   /** 마지막으로 대상을 화면 안으로 끌어온 시각 — 매 프레임 스크롤을 다시 걸지 않기 위한 스로틀. */
   const lastScrollAt = useRef(0);
 
@@ -117,7 +147,27 @@ export function OnRailOverlay({
 
     if (centered) {
       missSince.current = null;
+      refuseSince.current = null;
       return;
+    }
+
+    /*
+     * **거절 판정은 부재 판정보다 앞이다** (#493 W9). 비활성 버튼도 사각형은 멀쩡하므로 아래
+     * `isTargetUsable` 를 통과하고, 그러면 레일은 "대상을 찾았다"고 판단해 **영원히 기다린다**.
+     * 그게 W8-v3 blocker B2·B6 의 형태였다.
+     */
+    if (targetRefusesInput(el)) {
+      const now = performance.now();
+      if (refuseSince.current === null) refuseSince.current = now;
+      // 한 번이라도 눌릴 수 있었으면 지금의 잠금은 **이 화면의 사정**이지 유저의 자격이 아니다.
+      if (!everUsableRef.current && now - refuseSince.current >= disabledGraceMs) onTargetDisabled?.();
+      // ⚠️ **return 하지 않는다** — 넘어가기 전까지는 그 버튼을 계속 비춘다. 유예 동안 화면이
+      //    비면 유저에게는 튜토리얼이 깜빡 죽은 것으로 보인다.
+    } else {
+      refuseSince.current = null;
+      // ⚠️ 대상이 **있을 때만** 세운다 — 아직 렌더 전(`el === null`)은 "눌릴 수 있었다"가 아니다.
+      //    여기서 null 을 통과시키면 래치가 도착 즉시 서서 이 기능 전체가 무효가 된다.
+      if (el) everUsableRef.current = true;
     }
 
     const next = el ? toRect(el) : null;
@@ -152,11 +202,21 @@ export function OnRailOverlay({
 
     missSince.current = null;
     setRect((prev) => (prev && sameRect(prev, next!) ? prev : next));
-  }, [targetTestId, centered, step.skipIfMissing, missingGraceMs, onMissingTarget]);
+  }, [
+    targetTestId,
+    centered,
+    step.skipIfMissing,
+    missingGraceMs,
+    onMissingTarget,
+    disabledGraceMs,
+    onTargetDisabled,
+  ]);
 
   // 스텝 전환 즉시 1회 + 뒤이은 두 프레임에 한 번 더(마운트 직후 레이아웃 안정화 대비).
   useLayoutEffect(() => {
     missSince.current = null;
+    refuseSince.current = null;
+    everUsableRef.current = false; // 래치는 **스텝마다** 새로 판정한다
     lastScrollAt.current = 0;
     measure();
     let second = 0;

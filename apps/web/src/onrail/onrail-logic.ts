@@ -4,6 +4,7 @@
  * 프로바이더가 얇아지도록 "어느 스텝인가 · 이 화면이 맞나 · 무엇을 겨누나"를 전부 여기서 정한다.
  * 화면에 조건을 다시 적으면 규칙이 두 벌이 된다(`common/deckless.ts` 와 같은 규율).
  */
+import { LOCKED_ROUTES, shouldForceResume, type ActiveMatchInfo } from "../common/match-lock";
 import {
   ANY_SCREEN,
   DECK_PLAYER_TOKEN,
@@ -61,11 +62,31 @@ export interface OnRailTargets {
   /**
    * 스타터 고정 튜토리얼 카드 id(S5).
    *
-   * ⚠️ 서버가 이 값을 **안 알려 준다** — `hmb.tutorial.starter.card-id`(현재 P122)는 서버 설정일
-   * 뿐 `/api/config` 에도 `/api/me` 에도 없다. 그래서 web 은 "XP 프리필로 대기 중인 3지선다"의
-   * 주인을 그 카드로 읽는다(`useTutorialCard`). 못 읽으면 `fallbackTestId` 로 착지한다.
+   * 출처는 **`/api/config` 의 `tutorial.starterCardId`**(#493 W9 서버 소웨이브). 그 필드를 모르는
+   * 서버에서는 추론으로 내려간다 — `tutorialCardIdFrom` 머리말.
    */
   tutorialCardId?: string | null;
+}
+
+/**
+ * S5 대상 카드 id — **서버가 말해 준 값이 먼저다** (#493 W9).
+ *
+ * ⚠️ 구 동작은 추론뿐이었다: 가입 지급이 그 카드에 3지선다를 정확히 하나 대기시켜 두므로
+ * "대기 중 선택권의 주인"을 그 카드로 읽었다. **추론이지 계약이 아니라서** 유저가 다른 카드로
+ * 경기를 치러 선택권이 하나 더 생기면 순서가 흔들리고, 이미 써 버렸으면 아예 못 찾았다(그때는
+ * 그리드로 착지 = 어느 카드를 눌러야 하는지 안 알려 준다). 서버가 `hmb.tutorial.starter.card-id`
+ * 를 공개하면 그 자리가 **한 줄로 대체된다** — 그게 W9 이 한 일이다.
+ *
+ * ⚠️ **추론 가지를 지우지 않는다.** web 이 구 서버에 붙는 창이 항상 있고(배포 순서), 그때
+ * 필드는 `undefined` 로 온다. 폴백이 없으면 그 창에서 S5 안내가 통째로 그리드로 내려앉는다.
+ */
+export function tutorialCardIdFrom(
+  declared: string | null | undefined,
+  pendingChoices: readonly { playerId?: string | null }[] | null | undefined,
+): string | null {
+  if (typeof declared === "string" && declared.length > 0) return declared;
+  if (!Array.isArray(pendingChoices) || pendingChoices.length === 0) return null;
+  return pendingChoices[0]?.playerId ?? null;
 }
 
 /**
@@ -125,4 +146,89 @@ export function shieldFor(target: Element | null, dialogs: readonly Element[]): 
   const blocking = dialogs.some((d) => !target || !d.contains(target));
   if (blocking) return "hidden";
   return "guide-only";
+}
+
+// ── 수행 가능 전제 (#493 W9) ──────────────────────────────────────────────
+//
+// 온레일의 기본 규율은 **"대상이 없으면 기다린다"** 다(위 머리말). 그 규율이 정확히 반대로
+// 작동하는 자리가 있다 — **대상은 렌더되는데 유저가 그걸 수행할 수 없을 때**다. 대상이 있으니
+// hold 도 skipIfMissing 도 걸리지 않아 레일이 **영원히** 그 자리를 가리킨다(W8-v3 독립 검증
+// blocker B2·B6·B3 이 전부 이 한 부류였다):
+//
+//   · 쿠폰도 잔액도 없는 유저의 S6 [단축]        → 버튼은 뜨는데 `disabled`
+//   · 보유를 다 배치한 유저의 S2 [자동 채우기]    → 버튼은 뜨는데 `disabled`
+//   · 진행 중 매치가 있는 유저의 S5 `/players`   → 그 화면에 **갈 수가 없다**(MatchLockGate)
+//
+// 그래서 스텝마다 "지금 이걸 할 수 있나"를 묻고, **불성립이면 건너뛴다**. 기다림과 건너뜀의
+// 경계는 이제 *대상의 유무*가 아니라 **수행 가능성**이다 — 나타날 수 있는 것은 기다리고,
+// 이 유저에게 열리지 않는 것은 넘긴다.
+
+/** 무엇 때문에 건너뛰었나 — **닫힌 목록**이고, 그대로 진행 상태에 적힌다(추후 분석용). */
+export type OnRailSkipReason =
+  /** 대상이 유예 안에 나타나지 않았다(각본이 `skipIfMissing` 으로 그렇게 고른 스텝). */
+  | "target-missing"
+  /** 대상이 화면에 있는데 **입력을 거절한다**(쿠폰 없음·후보 없음·잔액 부족 …). */
+  | "target-disabled"
+  /** 그 화면 자체에 갈 수 없다(진행 중 매치가 메타 화면을 잠갔다, #217). */
+  | "screen-locked";
+
+export const ONRAIL_SKIP_REASONS: readonly OnRailSkipReason[] = [
+  "target-missing",
+  "target-disabled",
+  "screen-locked",
+];
+
+/**
+ * 이 요소가 **입력을 거절하는가**.
+ *
+ * ⚠️ 판정을 화면 규칙의 사본으로 만들지 않는다 — `canFillEmptySlots`·`speedupButtonState` 를
+ * 프로바이더가 다시 계산하면 규칙이 두 벌이 되고(모듈 규율), 그 두 벌은 반드시 갈라진다.
+ * 화면은 이미 자기 규칙으로 판정해 `disabled` 를 **렌더해 놓았다** — 온레일은 그 결론만 읽는다.
+ * 그래서 새 화면에 새 잠금 조건이 생겨도 여기는 고칠 것이 없다.
+ */
+export function targetRefusesInput(el: Element | null): boolean {
+  if (!el) return false;
+  return el.matches("[disabled],[aria-disabled='true']");
+}
+
+/** 이 경로가 진행 중 매치에 잠기는 화면인가(#217 `LOCKED_ROUTES` 를 **소비**한다). */
+export function isLockedScreen(screen: string): boolean {
+  return (LOCKED_ROUTES as readonly string[]).includes(screen);
+}
+
+/**
+ * 이 스텝의 화면에 지금 갈 수 있는가 — 못 가면 `"screen-locked"`.
+ *
+ * 판정 자체는 하지 않는다: `shouldForceResume` 이 이미 "잠겼고 아직 포기할 수 없다"를 소유하고
+ * 있고(그 함수 머리말), 여기서 같은 규칙을 다시 적으면 서버가 바뀔 때 조용히 어긋난다.
+ */
+export function screenLockedFor(
+  step: OnRailStep | null,
+  active: ActiveMatchInfo | undefined | null,
+): boolean {
+  if (!step) return false;
+  return isLockedScreen(step.screen) && shouldForceResume(active);
+}
+
+/**
+ * 건너뛴 뒤 설 스텝. **앞으로만 간다** — 인덱스가 단조 증가하므로 어떤 조합에서도 각본 끝
+ * (= 완주 스텝)에 닿는다. 이것이 이 웨이브의 AC 다.
+ *
+ * 범위는 사유가 정한다:
+ *  · `screen-locked` — **연속한 잠긴-화면 스텝을 통째로**. 같은 잠금이 그 스텝들 전부를 막고
+ *    있으므로 하나씩 유예를 다시 기다릴 이유가 없다(S5 5스텝 + S6 3스텝 = 8번의 유예가 된다).
+ *  · 나머지 — **그 스텝 하나**. S2 에서 AUTO 를 못 눌러도 선수·한마디·저장은 그 유저도 한다.
+ */
+export function stepAfterSkip(
+  id: OnRailStepId,
+  reason: OnRailSkipReason,
+  script: readonly OnRailStep[] = ONRAIL_SCRIPT,
+): OnRailStepId | null {
+  const from = script.findIndex((s) => s.id === id);
+  if (from < 0) return null;
+  let i = from + 1;
+  if (reason === "screen-locked") {
+    while (i < script.length && isLockedScreen(script[i]!.screen)) i += 1;
+  }
+  return script[i]?.id ?? null;
 }
