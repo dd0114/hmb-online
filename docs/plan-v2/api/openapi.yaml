@@ -2576,6 +2576,18 @@ components:
             initialGems:
               type: integer
               minimum: 0
+        tutorial:
+          type: [object, "null"]
+          description: >-
+            #493 W9 additive(선택 필드 — required 불변). 튜토리얼 관련 공개 설정.
+            hmb.tutorial.starter.enabled=false 면 null.
+          properties:
+            starterCardId:
+              type: [string, "null"]
+              description: >-
+                스타터팩 고정 지급 카드의 playerId(현행 P122, 2장 + 첫 강화 무료 쿠폰).
+                web 온레일 S5 가 "이 선수를 키워 봅시다" 대상을 이 값으로 정한다 —
+                이 필드가 없으면 web 은 보유 카드에서 추론(3지선다)으로 폴백한다.
 
     ShopConfig:
       type: object
