@@ -1,0 +1,44 @@
+== #497 durable fix 회귀 증명 ==
+언제: 2026-08-13T09:38:12Z
+무엇: 08:47Z 장애 조건을 재현한다 — 워치독의 작업 디렉토리를 지우고 틱이 계속 도는지 본다.
+구 동작: plist WorkingDirectory=/tmp/hmb-wrangler-work 가 없으면 launchd 가 spawn 자체를
+         거부하고 EX_CONFIG(78). 로그 0줄. (2026-08-13 08:47~09:20Z 실장애)
+
+--- BEFORE ---
+heartbeat : 1786613850	2026-08-13T09:37:31Z	--once
+last exit : 0
+runs      : 1
+workdir   : /var/tmp/hmb-wrangler-work
+tunnel    : https://smtp-statements-tomorrow-awards.trycloudflare.com
+
+--- ACT: rm -rf /var/tmp/hmb-wrangler-work (+ /tmp/hmb-wrangler-work) ---
+removed at 09:38:12Z; waiting 150s (>2 ticks)
+
+--- AFTER ---
+heartbeat : 1786614042	2026-08-13T09:40:42Z	--once
+last exit : 0
+runs      : 4
+tunnel    : https://smtp-statements-tomorrow-awards.trycloudflare.com
+health    : 401 0.972070s
+
+판정: heartbeat 가 갱신되고 last exit=0 이면 PASS (구 동작이면 heartbeat 정지 + exit 78)
+
+== 대조군: 기제 자체를 증명한다 (라이브 워치독을 다시 깨지 않고) ==
+위 결과는 "고친 뒤에도 돈다"만 보여준다. 그것이 **그 원인 때문이었나**는 별도 증명이 필요하다.
+그래서 일회용 launchd 잡을 하나 만들어 WorkingDirectory 만 없는 경로로 두고 관찰했다
+(프로그램 = /bin/echo, 즉 실패할 이유가 그것 말고는 없다):
+
+    <key>WorkingDirectory</key><string>/tmp/hmb-497-does-not-exist</string>
+
+결과:
+    runs = 1
+    last exit code = 78: EX_CONFIG
+    stdout: (빈 문자열)   ← /bin/echo 조차 실행되지 않았다
+    stderr: (빈 문자열)
+
+**stdout·stderr 가 둘 다 비어 있다는 것이 "무음" 의 정체다** — launchd 는 프로그램을 띄우지
+않았으므로 리다이렉트할 출력 자체가 없다. StandardOutPath 를 아무리 잘 잡아 둬도 이 부류는
+원리적으로 자기 로그를 못 남긴다. 그래서 처방이 "로그를 더 남기자" 가 아니라
+① 기동 전제를 없애고(plist 에서 WorkingDirectory 제거)
+② 돌았다는 사실을 치유 여부와 분리해 남기는 것(심박)
+이었다. 대조군 잡은 측정 직후 제거했다.

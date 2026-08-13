@@ -89,7 +89,13 @@ log "config.json: ${PREV:-<없음>} → $BACKEND"
 # 작업 디렉토리는 **$HOME 밖**에 둔다: wrangler 는 cwd 에서 위로 올라가며 설정을 찾다가 $HOME 의
 # 보호 디렉토리(.Trash 등)를 건드린다(실측 경고). launchd 컨텍스트에선 그 접근이 TCC 에 막혀
 # 조용히 매달릴 수 있다 — 애초에 건드릴 게 없는 곳에서 돌린다.
-WORKDIR="${HMB_WORK_DIR:-/tmp/hmb-wrangler-work}"
+# ⚠️ `/tmp` 가 아니다 (#497, 2026-08-13). macOS 는 **부팅 때 `/tmp` 를 비운다** — 그리고 이 경로가
+#    launchd plist 의 `WorkingDirectory` 이기도 해서, 재부팅 한 번에 워치독이 **스크립트를 실행조차
+#    못 하고**(EX_CONFIG 78) 33분간 무음으로 죽었다. `/var/tmp` 는 부팅 소거 대상이 아니다.
+#    ⚠️ 단, 이 fix 는 경로 선택에 **기대지 않는다** — 바로 아래 `mkdir -p` 가 매 실행 되살리고,
+#    plist 에서는 `WorkingDirectory` 자체를 뺐다(없는 디렉토리가 기동 전제가 되면 안 된다).
+#    $HOME 밖이라는 위 제약은 그대로다.
+WORKDIR="${HMB_WORK_DIR:-/var/tmp/hmb-wrangler-work}"
 mkdir -p "$WORKDIR"
 
 # ⚠️ Pages **Function**(#299 공유 URL OG 썸네일)은 dist 안이 아니라 **wrangler 를 실행한 cwd 바로

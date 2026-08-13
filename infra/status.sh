@@ -111,9 +111,49 @@ if [ -n "${WURL:-}" ]; then EXPECT="$WURL"; else EXPECT="$PAGES"; fi
 [ "$cors" = "$EXPECT" ] && ok "CORS 결선: $cors" || warn "CORS: '$cors' (web 오리진 '$EXPECT' 와 다름 — 왕복 막힐 수 있음)"
 
 # 7) 자가복구 워치독 (#183) — 터널이 죽어도 사람이 안 가도 되는지
+#
+# ⚠️ **"등록돼 있다" 는 "돌고 있다" 가 아니다** (#497, 2026-08-13 실장애).
+#    구 판정은 ① 서비스 등록됐나 ② tunnel-heal.log 마지막 줄 — 둘 다 통과하는데 워치독이
+#    33분간 한 틱도 못 돈 적이 있다. 그 로그는 **뭔가 일어났을 때만** 늘어나므로 "정상이라 조용"
+#    과 "죽어서 조용" 이 구분되지 않고, 그날은 spawn 자체가 실패해 로그를 남길 수도 없었다.
+#    → 매 틱 무조건 갱신되는 **심박**과 서비스 관리자의 **마지막 종료코드** 를 같이 본다.
+#    ⚠️ 등록 판정은 `watchdog_installed`(#472 AC1.1) 를 쓴다 — launchctl 을 직접 부르면
+#    리눅스에서 항상 "미설치" 가 되어 이사 후 이 게이트가 통째로 거짓 경보가 된다.
+HEAL_STATE="${HMB_STATE_DIR:-$HOME/.local/state/hmb}"
+# 마지막 종료코드도 OS 마다 출처가 다르다(launchd vs systemd). 심박은 파일이라 공통이다.
+heal_last_exit() {
+  if is_linux; then
+    systemctl --user show "${HMB_HEAL_UNIT:-hmb-tunnel-heal}.service" -p ExecMainStatus --value 2>/dev/null
+  else
+    launchctl print "gui/$(id -u)/${HMB_HEAL_LABEL:-online.hmb.tunnel-heal}" 2>/dev/null \
+      | awk -F'= *' '/last exit code|LastExitStatus/{print $2; exit}' | tr -d ' '
+  fi
+}
 if watchdog_installed; then
-  LAST=$(tail -1 "${HMB_STATE_DIR:-$HOME/.local/state/hmb}/tunnel-heal.log" 2>/dev/null | cut -f2,3)
-  ok "자가복구 워치독: 가동 중${LAST:+ (최근: $LAST)}"
+  LAST=$(tail -1 "$HEAL_STATE/tunnel-heal.log" 2>/dev/null | cut -f2,3)
+  XSTAT=$(heal_last_exit)
+  BEAT=$(cut -f1 "$HEAL_STATE/last-tick" 2>/dev/null)
+  AGE=""; [ -n "${BEAT:-}" ] && AGE=$(( $(date +%s) - BEAT ))
+  # 틱 60초 → 3틱(180초) 넘게 심박이 없으면 안 도는 것이다.
+  STALE="${HMB_HEAL_STALE:-180}"
+  if [ -z "${BEAT:-}" ]; then
+    warn "자가복구 워치독: 심박 없음 ($HEAL_STATE/last-tick) — 한 틱도 못 돌았거나 구버전 설치본이다"
+    warn "  → bash infra/install-tunnel-heal.sh 로 재설치 (원본을 고쳤으면 반드시 재설치해야 반영된다)"
+  elif [ "$AGE" -gt "$STALE" ]; then
+    printf "  [1;31m▲ 자가복구 워치독이 %s초째 안 돈다 (심박 정지) — 터널이 죽어도 자동으로 안 고쳐진다[0m
+" "$AGE"
+    printf "     마지막 종료코드=%s  ← 78(EX_CONFIG)이면 유닛의 기동 전제(경로)가 사라진 것이다 (#497)
+" "${XSTAT:-?}"
+  else
+    ok "자가복구 워치독: 가동 중 (심박 ${AGE}초 전, exit=${XSTAT:-0})${LAST:+ · 최근 이벤트: $LAST}"
+  fi
+  # 스크립트가 돌더라도 종료코드가 비정상이면 그 자체가 신호다.
+  case "${XSTAT:-0}" in
+    0|"") ;;
+    78) printf "  [1;31m▲ 마지막 종료코드 78 (EX_CONFIG) — 유닛의 WorkingDirectory/경로가 없어 실행조차 못 하고 있다 (#497)[0m
+";;
+    *)  warn "워치독 마지막 종료코드 $XSTAT — $HEAL_STATE/tunnel-heal.err 를 볼 것";;
+  esac
 else
   warn "자가복구 워치독: 미설치 — 터널이 죽으면 사람이 가야 한다 ('bash infra/install-tunnel-heal.sh')"
 fi

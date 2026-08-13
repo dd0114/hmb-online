@@ -66,6 +66,17 @@ iso(){ date -u +%Y-%m-%dT%H:%M:%SZ; }
 say(){ printf '%s\n' "$*"; }
 record(){ printf '%s\t%s\t%s\t%s\n' "$(now)" "$(iso)" "$1" "${2:-}" >> "$HEAL_LOG"; }
 
+# ── 심박(heartbeat) — "돌긴 돌았나" 를 치유 여부와 **분리**해 남긴다 (#497) ─────────────
+# 왜 필요한가: 2026-08-13 재부팅 후 워치독은 매 틱 spawn 자체에 실패했고(WorkingDirectory 소거,
+# EX_CONFIG 78) 그래서 **아무 로그도 남기지 않았다.** 그런데 기존 가시화는 전부
+# `tunnel-heal.log` 의 마지막 줄을 본다 — 그 로그는 **뭔가 일어났을 때만** 늘어난다.
+# 즉 "정상이라 조용한 것" 과 "죽어서 조용한 것" 이 **같은 모양**이었고, status.sh 는 33분 내내
+# ✓ 를 찍었다. 그래서 매 틱 **무조건** 갱신되는 파일을 따로 둔다: 이 파일이 낡으면 그것만으로
+# "워치독이 안 돈다" 가 증명된다(로그가 조용한 이유를 추측하지 않아도 된다).
+# ⚠️ 틱의 **맨 앞**에서 찍는다 — 뒤에서 찍으면 본체가 매달렸을 때 같이 침묵해 구분력이 사라진다.
+HEARTBEAT="${HMB_HEARTBEAT:-$STATE_DIR/last-tick}"
+beat(){ printf '%s\t%s\t%s\n' "$(now)" "$(iso)" "$MODE" > "$HEARTBEAT" 2>/dev/null || true; }
+
 # ── DEGRADED 가시화 ────────────────────────────────────────────────────────────────
 # 백오프에 들어간 걸 **로그를 열어야만** 알 수 있으면 아무도 모른다(실측: 2026-07-31 에 상한을
 # 소진하고 자동 복구가 멈춰 있었는데 status.sh 는 계속 ✓ 만 보여줬다).
@@ -163,8 +174,16 @@ pages_backend(){
 publish_verified(){
   local url="$1" src="$2" tries="${3:-${HMB_PUBLISH_TRIES:-3}}"
   local i=1 backoff="${HMB_PUBLISH_BACKOFF:-15}" served=""
+  # ⚠️ `PAGES_PROJECT` 은 **명시 전달**한다 — env 상속에 기대지 않는다(#489 단계3.5 패널 렌즈②).
+  #    heal.conf 는 source 되므로 `export` 를 빠뜨리면 이 셸에는 값이 있는데 자식에는 없다 →
+  #    publish 가 기본값(=라이브 hmb-online)으로 조용히 떨어진다. 그 한 글자가 "라이브 무접촉"의
+  #    유일한 근거였다. 여기서 이름을 명시해 `export` 누락을 무해화한다.
+  # ⚠️ 값이 **없을 때의 동작은 바꾸지 않는다** — 여기서 랩탑 기본값을 하드코딩하면 컷오버(단계4)가
+  #    코드 변경이 된다. 없으면 종전대로 publish 쪽 기본값 결정에 맡긴다.
+  local -a pass_env=(HMB_LOCK_HELD=1 "HMB_PUBLISH_SOURCE=$src")
+  [ -n "${PAGES_PROJECT:-}" ] && pass_env+=("PAGES_PROJECT=$PAGES_PROJECT")
   while [ "$i" -le "$tries" ]; do
-    HMB_LOCK_HELD=1 HMB_PUBLISH_SOURCE="$src" "$PUBLISH" "$url" >> "$HEAL_LOG.publish" 2>&1 || true
+    env "${pass_env[@]}" "$PUBLISH" "$url" >> "$HEAL_LOG.publish" 2>&1 || true
     # 독립 검증 — publish 의 자기 신고가 아니라 **엣지가 주는 값**으로 판정한다.
     # 방금 올린 직후엔 엣지마다 반영이 몇 초 어긋나므로 잠깐 폴링한다.
     local j
@@ -182,6 +201,48 @@ publish_verified(){
     [ "$i" -le "$tries" ] && { sleep "$backoff"; backoff=$((backoff * 2)); }
   done
   return 1
+}
+
+# ── 전파 대상 게이트 (#489 단계3.5 — 랩탑이 라이브를 건드리지 않는다는 것을 **검사 가능**하게) ──
+#
+# 왜 필요한가: 랩탑 워치독이 라이브 Pages 프로젝트로 배포하지 않는 근거가 `heal.conf` 의
+#   `export PAGES_PROJECT=hmb-online-lab` **한 줄뿐**인데, 그 한 줄을 강제하는 것이 아무 데도
+#   없었다 — 설치기가 만들지도 않고(README 가 사람에게 부탁), `--selftest` 가 보지도 않고,
+#   `publish-backend-url.sh` 의 기본값은 **라이브**다. 그래서 세 경로가 전부 *조용한 라이브 배포*
+#   로 끝난다: ① 설치 직후 콜드 스타트 ② 파일 삭제 ③ `export` 누락. 셋 다 다른 AC 가 못 잡는다.
+#
+# ⚠️ 이 게이트는 **단계3.5 동안**의 것이다. 컷오버(단계4) = 라이브로 내보내는 것이 정답이 되는
+#    시점이므로, 게이트가 컷오버를 영구히 막으면 안 된다 → `HMB_ALLOW_LIVE=1` 명시 옵트아웃.
+LIVE_PROJECT="${HMB_LIVE_PROJECT:-hmb-online}"
+selftest_publish_target(){
+  if [ "${HMB_ALLOW_LIVE:-0}" = "1" ]; then
+    say "! 전파 대상 게이트 우회 (HMB_ALLOW_LIVE=1) — 대상 = ${PAGES_PROJECT:-$LIVE_PROJECT} (라이브 허용 모드)"
+    return 0
+  fi
+  if [ ! -f "$HEAL_CONF" ]; then
+    say "✗ heal.conf 없음: $HEAL_CONF — 전파가 기본값 '$LIVE_PROJECT'(라이브)로 나간다"
+    say "    처방:  printf 'export PAGES_PROJECT=hmb-online-lab\\n' > $HEAL_CONF"
+    say "    라이브가 맞다면(컷오버):  HMB_ALLOW_LIVE=1 $0 --selftest"
+    return 1
+  fi
+  say "✓ heal.conf 있음 ($HEAL_CONF)"
+  local rc=0
+  if grep -qE '^[[:space:]]*export[[:space:]]+PAGES_PROJECT=' "$HEAL_CONF"; then
+    say "✓ heal.conf 에 'export PAGES_PROJECT' 선언"
+  else
+    # 워치독 자신은 이제 명시 전달(publish_verified)이라 export 없이도 새지 않는다. 그래도 ✗ 로
+    # 잡는다 — heal.conf 를 source 하는 **다른 소비자**(사람의 수동 deploy-web.sh 등)는 여전히
+    # env 상속에 의존하고, 그쪽이 새면 결과가 라이브 배포다.
+    say "✗ heal.conf 의 PAGES_PROJECT 에 export 가 없다 — heal.conf 를 source 하는 다른 경로가 샌다"
+    rc=1
+  fi
+  case "${PAGES_PROJECT:-}" in
+    "")             say "✗ PAGES_PROJECT 가 비어 있다 — 전파가 기본값 '$LIVE_PROJECT'(라이브)로 나간다"; rc=1;;
+    "$LIVE_PROJECT") say "✗ PAGES_PROJECT='$PAGES_PROJECT' = 라이브 프로젝트다. 랩탑은 별도 프로젝트여야 한다(단계3.5 고정 제약: 맥 무중단)"; rc=1;;
+    *)              say "✓ 전파 대상 = '$PAGES_PROJECT' (라이브 '$LIVE_PROJECT' 아님)";;
+  esac
+  [ "$rc" -ne 0 ] && say "    (컷오버라면:  HMB_ALLOW_LIVE=1 $0 --selftest)"
+  return "$rc"
 }
 
 # 터널은 멀쩡한데 web 만 옛 주소를 보고 있는 경우 = **터널을 건드릴 이유가 없다**.
@@ -347,9 +408,17 @@ if [ "$RUN_DEADLINE" -gt 0 ] 2>/dev/null; then
 fi
 
 # ── 모드 ───────────────────────────────────────────────────────────────────────────
+beat
 case "$MODE" in
   --selftest)
     rc=0
+    # /tmp 는 부팅 때 비워진다 (#497). 워치독의 기동 전제에서는 뺐지만, 런타임 경로가 아직
+    # /tmp 에 있으면 재부팅·청소에서 같은 부류가 재발할 수 있다 → 경고만 한다(동작 무변경).
+    for v in TUNNEL_LOG:"$TUNNEL_LOG" TUNNEL_PID:"$TUNNEL_PID" WORKDIR:"${HMB_WORK_DIR:-/var/tmp/hmb-wrangler-work}"; do
+      case "${v#*:}" in
+        /tmp/*) say "! ${v%%:*} 가 /tmp 아래다 (${v#*:}) — 부팅 시 소거된다 (#497 부류)";;
+      esac
+    done
     for c in cloudflared dig curl npx; do
       if command -v "$c" >/dev/null 2>&1; then say "✓ $c = $(command -v "$c")"; else say "✗ $c 없음"; rc=1; fi
     done
@@ -364,6 +433,7 @@ case "$MODE" in
       && say "✓ dist 캐시 있음 (${HMB_DIST_CACHE:-$HOME/.cache/hmb/dist-current})" \
       || { say "✗ dist 캐시 없음 — deploy-web.sh 를 한 번 돌려야 전파가 가능하다"; rc=1; }
     [ -x "$PUBLISH" ] && say "✓ 전파 스크립트 $PUBLISH" || { say "✗ 전파 스크립트 없음: $PUBLISH"; rc=1; }
+    selftest_publish_target || rc=1
     backend_alive && say "✓ 로컬 백엔드 :$BACKEND_PORT 응답" || say "! 로컬 백엔드 :$BACKEND_PORT 무응답(치유는 보류된다)"
     exit $rc;;
 

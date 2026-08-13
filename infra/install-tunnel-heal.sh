@@ -73,7 +73,10 @@ if [ "$OS" = linux ]; then
 else
   UNIT_PATH="$NODE_BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 fi
-WORKDIR="${HMB_WORK_DIR:-/tmp/hmb-wrangler-work}"
+# ⚠️ `/tmp` 밖 (#497) — `/tmp` 는 부팅에 비워져 워치독의 기동 전제를 조용히 없앤다.
+#    상세는 publish-backend-url.sh 의 같은 자리 주석. 여기서 만드는 것은 편의일 뿐이고,
+#    실제 보증은 `publish-backend-url.sh` 가 매 실행 `mkdir -p` 하는 쪽이다.
+WORKDIR="${HMB_WORK_DIR:-/var/tmp/hmb-wrangler-work}"
 mkdir -p "$WORKDIR"
 
 # wrangler 선설치: `npx -y wrangler` 는 실행마다 레지스트리 확인으로 **수 분**이 걸릴 수 있다
@@ -150,9 +153,18 @@ else
        그룹을 정리하는 게 기본값). 실측: 치유가 새 터널을 만들자마자 죽어 매 틱 새 터널을 만드는
        스래시 루프가 됐다. 자가복구가 성립하려면 반드시 true. -->
   <key>AbandonProcessGroup</key><true/>
-  <!-- wrangler 는 cwd 밑에 .wrangler/tmp 를 만든다. launchd 기본 cwd 는 루트라 쓰기 실패한다.
-       (이 heredoc 은 변수 확장용이라 따옴표가 없다 — 백틱·달러를 주석에 쓰면 실행된다.) -->
-  <key>WorkingDirectory</key><string>$WORKDIR</string>
+  <!-- ⚠️ **WorkingDirectory 를 여기 두지 마라** (#497, 2026-08-13 실장애).
+       예전엔 wrangler 의 cwd 문제(.wrangler/tmp 를 cwd 밑에 만든다) 때문에 여기에 박아 뒀다.
+       그런데 launchd 의 WorkingDirectory 는 **기동 전제**다 — 그 디렉토리가 없으면 프로그램을
+       실행조차 하지 않고 EX_CONFIG(78) 로 끝낸다. 경로가 /tmp 였고 macOS 는 부팅 때 /tmp 를
+       비우므로, 재부팅 한 번에 워치독이 매 틱 spawn 실패했다. 스크립트가 안 도니
+       StandardOutPath·StandardErrorPath·tunnel-heal.log 가 **전부 무음**이었고(자기 고장을
+       자기가 기록할 수 없는 구조), 그 33분 동안 테스터 접속이 끊긴 채 자가복구가 발화하지 않았다.
+       launchctl list 는 PID 를 보여줘서 "행(hang)" 처럼 보인다 — 실제로는 spawn 실패다.
+       → cwd 는 **소비자가 스스로 만든다**: publish-backend-url.sh 가 매 실행 mkdir -p + cd 한다.
+         (그래서 이 키는 애초에 없어도 되는 것이었고, 있는 동안은 순수한 단일 실패점이었다.)
+       같은 이유로 이 plist 에는 **사라질 수 있는 기동 전제를 더 넣지 않는다.** StandardOut/Err 의
+       상위 디렉토리($STATE_DIR)도 같은 부류라 설치기가 먼저 만들고, 워치독이 매 틱 되살린다. -->
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key><string>$NODE_BIN:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
