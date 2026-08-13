@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   freezesMatch,
+  isLockedScreen,
   nextStepId,
   onScreen,
   resolveStepId,
   resolveTarget,
+  screenLockedFor,
   shieldFor,
+  stepAfterSkip,
   stepById,
   stepPosition,
+  targetRefusesInput,
+  tutorialCardIdFrom,
 } from "./onrail-logic";
 import { ANY_SCREEN, ONRAIL_FIRST_STEP, ONRAIL_SCRIPT } from "./onrail-script";
 import type { OnRailStep } from "./onrail-script";
@@ -143,5 +148,124 @@ describe("남의 다이얼로그 앞에서의 처신", () => {
 
   it("대상이 없는 전면 안내는 어떤 다이얼로그에도 양보한다", () => {
     expect(shieldFor(null, [el(true)])).toBe("hidden");
+  });
+});
+
+/**
+ * #493 W9 — **수행 가능 전제**. W8-v3 독립 검증 blocker 3건(B2·B6·B3)이 여기 걸린다.
+ *
+ * 이 절이 지키는 성질은 하나다: **어떤 조합에서도 완주에 닿는다**. 개별 사유의 화면 재현은
+ * e2e(`p493-onrail-skip.spec.ts`)가 목으로 본다 — 여기서는 그 판정이 순수하게 옳은지만 본다.
+ */
+describe("전제가 깨진 스텝은 건너뛴다 (#493 W9)", () => {
+  const fakeEl = (attrs: Record<string, string>): Element =>
+    ({
+      matches: (sel: string) =>
+        sel
+          .split(",")
+          .some((one) => {
+            const m = /\[([^\]=]+)(?:=['"]?([^\]'"]*)['"]?)?\]/.exec(one.trim());
+            if (!m) return false;
+            const [, name, value] = m;
+            const actual = attrs[name!];
+            if (actual === undefined) return false;
+            return value === undefined || actual === value;
+          }),
+    }) as unknown as Element;
+
+  it("비활성 버튼은 '입력을 거절한다' — 그게 기다림과 건너뜀을 가르는 축이다", () => {
+    expect(targetRefusesInput(fakeEl({ disabled: "" }))).toBe(true);
+    expect(targetRefusesInput(fakeEl({ "aria-disabled": "true" }))).toBe(true);
+  });
+
+  it("멀쩡한 대상·없는 대상은 거절이 아니다 — 없는 것은 나타날 수 있으므로 기다려야 한다", () => {
+    expect(targetRefusesInput(fakeEl({}))).toBe(false);
+    // ⚠️ `aria-disabled="false"` 를 참으로 읽으면 **정상 버튼 앞에서 스텝이 날아간다**.
+    expect(targetRefusesInput(fakeEl({ "aria-disabled": "false" }))).toBe(false);
+    expect(targetRefusesInput(null)).toBe(false);
+  });
+
+  it("잠긴 화면 판정은 #217 규칙을 **소비**한다 — 회수 가능한 사고 매치는 잠금이 아니다", () => {
+    const growth = step({ screen: "/players" });
+    const active = (locked: boolean, abandonable: boolean) => ({
+      match: { id: "m1", state: "FIRST_HALF" },
+      locked,
+      abandonable,
+    });
+    expect(screenLockedFor(growth, active(true, false))).toBe(true);
+    // `shouldForceResume` 이 그렇게 정한다: 포기할 수 있으면 유저는 그 화면에 갈 수 있다.
+    expect(screenLockedFor(growth, active(true, true))).toBe(false);
+    expect(screenLockedFor(growth, active(false, false))).toBe(false);
+    expect(screenLockedFor(growth, undefined)).toBe(false);
+  });
+
+  it("경기 화면과 완주 카드는 잠기지 않는다 — 잠기면 잠금 그 자체에서 빠져나갈 수 없다", () => {
+    expect(isLockedScreen("/players")).toBe(true);
+    expect(isLockedScreen("/recruit")).toBe(true);
+    expect(isLockedScreen("/match")).toBe(false);
+    expect(isLockedScreen(ANY_SCREEN)).toBe(false);
+    expect(screenLockedFor(step({ screen: ANY_SCREEN }), { match: { id: "m", state: "X" }, locked: true, abandonable: false })).toBe(false);
+  });
+
+  it("비활성은 **그 스텝만** 넘긴다 — 나머지 S2 는 그 유저도 할 수 있다", () => {
+    expect(stepAfterSkip("deck-auto", "target-disabled")).toBe("deck-player");
+    expect(stepAfterSkip("trade-rush", "target-disabled")).toBe("trade-accept");
+  });
+
+  it("잠긴 화면은 **연속한 잠긴 스텝 전체**를 넘긴다 — 같은 잠금이 그것들을 다 막고 있다", () => {
+    // S5(5) + S6(3) 이 전부 잠긴 라우트라 한 번에 완주로 간다. 스텝마다 유예를 다시 기다리면
+    // 유저는 안내 없는 화면에서 8번의 침묵을 겪는다.
+    expect(stepAfterSkip("growth-open", "screen-locked")).toBe("finish");
+    expect(stepAfterSkip("trade-start", "screen-locked")).toBe("finish");
+  });
+
+  it("⚠️ 어떤 스텝·어떤 사유에서 건너뛰어도 **완주에 닿는다** — 이것이 W9 의 AC 다", () => {
+    for (const s of ONRAIL_SCRIPT) {
+      for (const reason of ["target-missing", "target-disabled", "screen-locked"] as const) {
+        // 앞으로만 가므로 유한하다. 끝까지 밀어 보고 마지막이 완주인지 확인한다.
+        let cur: string | null = s.id;
+        let hops = 0;
+        let last: string = s.id;
+        while (cur && hops < ONRAIL_SCRIPT.length + 1) {
+          last = cur;
+          cur = stepAfterSkip(cur, reason);
+          hops += 1;
+        }
+        expect(hops, `${s.id}/${reason} 가 각본 길이를 넘겨 돈다 = 루프`).toBeLessThanOrEqual(
+          ONRAIL_SCRIPT.length,
+        );
+        expect(last, `${s.id}/${reason} 의 마지막 착지가 완주가 아니다`).toBe(
+          ONRAIL_SCRIPT[ONRAIL_SCRIPT.length - 1]!.id,
+        );
+      }
+    }
+  });
+
+  it("완주 스텝에는 건너뛸 다음이 없다(= 여기서 끝난다)", () => {
+    expect(stepAfterSkip(ONRAIL_SCRIPT[ONRAIL_SCRIPT.length - 1]!.id, "target-missing")).toBeNull();
+  });
+
+  it("모르는 스텝은 아무 데로도 보내지 않는다 — 각본이 개편되면 `resolveStepId` 가 처음으로 되돌린다", () => {
+    expect(stepAfterSkip("이런-스텝-없음", "target-missing")).toBeNull();
+  });
+});
+
+describe("S5 대상 카드 — 서버가 말해 준 값이 먼저다 (#493 W9)", () => {
+  it("`/api/config` 가 알려 주면 그 값을 쓴다(추론 결과와 달라도)", () => {
+    expect(tutorialCardIdFrom("P122", [{ playerId: "P999" }])).toBe("P122");
+  });
+
+  it("⚠️ 필드를 모르는 서버에서는 종전 추론으로 내려간다 — 배포 순서상 그 창이 항상 있다", () => {
+    expect(tutorialCardIdFrom(undefined, [{ playerId: "P999" }])).toBe("P999");
+    expect(tutorialCardIdFrom(null, [{ playerId: "P999" }])).toBe("P999");
+    // 빈 문자열은 "알려 줬다"가 아니다 — 그걸 겨누면 영영 없는 셀렉터가 된다.
+    expect(tutorialCardIdFrom("", [{ playerId: "P999" }])).toBe("P999");
+  });
+
+  it("둘 다 없으면 null — 각본의 `fallbackTestId`(그리드)로 착지한다", () => {
+    expect(tutorialCardIdFrom(null, [])).toBeNull();
+    expect(tutorialCardIdFrom(null, undefined)).toBeNull();
+    // 응답 형태를 믿지 않는다(#245·#251) — 배열이 아니면 없는 것으로 읽는다.
+    expect(tutorialCardIdFrom(null, {} as never)).toBeNull();
   });
 });

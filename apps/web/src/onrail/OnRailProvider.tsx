@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { useDeck, useMe } from "../api/hooks";
+import { useActiveMatch, useDeck, useMe } from "../api/hooks";
 import { useToken } from "../auth/TokenContext";
 import { matchInProgressIdOf } from "../common/match-lock";
 import { OnRailContext } from "./onrail-context";
@@ -16,12 +16,15 @@ import {
   onScreen,
   resolveStepId,
   resolveTarget,
+  screenLockedFor,
+  stepAfterSkip,
   stepById,
   stepPosition,
 } from "./onrail-logic";
+import type { OnRailSkipReason } from "./onrail-logic";
 import { ONRAIL_FIRST_STEP, ONRAIL_SCRIPT } from "./onrail-script";
 import type { OnRailCta, OnRailStep } from "./onrail-script";
-import { readOnRail, writeOnRail } from "./onrail-storage";
+import { appendSkip, readOnRail, writeOnRail } from "./onrail-storage";
 import type { OnRailState } from "./onrail-storage";
 
 /**
@@ -98,10 +101,25 @@ export function OnRailProvider({
     setState(readOnRail(userId));
   }, [userId]);
 
+  /** 항상 최신 상태 — `persist` 가 **부수 축**(스킵 기록·일회성 지시)을 스스로 실어 나르기 위해. */
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  /**
+   * ⚠️ **부수 축은 호출부가 실어 나르지 않는다** (#493 W9). 스텝을 옮기는 자리가 이제 여섯 곳
+   * (advance · 되감기 · CTA 3 · skipStep)인데, 각자 `skips` 를 손으로 복사하게 두면 하나만
+   * 빠뜨려도 **기록이 조용히 사라진다** — 그리고 사라진 기록은 아무 화면도 빨갛게 만들지 않는다.
+   * 명시적으로 준 값만 이기고, 안 준 축은 여기서 보존한다.
+   */
   const persist = useCallback(
     (next: OnRailState) => {
-      setState(next);
-      writeOnRail(userId, next);
+      const merged: OnRailState = {
+        ...next,
+        skips: next.skips ?? stateRef.current.skips,
+        deckDraftReset: next.deckDraftReset ?? stateRef.current.deckDraftReset,
+      };
+      setState(merged);
+      writeOnRail(userId, merged);
     },
     [userId],
   );
@@ -133,6 +151,37 @@ export function OnRailProvider({
     }
     persist({ status: "running", stepId: next, matchId: state.matchId ?? null });
   }, [stepId, persist, state.matchId]);
+
+  /**
+   * **전제가 깨진 스텝을 건너뛴다** (#493 W9) — 온레일이 못 하는 일 앞에 유저를 세우지 않는다.
+   *
+   * 무엇이 전제인지·어디까지 건너뛰는지는 전부 `onrail-logic` 이 정한다(순수). 여기서 하는 일은
+   * **사유를 남기고 옮기는 것**뿐이다.
+   *
+   * ⚠️ 앞으로만 간다(`stepAfterSkip` 은 인덱스를 단조 증가시킨다). 그래서 어떤 조합에서도
+   * 각본 끝 = **완주 스텝에 닿는다** — 그것이 이 웨이브의 AC 이고, 완주 스텝은 화면도
+   * (`ANY_SCREEN`) 대상도 없어 어떤 전제에도 걸리지 않는다.
+   */
+  const skipStep = useCallback(
+    (reason: OnRailSkipReason) => {
+      if (!stepId) return;
+      restoredRef.current = false;
+      const to = stepAfterSkip(stepId, reason);
+      const skips = appendSkip(stateRef.current.skips, {
+        stepId,
+        reason,
+        to,
+        at: new Date().toISOString(),
+      });
+      persist({
+        status: to ? "running" : "done",
+        stepId: to,
+        matchId: state.matchId ?? null,
+        skips,
+      });
+    },
+    [stepId, persist, state.matchId],
+  );
 
   /**
    * **복원했는데 한마디가 저장돼 있지 않으면 그 스텝으로 되감는다** (독립 검증 2R B1).
@@ -248,6 +297,27 @@ export function OnRailProvider({
     if (waiting && firedRef.current.has(waiting)) advance();
   }, [waiting, advance]);
 
+  // ── 갈 수 없는 화면 (#493 W9) ────────────────────────────────────────
+  //
+  // 여기만 프로바이더가 판정한다 — 화면에 **도착조차 못 하므로** 오버레이가 뜨지 않고(hold),
+  // 그래서 DOM 을 보는 쪽(`OnRailOverlay`)에는 이 상태를 볼 눈이 없다. 유저에게는 안내도 없이
+  // 튜토리얼이 사라진 것으로 보인다(W8-v3 blocker B3).
+  const activeMatch = useActiveMatch();
+  const lockedOut = running && screenLockedFor(step, activeMatch.data);
+  const lockGraceMs = missingGraceMs ?? 1500;
+
+  useEffect(() => {
+    if (!lockedOut) return;
+    /*
+     * ⚠️ **유예를 둔다.** `activeMatch` 는 방금 끝난 경기의 `locked:true` 를 한 창 동안 들고 있을
+     * 수 있고(그 쿼리가 `staleTime:0`·`refetchOnMount:"always"` 인 이유가 바로 그 창이다), 그
+     * 프레임에 판정하면 **정상 유저의 S5·S6 가 통째로 날아간다**. 스킵은 되돌릴 수 없으므로
+     * 늦게 판정하는 쪽이 항상 싸다.
+     */
+    const t = window.setTimeout(() => skipStep("screen-locked"), lockGraceMs);
+    return () => window.clearTimeout(t);
+  }, [lockedOut, stepId, skipStep, lockGraceMs]);
+
   // ── 컨텍스트 ──────────────────────────────────────────────────────────
   const matchFrozen =
     running &&
@@ -260,15 +330,37 @@ export function OnRailProvider({
       running,
       stepId,
       matchFrozen,
+      deckDraftReset: running && state.deckDraftReset === true,
+      consumeDeckDraftReset: () => {
+        if (!stateRef.current.deckDraftReset) return;
+        persist({ ...stateRef.current, deckDraftReset: false });
+      },
       start: () => {
         firedRef.current = new Set();
         restoredRef.current = false;
-        persist({ status: "running", stepId: ONRAIL_FIRST_STEP, matchId: null });
+        /*
+         * ⚠️ **덱 드래프트를 비우고 출발한다** (#493 W9). S2 각본은 AUTO → 프롬프트 → 저장인데,
+         * 온보딩 완료가 이미 11명짜리 덱을 지급하므로 이 동선의 유저는 **빈 자리가 없다** →
+         * `hasEmptySlotGap` 이 거짓이면 버튼이 아예 없고, 보유를 다 배치했으면 있어도 비활성이다.
+         * 어느 쪽이든 "오토버튼 누르게 하고"(hero)가 한 번도 성립하지 않는다.
+         *
+         * 비우는 것은 **클라 드래프트뿐**이다 — 서버 덱은 유저가 [저장]을 누를 때까지 그대로고,
+         * 레일을 그만두면 다음 진입에서 서버 덱이 그대로 다시 그려진다(잃는 것이 없다).
+         * 기록·스킵은 새 run 이니 비운다.
+         */
+        persist({
+          status: "running",
+          stepId: ONRAIL_FIRST_STEP,
+          matchId: null,
+          skips: [],
+          deckDraftReset: true,
+        });
         navigate("/deck");
       },
-      skip: () => persist({ status: "skipped", stepId: null, matchId: null }),
+      skip: () =>
+        persist({ status: "skipped", stepId: null, matchId: null, deckDraftReset: false }),
     }),
-    [running, stepId, matchFrozen, persist, navigate],
+    [running, stepId, matchFrozen, persist, navigate, state.deckDraftReset],
   );
 
   // ── 렌더 ─────────────────────────────────────────────────────────────
@@ -299,7 +391,10 @@ export function OnRailProvider({
             if (step.advance.kind === "cta") runCta(step.advance.cta);
             else advance();
           }}
-          onMissingTarget={advance}
+          /* 두 문 다 **사유를 남기고** 넘어간다 — 어느 전제가 이 유저에게 안 열렸는지가
+             나중에 셀 수 있는 유일한 형태다(#493 W9). */
+          onMissingTarget={() => skipStep("target-missing")}
+          onTargetDisabled={() => skipStep("target-disabled")}
           onExit={() => navigate("/home")}
         />
       )}

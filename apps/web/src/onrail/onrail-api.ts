@@ -8,6 +8,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "../api/client";
 import type { MatchDetail } from "../api/hooks";
 import { usePendingChoices } from "../api/growth-hooks";
+import { useAppConfigValue } from "../common/AppConfigContext";
+import { tutorialCardIdFrom } from "./onrail-logic";
 
 /** 튜토리얼 매치를 만들 수 없는 상태 — **둘 다 실패가 아니라 "일반 경기로 가라"** 는 뜻이다. */
 const TUTORIAL_FALLBACK_CODES = new Set(["TUTORIAL_UNAVAILABLE", "TUTORIAL_ALREADY_PLAYED"]);
@@ -50,22 +52,23 @@ export function useStartTutorialMatch() {
 }
 
 /**
- * **스타터 고정 튜토리얼 카드**를 런타임에 찾아낸다 (S5 대상).
+ * **스타터 고정 튜토리얼 카드** (S5 대상) — **서버가 알려 준다**(#493 W9).
  *
- * ⚠️ **서버가 이 값을 안 알려 준다.** 카드 id 는 `hmb.tutorial.starter.card-id`(현재 `P122`)라는
- * **서버 설정**일 뿐 `/api/config` 에도 `/api/me` 에도 실려 오지 않고, 선수 DTO 에 표식도 없다.
- * 그래서 web 은 **가입 시 같이 심어 준 XP 프리필의 그림자**로 읽는다: 스타터 지급이 그 카드에
- * 정확히 하나의 3지선다를 대기시켜 두므로, 대기 중 선택권의 주인이 곧 그 카드다.
+ * W7-v3 는 이 값을 추론했다: `hmb.tutorial.starter.card-id`(현재 `P122`)가 서버 설정일 뿐
+ * `/api/config` 에도 `/api/me` 에도 안 실려서, "가입 지급이 그 카드에 대기시켜 둔 3지선다"의
+ * 주인을 그 카드로 읽었다. 그 자리에 *"서버가 공개해 주면 한 줄로 대체된다"* 고 적어 뒀고,
+ * W9 서버 소웨이브가 `/api/config.tutorial.starterCardId` 를 additive 로 열면서 그렇게 됐다.
  *
- * ⚠️ **추론이지 계약이 아니다.** 유저가 다른 카드로 경기를 치러 선택권이 하나 더 생기면 순서가
- * 흔들릴 수 있고, 선택권을 이미 써 버렸으면 아예 못 찾는다. 그래서 못 찾은 경우가 정상 경로에
- * 포함돼 있고(각본의 `fallbackTestId`), 이 자리는 **서버가 카드 id 를 공개해 주면 한 줄로
- * 대체된다** — W8-v3 로 올릴 요청이다(`/api/config` 에 `tutorial.starterCardId`).
+ * ⚠️ **추론 가지는 남는다.** 필드를 모르는 서버에 web 이 먼저 나가는 창이 항상 있다(#286 W5 와
+ * 같은 규율) — 그때 값은 `undefined` 이고, 폴백이 없으면 S5 안내가 통째로 그리드로 내려앉는다.
+ * 판정은 `tutorialCardIdFrom`(순수) 이 소유한다.
+ *
+ * ⚠️ **필드가 있으면 3지선다 조회를 걸지 않는다** — 그 왕복은 오직 추론을 위한 것이었다.
  */
 export function useTutorialCard(enabled: boolean): string | null {
-  const choices = usePendingChoices(undefined, enabled);
+  const config = useAppConfigValue();
+  const declared = config?.tutorial?.starterCardId ?? null;
+  const choices = usePendingChoices(undefined, enabled && !declared);
   if (!enabled) return null;
-  const list = choices.data;
-  if (!Array.isArray(list) || list.length === 0) return null;
-  return list[0]?.playerId ?? null;
+  return tutorialCardIdFrom(declared, choices.data);
 }

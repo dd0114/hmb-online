@@ -602,13 +602,18 @@ test("신규 유저 온레일 풀 저니 S0→S7 — 한 번도 갇히지 않고
 
   // ── S2 덱셋팅 ───────────────────────────────────────────────────────────
   /*
-   * ⚠️ **AUTO 스텝은 실제 스타터 덱에서 한 번도 발화하지 않는다** (W7-v3 편차 ③ 확인).
-   * 온보딩이 선발 11 + 벤치 4 를 채워 주므로 `hasEmptySlotGap` 이 거짓 = `auto-fill` 이 없다.
-   * 각본이 그 스텝을 `skipIfMissing` 으로 둔 덕에 갇히지는 않고 **조용히 건너뛴다**.
-   * ⓐ 서버가 튜토리얼 시작 시 덱을 비우거나 ⓑ 시나리오가 AUTO 를 뺀다 — 둘 중 하나를 고르면
-   * 이 단언이 빨개진다(그게 이 단언의 목적이다).
+   * ⚠️ **W9 에서 뒤집혔다 — 그게 이 단언의 목적이었다.**
+   *
+   * W7-v3 는 이 자리에 *"AUTO 스텝은 실제 스타터 덱에서 한 번도 발화하지 않는다"* 를 박고
+   * *"ⓐ 서버가 튜토리얼 시작 시 덱을 비우거나 ⓑ 시나리오가 AUTO 를 뺀다 — 둘 중 하나를 고르면
+   * 이 단언이 빨개진다"* 고 적었다. W9 은 **ⓐ 의 클라 판**을 골랐다: 레일 시작이 이 화면의
+   * 드래프트만 비운다(`PUT /api/deck` 없음 — 서버 덱은 유저가 [저장]할 때까지 그대로).
+   * 그래서 각본 첫 칸이 실제로 발화하고, hero 지시("오토버튼 누르게 하고")가 성립한다.
    */
-  await expect(page.getByTestId("auto-fill")).toHaveCount(0);
+  await expectStep(page, "deck-auto");
+  await expect(page.getByTestId("auto-fill")).toBeEnabled();
+  await expect(page.getByTestId(`token-${STARTERS[0]}`)).toHaveCount(0); // 보드가 비어 있다
+  await page.getByTestId("auto-fill").tap();
   await expectStep(page, "deck-player");
 
   // 폰은 토큰 탭이 **선수 메뉴**를 먼저 연다(#455 A2) — 온레일은 그 위에서 비켜난다.
@@ -847,6 +852,10 @@ test("복원 창 밖에서는 되감지 않는다 — 전이 기록에 역행이
   await expect(page).toHaveURL(/\/deck$/);
 
   // S2 를 **이번 화면에서** 끝까지 밟는다(복원이 아니다 — 그래서 되감기가 발화하면 안 된다).
+  // ⚠️ W9 부터 첫 칸은 AUTO 다(레일 시작이 드래프트를 비운다) — 보드가 비어 있어 여기서
+  //    바로 토큰을 누르려 하면 대상이 없다.
+  await expectStep(page, "deck-auto");
+  await page.getByTestId("auto-fill").tap();
   await expectStep(page, "deck-player");
   await page.getByTestId(`token-${STARTERS[0]}`).tap();
   await page.getByTestId("pmenu-say").tap();
