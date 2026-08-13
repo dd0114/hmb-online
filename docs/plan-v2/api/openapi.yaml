@@ -59,6 +59,14 @@ tags:
     description: 서번트 전용 AI 잡 큐 프로토콜(X-Servant-Token)
 
 paths:
+  /api/admin/events:
+    get:
+      summary: "[admin] 비즈니스 이벤트 스트림 (#492 — 시간역순, 필터: event/user_id/기간, 페이지네이션)"
+      responses: { "200": { description: "이벤트 목록" }, "403": { description: "비관리자 차단" } }
+  /api/admin/events/funnel:
+    get:
+      summary: "[admin] 이벤트 종류별 카운트 요약 (#492 — 오늘/7일 퍼널)"
+      responses: { "200": { description: "퍼널 집계" }, "403": { description: "비관리자 차단" } }
   # ───────────────────────────── auth ─────────────────────────────
   /api/auth/login:
     post:
