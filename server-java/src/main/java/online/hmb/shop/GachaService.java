@@ -54,19 +54,22 @@ public class GachaService {
     private final WalletService walletService;
     private final GachaRandomSource randomSource;
     private final ObjectMapper objectMapper;
+    private final online.hmb.rewards.UxActionRewardService uxActionRewardService;
 
     public GachaService(JdbcClient jdbcClient,
                         TxRunner txRunner,
                         EconomyService economyService,
                         WalletService walletService,
                         GachaRandomSource randomSource,
-                        ObjectMapper objectMapper) {
+                        ObjectMapper objectMapper,
+                        online.hmb.rewards.UxActionRewardService uxActionRewardService) {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.economyService = economyService;
         this.walletService = walletService;
         this.randomSource = randomSource;
         this.objectMapper = objectMapper;
+        this.uxActionRewardService = uxActionRewardService;
     }
 
     // ── API ──────────────────────────────────────────────────────────────
@@ -131,6 +134,9 @@ public class GachaService {
                         .update();
                 isNewFlags.add(upsertOwned(userId, playerId, now));
             }
+
+            // #493 W3 ④: 첫 뽑기 행동 보상(우편 GEM) — 결제·지급이 성공한 같은 tx 안. 멱등이라 2회차부터 no-op.
+            uxActionRewardService.grantOnce(userId, online.hmb.rewards.UxActionRewardService.UxAction.FIRST_GACHA);
 
             return buildResponse(userId, playerIds, isNewFlags);
         });

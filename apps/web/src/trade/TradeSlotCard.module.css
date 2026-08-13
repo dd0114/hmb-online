@@ -173,6 +173,17 @@
   color: var(--text-muted);
 }
 
+/* 무료 단축권 칩 (#493 W8-v3) — 강화 쪽 `freeChip` 과 **같은 모양**이어야 "무료"가 한 언어로 읽힌다. */
+.freeChip {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #0b1220;
+  background: var(--gold, #ffc94d);
+  border-radius: 999px;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
 /* 단축 비용 칩 — 지갑 배지와 같은 모양(기존 PointsBadge 자리를 그대로 물려받는다, #232). */
 .speedupAmount {
   display: inline-flex;

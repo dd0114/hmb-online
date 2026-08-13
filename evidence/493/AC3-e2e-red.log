@@ -1,0 +1,11 @@
+# #493 AC2/AC3 red — 구현 전 최초 실행 출력 캡처 (2026-08-11 00:58 KST)
+# cmd: cd apps/web && CI=1 WEB_E2E_PORT=5493 npx playwright test e2e/p493-minigame.spec.ts --reporter=line
+# (⑤ 딥링크는 무회귀 대조군 — 구현 전에도 통과가 정상)
+
+  5 failed
+    [chromium] › e2e/p493-minigame.spec.ts:81:1 › ① 신규 가입 착지 = /welcome, 재생이 실제로 흐른다
+    [chromium] › e2e/p493-minigame.spec.ts:101:1 › ② 체류 중 서버 접촉 0 — 자산은 정적 번들이다
+    [chromium] › e2e/p493-minigame.spec.ts:125:1 › ③ [건너뛰기] → 홈, 온보딩이 이어서 시작된다
+    [chromium] › e2e/p493-minigame.spec.ts:135:1 › ④ 끝까지 재생 → 종료 오버레이(1:1) + CTA → 홈
+    [chromium] › e2e/p493-minigame.spec.ts:161:1 › ⑥ 390px — 가로 오버플로 0, 무대·CTA 가 화면 안
+  1 passed (4.2m)

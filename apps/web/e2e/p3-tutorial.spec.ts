@@ -136,6 +136,7 @@ async function fillRegister(page: Page) {
   await page.getByTestId("local-password").fill(PASSWORD);
   await page.getByTestId("local-submit").click();
   await page.getByRole("button", { name: "확인" }).click();
+  // #493 W5: 신규 가입도 홈에 바로 착지한다(W1 의 /welcome 미니게임은 걷혔다).
   await expect(page).toHaveURL(/\/home$/);
 }
 

@@ -189,6 +189,14 @@ export interface DiceRollResult {
   rollsSinceTierUp: number;
   ceilingAt: number;
   wallet: WalletBalance; // 롤 비용 차감 후 잔액(재화를 정하는 쪽이 잔액도 준다, #232)
+  /**
+   * 무료 쿠폰(`FREE_ENHANCE`)으로 나갔다 (#493 W6-v3 additive) — **지갑이 안 줄어든 이유**다.
+   *
+   * ⚠️ 이 필드가 없으면 화면은 "값이 안 바뀌었네"를 버그로 읽거나, 반대로 차감을 약속해 놓고
+   * 안 깎는 화면이 된다. 서버는 `kind:"NORMAL"` 에서만 참을 줄 수 있다 — 쿠폰은 골드 비용만
+   * 대신 내고 유상재화(CASH)는 절대 대신 내지 않는다. 구 서버는 안 준다 → optional.
+   */
+  freeByCoupon?: boolean;
 }
 
 /**

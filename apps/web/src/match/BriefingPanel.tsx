@@ -26,6 +26,7 @@ import {
   MARK_DIRECTIVE,
   type DefenderCandidate,
 } from "../deck/one-tap-directives";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import { ConditionClock } from "./ConditionClock";
 // briefing-preset-logic(프리셋 시작점 선택)은 #106 으로 화면에서 내렸다 — 모듈·테스트는 존치.
 import styles from "./BriefingPanel.module.css";
@@ -176,6 +177,8 @@ export function BriefingPanel({ match }: BriefingPanelProps) {
       }
       // 3) kickoff → server recaptures active deck + teamTactics as the match snapshot
       await kickoff.mutateAsync(aiManaged ? undefined : { teamTactics: editor!.tactics });
+      // 온레일 S3 — 브리핑 스텝의 종료 신호(#493 W11). 레일이 안 돌면 듣는 사람이 0 이다.
+      emitOnRailAction("match-kickoff");
     } catch (err) {
       setError(err instanceof Error ? err.message : "킥오프에 실패했습니다");
     } finally {

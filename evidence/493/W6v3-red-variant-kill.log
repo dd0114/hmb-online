@@ -1,0 +1,9 @@
+== CTRL (변이 없음) ==
+CTRL online.hmb.TutorialStarterTest: exit=0 tests=4 failures=0 errors=0
+CTRL online.hmb.TutorialFreebiesTest: exit=0 tests=5 failures=0 errors=0
+CTRL online.hmb.TutorialMatchTest: exit=0 tests=4 failures=0 errors=0
+M1 starter(튜토리얼 재료 지급 제거) → online.hmb.TutorialStarterTest: exit=1 tests=4 failures=3 errors=0 KILLED(red) restore=ok
+M2 coupon(소비 불가 — 항상 '쿠폰 없음') → online.hmb.TutorialFreebiesTest: exit=1 tests=5 failures=4 errors=0 KILLED(red) restore=ok
+M3 first-trade(등급 확정 층 제거) → online.hmb.TutorialFreebiesTest: exit=1 tests=5 failures=2 errors=0 KILLED(red) restore=ok
+M4 tutorial match(구운 인풋 분기 제거 → AI/러너 경로) → online.hmb.TutorialMatchTest: exit=1 tests=4 failures=4 errors=0 KILLED(red) restore=ok
+M5 tutorial match(구운 로그 대신 러너 호출) → online.hmb.TutorialMatchTest: exit=1 tests=4 failures=4 errors=0 KILLED(red) restore=ok

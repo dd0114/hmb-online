@@ -14,6 +14,7 @@ import type { ConditionMap, RelationsResponse } from "../api/v2";
 import { relationOf } from "../common/relations";
 import { Modal } from "../common/Modal";
 import { buildPlayerNames } from "../common/player-names";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import { findPlayerSlot, removePlayer, setPrompt, type DeckDraft, type SlotRole } from "./deck-logic";
 import { MOUSE_ACTIVATION_PX, TOUCH_ACTIVATION_MS, TOUCH_TOLERANCE_PX } from "./drag-gesture";
 import { movePlayerToSlot, type EditorState } from "./tactics-logic";
@@ -464,6 +465,9 @@ export function DeckEditor(props: DeckEditorProps) {
 
   function selectPlayer(playerId: string | null) {
     setSelection(playerId ? { slot: null, playerId, source: "board" } : NO_SELECTION);
+    // 온레일(#493 S2 ②) — "선수를 한 명 골랐다". 어느 경로로 골랐든(토큰 탭 · 메뉴 · 자리 지정)
+    // 같은 행동이므로 그 셋이 전부 지나가는 이 한 곳에서 낸다.
+    if (playerId) emitOnRailAction("deck-player");
   }
 
   function handleDragEnd(e: DragEndEvent) {

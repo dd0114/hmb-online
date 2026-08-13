@@ -1,0 +1,10 @@
+# #493 W10 gate — cold `./gradlew test --rerun-tasks` (server-java)
+run: 2026-08-13T17:09:32
+classes=178 tests=1224 failures=0 errors=0 skipped=1
+
+tutorial classes:
+  online.hmb.TutorialConfigDisabledTest: tests=1 failures=0
+  online.hmb.TutorialFreebiesTest: tests=6 failures=0
+  online.hmb.TutorialMatchTest: tests=6 failures=0
+  online.hmb.TutorialRosterArtTest: tests=2 failures=0
+  online.hmb.TutorialStarterTest: tests=5 failures=0

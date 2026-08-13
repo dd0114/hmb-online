@@ -56,6 +56,8 @@ const idleSlot: TradeSlot = {
 const fx = vi.hoisted(() => ({
   tradeData: undefined as unknown,
   players: undefined as unknown,
+  /** `/api/me` — 지갑이 아니라 **쿠폰** 때문에 필요하다(#493 W6-v3 `coupons`). */
+  me: undefined as unknown,
   startMutate: vi.fn(),
 }));
 
@@ -70,7 +72,12 @@ vi.mock("../api/hooks-v2", () => ({
 
 vi.mock("../api/hooks", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../api/hooks")>();
-  return { ...actual, usePlayers: () => ({ data: fx.players, isLoading: false, isError: false }) };
+  return {
+    ...actual,
+    usePlayers: () => ({ data: fx.players, isLoading: false, isError: false }),
+    // TokenProvider 밖에서 렌더하므로 실물 `useMe` 는 던진다 — 이 파일의 관용구대로 훅을 목한다.
+    useMe: () => ({ data: fx.me, isLoading: false, isError: false }),
+  };
 });
 
 async function renderPage() {
@@ -228,5 +235,35 @@ describe("TradePage 능동화 (#149)", () => {
     fireEvent.click(faSkip);
     expect(fx.startMutate).toHaveBeenCalledTimes(1);
     expect(fx.startMutate).toHaveBeenCalledWith(2, expect.any(Object));
+  });
+
+  /**
+   * #493 W8-v3 — **무료 단축권이 `/api/me` 에서 이 화면까지 실제로 배선돼 있다.**
+   *
+   * 규칙 자체는 `trade-logic.speedupButtonState` 가 문다(그쪽이 순수 함수다). 여기서 보는 것은
+   * **배선**이다 — 쿠폰 맵을 안 읽거나 prop 을 안 내려 주면 규칙이 참이어도 화면은 잠긴 채다.
+   * 잔액(3,500)은 단축비(24,000)보다 **훨씬 적게** 잡는다: 튜토리얼 첫 오퍼(DIA 48h)의 실제 값이다.
+   */
+  it("무료 단축권을 들고 있으면 잔액이 모자라도 [단축]이 열리고 무료 표기가 뜬다", async () => {
+    const poor: TradeSlot = { ...waitingSlot, speedupCost: 24000, targetGrade: "DIA" };
+    fx.tradeData = { slots: [poor], wallet: { points: 3500 } } satisfies TradeSlotsResponse;
+    fx.players = [];
+    fx.me = { coupons: { FREE_ENHANCE: 1, FREE_TRADE_RUSH: 1, FIRST_TRADE_EPIC: 0 } };
+    await renderPage();
+
+    const btn = screen.getByTestId("trade-slot-1-speedup") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(screen.getByTestId("trade-slot-1-rush-free")).toBeTruthy();
+  });
+
+  it("쿠폰이 0 이면 종전대로 잠긴다 — 면제는 쿠폰이 있을 때뿐이다", async () => {
+    const poor: TradeSlot = { ...waitingSlot, speedupCost: 24000, targetGrade: "DIA" };
+    fx.tradeData = { slots: [poor], wallet: { points: 3500 } } satisfies TradeSlotsResponse;
+    fx.players = [];
+    fx.me = { coupons: { FREE_TRADE_RUSH: 0 } };
+    await renderPage();
+
+    expect((screen.getByTestId("trade-slot-1-speedup") as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByTestId("trade-slot-1-rush-free")).toBeNull();
   });
 });

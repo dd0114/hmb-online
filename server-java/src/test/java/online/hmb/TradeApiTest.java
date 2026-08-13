@@ -65,6 +65,9 @@ class TradeApiTest extends ApiTestBase {
     @DynamicPropertySource
     static void props(DynamicPropertyRegistry registry) {
         TestDbSupport.registerTempDb(registry);
+        // #493 W6-v3: 이 테스트의 주제는 튜토리얼이 아니다 — 가입 무료 쿠폰을 끄고
+        // 과금·롤을 '출발 상태 그대로' 본다(TestDbSupport.disableTutorialStarter javadoc).
+        TestDbSupport.disableTutorialStarter(registry);
     }
 
     @Resource

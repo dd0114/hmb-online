@@ -1,0 +1,14 @@
+
+    Error Context: test-results/p493-onrail-⑥-투어-중에는-스킵-이-잠기고-투어가-끝나면-풀린다-chromium/error-context.md
+
+  9 failed
+    [chromium] › e2e/p493-onrail.spec.ts:156:1 › ① [시작하기] = 덱 화면으로 데려가 온레일 첫 스텝이 뜬다 ────────────────
+    [chromium] › e2e/p493-onrail.spec.ts:185:1 › ② ⚠️ 허용 대상 밖은 **실제로 눌리지 않는다** — 딤이 입력을 막는다 ────────
+    [chromium] › e2e/p493-onrail.spec.ts:212:1 › ② 허용 대상은 **구멍이라 그대로 눌린다** — 덮어 버리면 온레일이 자기 발을 밟는다 ─
+    [chromium] › e2e/p493-onrail.spec.ts:229:1 › ③ 행동형 스텝에는 [다음]이 없다 — 넘어가는 문은 그 행동뿐이다 ─────────────
+    [chromium] › e2e/p493-onrail.spec.ts:238:1 › ③ AUTO → 선수 → 한마디 → 저장 순서로만 넘어간다(S2 전 구간) ─────────
+    [chromium] › e2e/p493-onrail.spec.ts:269:1 › ④ [경기 시작] = `{tutorial:true}` 로 만들고 그 매치로 간다 ──────
+    [chromium] › e2e/p493-onrail.spec.ts:290:1 › ⑤ 새로고침해도 **그 스텝부터** 이어진다(중도 이탈) ───────────────────
+    [chromium] › e2e/p493-onrail.spec.ts:302:1 › ⑤ [그만두기] = 홈으로 나가되 진행도는 남고, 홈에서 이어하기가 뜬다 ──────────
+    [chromium] › e2e/p493-onrail.spec.ts:323:1 › ⑥ 투어 중에는 [스킵]이 잠기고, 투어가 끝나면 풀린다 ───────────────────
+  1 passed (2.5m)

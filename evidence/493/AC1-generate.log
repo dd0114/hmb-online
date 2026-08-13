@@ -1,0 +1,16 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider20/hmb-online
+
+stdout | apps/web/scripts/gen-minigame-log.test.ts > #493 미니게임 1분 컷 자산 생성 (실엔진 쇼케이스)
+[minigame] seed=27706472 ver=engine@0.43.0-showcase cut=345
+  snaps=346 events=82
+  goals=away@89(5') home@131(8') → 1:1
+[minigame] wrote /Users/peter.park/spider20/hmb-online/apps/web/src/minigame/minigame-log.json
+
+ ✓ apps/web/scripts/gen-minigame-log.test.ts (1 test) 232ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  00:50:22
+   Duration  1.00s (transform 282ms, setup 0ms, collect 373ms, tests 232ms, environment 0ms, prepare 83ms)
+

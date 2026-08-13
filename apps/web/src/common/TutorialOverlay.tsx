@@ -30,6 +30,11 @@ interface TutorialOverlayProps {
    * 0 이면 즉시 스킵(테스트).
    */
   missingGraceMs?: number;
+  /**
+   * 마지막 스텝 버튼 라벨(#493 W2). 온보딩은 "시작하기"(게임을 시작하러 가는 문맥)가 맞지만
+   * 화면별 가이드는 그 화면에 이미 있으므로 "확인"이 맞다 — 시퀀스가 자기 라벨을 정한다.
+   */
+  lastLabel?: string;
 }
 
 /** 말풍선 최대 폭 / 화면 여백 — 폭을 JS 가 확정해 CSS 와 어긋날 여지를 없앤다(AC-B2). */
@@ -88,6 +93,7 @@ export function TutorialOverlay({
   onShown,
   isLast,
   missingGraceMs = 400,
+  lastLabel = "시작하기",
 }: TutorialOverlayProps) {
   const [rect, setRect] = useState<Rect | null>(null);
   const [viewport, setViewport] = useState(() => ({
@@ -326,7 +332,7 @@ export function TutorialOverlay({
             data-testid="tutorial-next"
             onClick={onNext}
           >
-            {isLast ? "시작하기" : "다음"}
+            {isLast ? lastLabel : "다음"}
           </button>
           <button
             type="button"

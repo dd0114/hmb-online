@@ -31,6 +31,8 @@ import { GachaFxPreview } from "./design/GachaFxPreview";
 import { QaConsolePage } from "./qa/QaConsolePage";
 import { RequireAdmin } from "./admin/RequireAdmin";
 import { TutorialProvider } from "./common/TutorialProvider";
+import { GuideProvider } from "./common/GuideProvider";
+import { OnRailProvider } from "./onrail/OnRailProvider";
 import { setUnauthorizedHandler } from "./api/client";
 import { queryClient } from "./api/query-client";
 
@@ -86,6 +88,10 @@ function AppRoutes() {
       <UnauthorizedBridge />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+
+        {/* ⚠️ `/welcome`(#493 W1 의 1분 미니게임)은 **없다**. hero 판정으로 걷혔다 — 첫 경험은
+            관전이 아니라 홈 [게임 시작]에서 제안하는 **진짜 연습경기**다(#493 W5,
+            `home/PracticeTutorialDialog`). 되살리려면 그 결정부터 다시 받아라. */}
 
         {/* 홈도 MatchLockGate 를 쓴다 — 게이트가 `locked && !abandonable` 일 때만 되돌리므로
             재생 중에는 경기로 가고(#217 AC1), 회수 가능한 사고 매치에서는 홈이 열려 [경기 포기]에
@@ -274,7 +280,18 @@ function App() {
                 useTutorial() 로 어디서든 붙는다(src/common/tutorial-context.ts). */}
             <NavLockProvider>
               <TutorialProvider>
-                <AppRoutes />
+                {/* 화면별 첫 진입 가이드(#493 W2) — 온보딩과 **분리된** 프로바이더.
+                    TutorialProvider 안쪽인 이유: useTutorial().active 로 온보딩이 도는 동안
+                    발화를 미룬다(두 코치마크가 겹치지 않게). */}
+                <GuideProvider>
+                  {/* 온레일 튜토리얼(#493 W7-v3) — **가장 안쪽**이다. 셋 중 유일하게 입력을
+                      실제로 막으므로 다른 두 오버레이보다 위에 그려져야 하고(z 120), 화면
+                      전환을 넘나드는 한 줄기라 라우트 바깥에 산다. 스스로 뜨지 않는다 —
+                      홈 [게임 시작] 제안 모달의 [시작하기]만이 문이다. */}
+                  <OnRailProvider>
+                    <AppRoutes />
+                  </OnRailProvider>
+                </GuideProvider>
               </TutorialProvider>
             </NavLockProvider>
           </AdminFlagProvider>

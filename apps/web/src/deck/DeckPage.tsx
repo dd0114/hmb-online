@@ -24,6 +24,8 @@ import { DEFAULT_TEAM_TACTICS, type EditorState } from "./tactics-logic";
 import { isDirty, makeBaseline, type EditorBaseline } from "./preset-selector-logic";
 import { canAutoBuild } from "./auto-lineup";
 import { canFillEmptySlots, fillEmptySlots } from "./fill-empty";
+import { emitOnRailAction } from "../onrail/onrail-actions";
+import { useOnRail } from "../onrail/onrail-context";
 import { DeckEditor } from "./DeckEditor";
 import { useDeckLayout } from "./use-deck-layout";
 import { growthReadyIdsOf } from "./growth-ready";
@@ -80,6 +82,9 @@ export function DeckPage() {
   // #455 A1 — 폭 1023 이하만 책갈피 탭. 데스크탑은 종전 2컬럼 그대로다.
   const deckLayout = useDeckLayout();
 
+  /** 온레일 — 이 화면이 보는 것은 **일회성 지시 하나**뿐이다(#493 W9). 스텝으로 분기하지 않는다. */
+  const onRail = useOnRail();
+
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [baseline, setBaseline] = useState<EditorBaseline | null>(null);
   const [aiManaged, setAiManaged] = useState(false);
@@ -135,16 +140,32 @@ export function DeckPage() {
   // 첫 진입: 활성 덱 하나만 로드한다(프리셋 조회/적용 없음 — #106).
   useEffect(() => {
     if (editor !== null || deckLoading || deckError || playersLoading) return;
+    /*
+     * 온레일이 **빈 보드에서 출발하라**고 했나 (#493 W9).
+     *
+     * S2 각본(AUTO → 프롬프트 → 저장)의 첫 칸은 [⚡ 자동 채우기]인데, 온보딩 완료가 이미 11명
+     * 짜리 덱을 지급하므로 이 동선의 유저는 채울 자리가 없다 — 버튼이 안 뜨거나(빈 칸 0) 떠도
+     * 비활성(후보 0)이라 **"오토버튼 누르게 하고"가 한 번도 성립하지 않았다**(hero 지시).
+     *
+     * ⚠️ 비우는 것은 **이 화면의 드래프트뿐**이고 `PUT /api/deck` 은 부르지 않는다. 서버 덱은
+     * 유저가 [저장]을 누르는 그 순간까지 그대로다 — 레일을 그만두고 다시 들어오면 옛 덱이
+     * 그대로 그려진다. ⚠️ **팀 문장은 비우지 않는다**: 각본이 손대지 않는 값이라, 비웠다가
+     * 유저가 저장하면 전체 교체 저장(#253)이 그 문장을 **실제로 지운다**.
+     */
+    const cleared = onRail.deckDraftReset;
     const ed: EditorState = {
-      draft: draftFromDeck(deck ?? null),
+      draft: cleared ? emptyDraft() : draftFromDeck(deck ?? null),
       tactics: { ...DEFAULT_TEAM_TACTICS },
       // 저장된 팀 문장을 다시 채운다(#253) — 이걸 늘 ""로 시작하면 유저가 쓴 문장이 서버에
       // 남아 있어도 화면엔 없고, 그 상태로 저장하면 전체 교체라 실제로 지워진다.
       teamPrompt: deck?.teamPrompt ?? "",
     };
     setEditor(ed);
+    /* ⚠️ 기준선도 **같은 ed** 로 잡는다 — 서버 덱을 기준선으로 두면 비운 순간 `dirty` 가 참이
+       되어 유저가 아무것도 안 했는데 미저장 뱃지와 이탈 확인창이 뜬다. */
     setBaseline(makeBaseline(ed, "", null));
-  }, [editor, deck, deckLoading, deckError, playersLoading]);
+    if (cleared) onRail.consumeDeckDraftReset();
+  }, [editor, deck, deckLoading, deckError, playersLoading, onRail]);
 
   const playersById = useMemo(() => {
     const map = new Map<string, CatalogPlayer>();
@@ -213,6 +234,9 @@ export function DeckPage() {
       await updateDeck.mutateAsync(toUpdateRequest(editor!.draft, editor!.teamPrompt));
       setBaseline(makeBaseline(editor!, "", null));
       setSavedNote(true);
+      /* 온레일 S2 ④ — **성공한 뒤에만** 낸다. 누른 순간에 내면 서버가 거절한 덱으로 경기하러
+         가게 되고(첫 저장 보상도 그 저장에 걸려 있다), 그건 시나리오가 서는 자리를 잃는 것이다. */
+      emitOnRailAction("deck-save");
       return true;
     } catch (err) {
       setServerErrorFrom(err, "저장에 실패했습니다");
@@ -317,7 +341,10 @@ export function DeckPage() {
          * ⚠️ 구 `autoBuildLineup`(전면 재구성)으로 되돌리지 마라 — 그건 전원의 프롬프트를 덮고
          * 팀 전술·팀 문장을 초기화한다(= hero 가 없애라고 한 [초기화] 와 같은 피해).
          */
-        onAuto={() => mutateEditor({ ...editor, draft: fillEmptySlots(editor.draft, ownedPlayers) })}
+        onAuto={() => {
+          mutateEditor({ ...editor, draft: fillEmptySlots(editor.draft, ownedPlayers) });
+          emitOnRailAction("deck-auto"); // 온레일 S2 ①
+        }}
         /**
          * ⚠️ **활성 판정은 실행 함수와 같은 것을 쓴다**(#439 2R major-2). 구 게이트는
          * `canAutoBuild(보유 ≥ 11)` 이었는데, 그건 "전원에서 11명을 새로 짠다"의 조건이지

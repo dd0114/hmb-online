@@ -41,7 +41,13 @@ public class MatchController {
      * teamTactics(P2-D4): 브리핑 최종 수동 전술 {line,press,tempo,width}(0..1) — 매치 스냅샷
      * (user_deck_json)에 포함돼 AI 컨텍스트로 전달된다(LLD-p2-server §2·§4). 생략 시 미포함(additive).
      */
-    public record CreateMatchRequest(String botId, com.fasterxml.jackson.databind.JsonNode teamTactics) {
+    public record CreateMatchRequest(String botId, com.fasterxml.jackson.databind.JsonNode teamTactics,
+                                     /**
+                                      * #493 W6-v3 — 튜토리얼 고정 매치로 만든다(미리 구운 로그 · AI 0 ·
+                                      * 대기 0 · 전 유저 동일 결과 · 유저 승리). 생략·false = 기존 연습경기.
+                                      * ⚠️ {@code botId} 는 무시된다(상대는 구운 자산이 정한다).
+                                      */
+                                     Boolean tutorial) {
     }
 
     @PostMapping("/api/matches")
@@ -52,7 +58,8 @@ public class MatchController {
         lockService.assertCanCreateMatch(userId);
         MatchService.MatchRow row = matchService.createMatch(userId,
                 request == null ? null : request.botId(),
-                request == null ? null : request.teamTactics());
+                request == null ? null : request.teamTactics(),
+                request != null && Boolean.TRUE.equals(request.tutorial()));
         // A 프리페치(#95): 유저팀 A + 봇 A(덱 베이스)를 브리핑 진입 즉시 크로스매치 캐시로 enqueue.
         // 유저가 프롬프트 쓰는 동안 A 생성 → 킥오프 때 프롬프트 없으면 콜0 재사용, 있으면 가벼운 B 패치.
         orchestrator.prefetchBaseInputs(row.id());

@@ -40,13 +40,17 @@ public class UserOnboardingService {
     private final WalletService walletService;
     private final RelationService relationService;
     private final AccountLookup accounts;
+    /** #493 W6-v3 — 튜토리얼 재료(고정 카드 중복·경험치·쿠폰). 같은 가입 tx 안에서 지급된다. */
+    private final online.hmb.tutorial.TutorialStarterService tutorialStarter;
 
     public UserOnboardingService(JdbcClient jdbcClient,
                                  TxRunner txRunner,
                                  EconomyService economyService,
                                  WalletService walletService,
                                  RelationService relationService,
-                                 AccountLookup accounts) {
+                                 AccountLookup accounts,
+                                 online.hmb.tutorial.TutorialStarterService tutorialStarter) {
+        this.tutorialStarter = tutorialStarter;
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.economyService = economyService;
@@ -160,6 +164,10 @@ public class UserOnboardingService {
                     .update();
             log.info("starter top unit granted: user={} player={}", userId, topPlayerId);
         }
+
+        // #493 W6-v3 — 튜토리얼 재료는 **기본팩 지급 뒤**다(고정 카드가 이미 들어와 있어야
+        // 중복을 목표치로 맞출 수 있다). 실패해도 가입은 살린다(그 서비스가 안에서 방어한다).
+        tutorialStarter.grant(userId, now);
 
         walletService.apply(userId, economy.initialPoints(), LEDGER_REASON_STARTER, userId);
         // #212: 젬 수급원은 가입 지급 + 리그 입상 둘뿐(목업 충전 폐지) — 가입분을 여기서 지급한다.

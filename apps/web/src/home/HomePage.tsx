@@ -17,8 +17,15 @@ import { visibleNotices, type Notice } from "../lobby/notice-logic";
 import { pickLobbyPopup } from "../lobby/lobby-popup";
 import { useUnbiddenPopupHold } from "../lobby/tutorial-hold";
 import { useTutorial } from "../common/tutorial-context";
+import { useGuide } from "../common/guide-context";
 import { DecklessDialog } from "../common/DecklessDialog";
 import { deckMissing } from "../common/deckless";
+import {
+  markPracticeTutorialAnswered,
+  shouldOfferPracticeTutorial,
+} from "../common/guide-storage";
+import { useOnRail } from "../onrail/onrail-context";
+import { PracticeTutorialDialog } from "./PracticeTutorialDialog";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
 import { HOME_TILES, homeNotice, homeTileState, openTradeCount, teamLine } from "./home-logic";
 import styles from "./HomePage.module.css";
@@ -87,6 +94,7 @@ export function HomePage() {
   const notices = useActiveNotices();
   const [noticeDone, setNoticeDone] = useState(false);
   const { active: tutorialActive } = useTutorial();
+  const { active: guideActive } = useGuide();
   const candidates: Notice[] = useMemo(
     () => visibleNotices(notices.data, Date.now()),
     [notices.data],
@@ -100,7 +108,9 @@ export function HomePage() {
    * "다음 진입"이 영영 오지 않았다 — 신규 유저가 공지를 한 번도 못 보는 실제 원인이었다.
    * 판정 규칙과 근거는 `lobby/tutorial-hold.ts`.
    */
-  const tutorialHold = useUnbiddenPopupHold(tutorialActive);
+  // #493 W2: 화면별 가이드(GuideProvider)도 같은 홀드 축에 태운다 — 오늘 홈에는 가이드가
+  // 없지만(guide-steps 계약), 생기는 날 공지·원정 팝업과 겹치는 사고를 여기서 미리 막는다.
+  const tutorialHold = useUnbiddenPopupHold(tutorialActive || guideActive);
 
   // 첫 진입에 보인 목록을 **고정**한다. 포커스 복귀 refetch 로 목록이 갈리면 스택 인덱스가
   // 어긋나 유저가 이미 닫은 장이 다시 앞으로 나온다. 온보딩이 잡은 방문에서는 고정도 하지
@@ -152,12 +162,68 @@ export function HomePage() {
    * 다만 이건 첫 겹일 뿐이다 — URL 직접 진입은 `GamePage` 가, 경합은 서버 응답이 받는다.
    */
   const [decklessOpen, setDecklessOpen] = useState(false);
+
+  /**
+   * 연습경기 튜토리얼 제안 (#493 W5, hero 리플랜 v2).
+   *
+   * *"게임시작 눌렀을때 '연습경기로 튜토리얼을 해보시겠습니까?' 하고 미리 준비한 덱으로 돌려서
+   * 보여줘야 자연스럽다"* — W1 의 `/welcome` 미니게임(60초 리플레이 관전)을 대신한다. 보여주는
+   * 것은 녹화가 아니라 **자기 팀의 진짜 연습경기**이고, 서버는 온보딩 덱 지급 그 자리에서 그
+   * 덱의 AI 인풋을 선실행해 둔다(`OnboardingController` → `DeckPrewarmService.onDeckSaved`).
+   *
+   * ⚠️ **발화 조건은 GuideProvider 와 같은 래치다**(`shouldOfferPracticeTutorial`). 래치 없이 뜨면
+   * 기존 유저와 토큰만 심는 e2e 목 유저 전원이 [게임 시작]에서 이 모달에 막힌다.
+   *
+   * ⚠️ **판정은 클릭하는 순간에 한다** — 렌더 시점에 계산해 두면 온보딩을 막 끝내고 홈으로 온
+   * 유저에게 래치가 서기 **전**의 값이 굳는다(스토리지는 React 밖이라 리렌더 신호가 없다).
+   */
+  const [practiceAsk, setPracticeAsk] = useState(false);
+  /**
+   * ⚠️ **여기서 더는 매치를 만들지 않는다**(#493 W7-v3). W5 의 `usePracticeStart(decklessGuard)`
+   * 는 수락 = 즉시 연습경기였기 때문에 필요했다. 리플랜 v3 이 수락을 "덱 화면으로 데려간다"로
+   * 바꾸면서 이 화면의 매치 생성 경로가 사라졌다 — 매치는 온레일이 S2 를 마친 뒤 만든다
+   * (`onrail/onrail-api.useStartTutorialMatch`, 그쪽이 `tutorial:true` 와 폴백을 소유한다).
+   * 덱 없음 안내(L1)는 아래 `pressTile` 이 그대로 한다.
+   */
+  const onRail = useOnRail();
+
   function pressTile(key: string, to: string) {
     if (key === "game" && deckMissing(deck)) {
       setDecklessOpen(true);
       return;
     }
+    if (key === "game" && shouldOfferPracticeTutorial(me?.user?.id ?? null)) {
+      setPracticeAsk(true);
+      return;
+    }
     navigate(to);
+  }
+
+  /**
+   * 수락 = **온레일 튜토리얼 시작**(#493 W7-v3, hero 리플랜 v3).
+   *
+   * ⚠️ W5 는 여기서 곧바로 매치를 만들었다(*"수락 → 즉시 연습경기"*). 리플랜 v3 이 그 순서를
+   * 뒤집었다 — *"게임 시작하면 **셋팅부터** 알려줘야하는데"* — 그래서 수락은 이제 **덱 화면으로
+   * 데려가는 것**이고, 경기는 덱을 저장한 뒤 온레일이 만든다(S2 끝의 [경기 시작] CTA).
+   * 서버도 같은 순서를 요구한다: 튜토리얼 매치 생성은 덱이 없으면 400 `DECK_REQUIRED` 다.
+   */
+  function acceptPracticeTutorial() {
+    markPracticeTutorialAnswered(me?.user?.id ?? null);
+    setPracticeAsk(false);
+    onRail.start();
+  }
+
+  /**
+   * 거절 = 원래 가려던 곳(게임 탭)으로 그대로. 다시 묻지 않는다.
+   *
+   * 온레일에도 사양을 기록한다 — **행동 보상 5종은 그대로 받고 완주 보상만 못 받는다**
+   * (스토리보드 S1). 그 보상들은 서버가 행동 시점에 태우므로 여기서 할 일은 "다시 걸지 않는다"뿐이다.
+   */
+  function declinePracticeTutorial() {
+    markPracticeTutorialAnswered(me?.user?.id ?? null);
+    onRail.skip();
+    setPracticeAsk(false);
+    navigate("/game");
   }
 
   const header = (
@@ -258,6 +324,15 @@ export function HomePage() {
           <DecklessDialog
             ownedCount={Array.isArray(players) ? ownedCount : null}
             onClose={() => setDecklessOpen(false)}
+          />
+        )}
+
+        {/* #493 W5 → W7-v3 — 덱 안내(위)와 **겹치지 않는다**: `pressTile` 이 덱 없음을 먼저
+            걸러낸다(모달 2겹 금지 규율). 수락은 이제 화면 이동이라 대기 상태가 없다. */}
+        {practiceAsk && (
+          <PracticeTutorialDialog
+            onAccept={acceptPracticeTutorial}
+            onDecline={declinePracticeTutorial}
           />
         )}
       </div>

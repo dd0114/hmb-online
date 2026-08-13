@@ -1,0 +1,19 @@
+ RUN  v2.1.9 /Users/peter.park/spider20/hmb-online
+
+stdout | apps/web/src/minigame/minigame-log.test.ts > #493 미니게임 정적 로그 자산 > gzip ≤ 100KB (AC1 크기 상한)
+[minigame-log] raw=494723B gzip=63533B
+
+ ✓ apps/web/src/minigame/minigame-log.test.ts (4 tests) 79ms
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  00:50:29
+   Duration  691ms (transform 85ms, setup 0ms, collect 176ms, tests 79ms, environment 0ms, prepare 85ms)
+
+
+ Test Files  1 passed (1)
+      Tests  4 passed (4)
+   Start at  00:51:08
+   Duration  636ms (transform 126ms, setup 0ms, collect 207ms, tests 67ms, environment 0ms, prepare 86ms)
+
+TYPECHECK-OK

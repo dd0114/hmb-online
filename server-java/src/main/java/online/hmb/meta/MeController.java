@@ -30,14 +30,17 @@ public class MeController {
     private final online.hmb.league.LeagueService leagueService;
     private final online.hmb.mail.MailService mailService;
     private final MeRecordService meRecordService;
+    private final online.hmb.coupon.CouponService couponService;
 
     public MeController(JdbcClient jdbcClient, WalletService walletService, AdminAccess adminAccess,
                         OnboardingService onboardingService,
                         online.hmb.away.RatingService ratingService,
                         online.hmb.league.LeagueService leagueService,
                         online.hmb.mail.MailService mailService,
-                        MeRecordService meRecordService) {
+                        MeRecordService meRecordService,
+                        online.hmb.coupon.CouponService couponService) {
         this.meRecordService = meRecordService;
+        this.couponService = couponService;
         this.jdbcClient = jdbcClient;
         this.walletService = walletService;
         this.adminAccess = adminAccess;
@@ -81,7 +84,8 @@ public class MeController {
                 leagueService.currentDivision(userId)
                         .map(d -> new LeagueInfo(d.level(), d.name()))
                         .orElse(null),
-                MailInfo.of(mailService.summary(userId)));
+                MailInfo.of(mailService.summary(userId)),
+                couponService.unusedCounts(userId));
     }
 
     /**
@@ -168,8 +172,16 @@ public class MeController {
      * league 는 #268 additive · mail 은 #323 additive — 기존 필드 불변(web 무회귀).
      * league 가 null 이면 화면에서 사라진다.
      */
+    /**
+     * {@code coupons}(#493 W6-v3 additive) = <b>지금 쓸 수 있는</b> 1회성 권리의 종류별 장수
+     * ({@code {"FREE_ENHANCE":1,"FREE_TRADE_RUSH":1,"FIRST_TRADE_EPIC":1}}). 0 인 종류도 키가 있다 —
+     * 화면이 "없음"과 "모름"을 구분해야 무료 뱃지를 잘못 그리지 않는다.
+     *
+     * <p><b>전용 엔드포인트를 만들지 않은 이유</b>는 {@link MailInfo} 와 같다 — 모든 화면이 이미 이
+     * 호출을 하고 있어 왕복이 늘지 않고, "쓸 수 있나"의 판정(만료·사용 여부)은 <b>서버가 SoT</b> 다.
+     */
     public record MeResponse(UserRef user, WalletInfo wallet, Records records, int rating,
-                             LeagueInfo league, MailInfo mail) {
+                             LeagueInfo league, MailInfo mail, Map<String, Integer> coupons) {
     }
 
     public record MatchListItem(String id, String opponentName, Integer scoreHome, Integer scoreAway,

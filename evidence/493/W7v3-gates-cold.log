@@ -1,0 +1,44 @@
+#493 W7-v3 — 게이트 콜드 재실행 (커밋 61247191 트리)
+base = epic/493-tutorial @ 5a2130cb (W6-v3 서버 착지분 위에 리베이스)
+
+== 타입 게이트 == cd apps/web && npm run build   (tsc -p tsconfig.json --noEmit && vite build)
+✓ built in 2.12s        # 타입 에러 0
+# ⚠️ 루트 typecheck 는 apps/web 을 보지 않는다 — web 변경의 타입 게이트는 이 빌드가 유일하다.
+
+== 유닛 == cd apps/web && npx vitest run
+ Test Files  1 failed | 171 passed | 1 skipped (173)
+      Tests  2464 passed | 8 skipped (2472)      # 실패한 **테스트** 0
+
+⚠️ 유일한 red = `src/match/highlight-reel.test.ts` **파일 로드 실패**(선행 결함, 이 웨이브 무관):
+   Error: Cannot find module '@hmb/viewer-core/playback'
+   원인 = `apps/web/vite.config.ts` 의 alias 가 `"@hmb/viewer-core"` → `.../src/index.ts` 라는
+   **문자열 alias** 라 서브패스가 `.../src/index.ts/playback` 으로 접합된다. 이 웨이브는
+   vite.config 도 그 테스트도 건드리지 않았다(`git diff --stat` 로 무접촉 확인).
+   같은 부류였던 `viewer-skins.test.ts` 의 ENOENT 는 gitignore 생성물(match-log.json) 부재라
+   `npx vitest run packages/engine/dev-viewer/generate-demo.test.ts` 로 생성해 해소했다.
+
+== E2E (지정 스펙, 전면 목킹) ==
+cd apps/web && CI=1 WEB_E2E_PORT=5291 npx playwright test \
+  e2e/p493-onrail.spec.ts e2e/p493-practice-tutorial.spec.ts e2e/p493-full-journey.spec.ts \
+  e2e/p493-guides.spec.ts e2e/deck-auto.spec.ts e2e/p455-a3-auto-fill.spec.ts \
+  e2e/p244-prompt-first.spec.ts e2e/p421-skip-report.spec.ts e2e/p276-halftime-shape.spec.ts \
+  e2e/w3-trade-mock.spec.ts e2e/growth-mock.spec.ts e2e/p286-w35-deckless.spec.ts \
+  e2e/p3-tutorial.spec.ts
+  147 passed (2.8m)
+
+추가 회귀 배치(같은 방식, 별도 실행):
+  e2e/p442-phone-substitution · deck-teamsheet · p439-phone-deck-ux · p455-a2-player-menu ·
+  p294-halftime-failure · p403-player-detail        → 79 passed (1.2m)
+
+== 신규 계약 red→green ==
+red  = evidence/493/W7v3-e2e-red.log   (구현 전: 9 failed / 1 passed)
+       ⚠️ 통과한 1건은 "건너뛰기" — W5 부터 있던 동작이라 red 가 아닌 것이 맞다.
+green= p493-onrail.spec.ts             (구현 후: 11 passed, 폰 케이스 ⑦ 포함)
+
+== 캡처(폰 390×844, Read 로 눈 확인) ==
+W7v3-s1-offer-phone.png    제안 모달
+W7v3-s2-auto-phone.png     AUTO 만 구멍 · 나머지 딤 · "1 / 21" · [직접 해보세요](행동형=버튼 없음)
+W7v3-s2-player-phone.png   지정 선수 토큰
+W7v3-s2-prompt-phone.png   접혀 있던 지시 칸을 온레일이 끌어와 하이라이트
+W7v3-s2-done-phone.png     [경기 시작] CTA
+W7v3-s3-tour-phone.png     투어 6/21 · 시계 **0'00" 정지** · [스킵] 비활성 = 잠금 실증

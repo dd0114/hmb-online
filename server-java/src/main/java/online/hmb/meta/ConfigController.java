@@ -30,10 +30,13 @@ public class ConfigController {
 
     private final EconomyService economyService;
     private final AiModeService aiModeService;
+    private final online.hmb.tutorial.TutorialStarterService tutorialStarterService;
 
-    public ConfigController(EconomyService economyService, AiModeService aiModeService) {
+    public ConfigController(EconomyService economyService, AiModeService aiModeService,
+                            online.hmb.tutorial.TutorialStarterService tutorialStarterService) {
         this.economyService = economyService;
         this.aiModeService = aiModeService;
+        this.tutorialStarterService = tutorialStarterService;
     }
 
     @GetMapping("/api/config")
@@ -43,7 +46,8 @@ public class ConfigController {
         return new ConfigResponse(currencies,
                 economy == null ? null : shopOf(economy),
                 economy == null ? null : new Grants(economy.initialPoints(), economy.initialGems()),
-                aiModeService.current());
+                aiModeService.current(),
+                new TutorialConfig(tutorialStarterService.starterCardId()));
     }
 
     private static ShopConfig shopOf(Economy e) {
@@ -72,7 +76,25 @@ public class ConfigController {
      * "게임시작할때 안내말만" 이 성립하는 자리가 여기다.
      */
     public record ConfigResponse(List<Currency> currencies, ShopConfig shop, Grants grants,
-            AiModeService.AiModeView ai) {
+            AiModeService.AiModeView ai, TutorialConfig tutorial) {
+    }
+
+    /**
+     * 온레일 튜토리얼이 클라에 필요한 서버 값 (#493 W9, <b>additive</b>).
+     *
+     * <p>{@code starterCardId} = 가입 시 재료를 얹어 주는 <b>고정 카드</b>
+     * ({@code hmb.tutorial.starter.card-id}). web 은 이 값이 없어서 "대기 중인 3지선다의 주인"으로
+     * 추론하고 있었다 — 유저가 다른 카드로 경기를 치르거나 선택권을 이미 써 버리면 어긋나는 추론이다
+     * (apps/web {@code onrail-api.ts}). <b>서버가 이미 아는 값</b>이므로 그대로 내려 준다.
+     *
+     * <p>값의 출처는 지급 로직({@code TutorialStarterService})이 쓰는 그 필드다 — 여기서
+     * 프로퍼티를 따로 읽으면 지급과 표시가 서로 다른 카드를 가리킬 수 있다.
+     *
+     * <p>{@code starterCardId} 는 <b>null 일 수 있다</b> — 튜토리얼 재료 지급이 꺼진 배포
+     * ({@code hmb.tutorial.starter.enabled=false})엔 고정 카드가 없다. 클라는 그때 종전의
+     * 추론/폴백 경로를 탄다(없는 카드를 가리키는 것보다 "없다"가 낫다).
+     */
+    public record TutorialConfig(String starterCardId) {
     }
 
     /**

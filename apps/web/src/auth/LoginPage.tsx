@@ -149,9 +149,9 @@ export function LoginPage() {
 
   function handleStarterPackConfirm() {
     setStarterPackOpen(false);
-    // 신규 유저도 공유 링크로 왔다면 그 공지가 방문 목적이다(hero 확정) — 닫으면 홈으로 가고,
-    // 거기서 온보딩이 시작된다(#286: 코치마크 대상이 홈 타일이다). #248 의 "미룸"은
-    // **저절로 뜨는 팝업**에만 걸린다.
+    // #493 W5: 신규 가입도 **홈으로** 간다(W1 의 `/welcome` 미니게임은 hero 판정으로 걷혔다).
+    // 첫 경험은 홈에서 온보딩 코치마크 → [게임 시작] → 연습경기 튜토리얼 제안 순으로 이어진다.
+    // 공유 링크로 온 신규 유저는 그 목적지가 방문 목적이다(#298/hero 확정) — `returnTo` 그대로.
     navigate(returnTo, { replace: true });
   }
 

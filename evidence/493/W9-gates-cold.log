@@ -1,0 +1,81 @@
+#493 W9 (web) — 게이트 콜드 재실행 증빙
+판정 대상 트리 = web/493-w9 최종 커밋 (베이스 abbd8592)
+수집 시각 = 2026-08-13 (KST), 전부 **최종 트리에서 다시** 돌린 값이다
+  (순서를 반대로 하면 두 커밋 전 수치를 증빙으로 싣게 된다 — W8-v3 3R blocker-1 의 재발 방지)
+
+────────────────────────────────────────────────────────────────────────
+① 타입 게이트 — `cd apps/web && npm run build`   ⇒ **EXIT=0**
+   (루트 typecheck 는 web 을 보지 않는다. build 가 유일한 타입 게이트 — 모듈 규율)
+   tsc --noEmit 0 err · vite build ✓ built (dist/assets/index-*.js 901.50 kB)
+
+────────────────────────────────────────────────────────────────────────
+② 유닛 — `cd apps/web && npx vitest run`
+   Test Files  1 failed | 171 passed | 1 skipped (173)
+   Tests       2486 passed | 8 skipped (2494)      # 실패한 **테스트** 0
+
+   ⚠️ 유일한 red = `src/match/highlight-reel.test.ts` **파일 로드 실패**(선행 결함, 이 웨이브 무관):
+      `Cannot find module '@hmb/viewer-core/playback'` — vite alias 가 서브패스를 안 받는다.
+      W8-v3 증빙(`W8v3-gates-cold.log:22`)이 **같은 파일·같은 형태**로 이미 red 였다:
+        W8-v3 : Test Files 1 failed | 171 passed | 1 skipped (173) / Tests 2468 passed | 8 skipped
+        W9    : Test Files 1 failed | 171 passed | 1 skipped (173) / Tests 2486 passed | 8 skipped
+      차이 +18 = 이 웨이브가 추가한 계약(onrail-logic +14 · onrail-storage +4)뿐이다.
+
+   ⚠️ 콜드 트리 전제 1건: `packages/engine/dev-viewer/match-log.json` 은 **gitignore 생성물**이라
+      갓 만든 워크트리엔 없다(루트 CLAUDE.md §4). 없으면 `viewer-skins`·`highlight-reel` 이
+      ENOENT 로 죽으므로 `npx vitest run packages/engine/dev-viewer/generate-demo.test.ts` 로
+      먼저 생성했다(엔진 소스 무접촉 — 산출물만).
+
+   신규 계약만: `npx vitest run src/onrail` ⇒ 45 passed (logic 32 · storage 13)
+
+────────────────────────────────────────────────────────────────────────
+③ E2E — ⚠️ 전체 실행 금지(:8080 데모에 붙는다). **스펙 지정 + 대체 포트 5297 + /api 전면 목킹**만.
+
+   ⓐ 신규 스펙 red→green (`e2e/p493-onrail-skip.spec.ts`, 7건)
+      red  = **커밋한 스펙 그대로** 베이스(abbd8592) 소스에 대고 실행 → `W9-e2e-red.log`
+             6 failed | 1 passed   (1 passed = "레일 미진입 유저 부작용 0" 대조군 — 변화가
+             없어야 하는 축이라 red 면 안 된다. 나머지가 하드스톱·전제의 실측이다)
+             · ⓐ trade-rush 에서 44프레임 내내 `trade-rush` 고정 = 무한 대기
+             · ⓑ deck-auto 에서 44프레임 내내 `deck-auto` 고정 = 무한 대기
+             · ⓒ 오버레이 **element(s) not found** = 안내조차 없이 사라진다(가장 나쁜 형태)
+             · ⓓ AUTO `disabled`(보유 13 전원 배치) · ⓔ 구멍 폭 차 856.8px(그리드로 착지)
+             · ⓑ-transient(잠깐 잠긴 대상)도 base 에서 red 지만 **사유가 다르다** — 그 스펙은
+               W9 의 빈 보드 출발에 의존해 AUTO 를 누른다(base 에선 그 버튼이 비활성이라 3분
+               타임아웃). 하드스톱 재현이 아니라 **스킵의 반대편 오판을 막는 가드**다.
+             ⚠️ red 는 **소스만** 베이스로 되돌려 잰다(`git show` 읽기 + 파일 복사, git 쓰기 0).
+      green = 최종 트리 → 7 passed
+
+      ⚠️ 변이 죽이기 2건(이 기능이 조용히 무효가 되는 두 경로를 실제로 태웠다):
+        · `!everUsableRef.current` 가드 제거 → ⓑ-transient red (정상 저장 스텝이 날아간다)
+        · 래치를 `if (el)` 없이 세움      → ⓑ red (대상이 렌더되기 전 빈 프레임이 래치를 세워
+          **기능 전체가 무효**. 그 창은 빠른 목에선 안 열려서 ⓑ 에 `/api/deck` GET 1.2s 지연을
+          넣어야 검사된다 — 지연이 계약의 절반이다)
+
+   ⓑ #493 전 스펙 콜드 (onrail-skip · onrail · full-journey · practice-tutorial · guides)
+      ⇒ **35 passed** (EXIT=0)
+      · `p493-full-journey` 9/9 — S2 첫 칸이 AUTO 로 **바뀐 것**을 반영해 2건 갱신(아래 ④)
+
+   ⓒ 회귀 배치 (DeckPage·매치잠금·config 를 건드렸으므로)
+      deck-auto · deck-teamsheet · deck-preset · deck-conditions · p244-prompt-first ·
+      p286-w35-deckless · p3-tutorial · p439-phone-deck-ux            ⇒ 102 passed | 1 skipped
+      p455-a1 · p455-a2 · p455-a3 · p455-a22 · p4-match-lock ·
+      currency-display · p4-starter-onboarding                        ⇒ 63 passed
+      p456-full-journey · w3-trade-mock · growth-mock · p286-home-nav ·
+      p368-daily-reward                                               ⇒ 62 passed
+
+────────────────────────────────────────────────────────────────────────
+④ 기존 계약 중 **의도적으로 뒤집은 것 1건** (`p493-full-journey.spec.ts`)
+
+   W7-v3 가 그 자리에 박아 둔 문장:
+     *"AUTO 스텝은 실제 스타터 덱에서 한 번도 발화하지 않는다 … ⓐ 서버가 튜토리얼 시작 시
+       덱을 비우거나 ⓑ 시나리오가 AUTO 를 뺀다 — 둘 중 하나를 고르면 이 단언이 빨개진다
+       (그게 이 단언의 목적이다)."*
+   W9 이 **ⓐ 의 클라 판**을 골랐다(레일 시작이 로컬 드래프트만 비운다) → 예고대로 red 가 되어
+   `deck-auto` 발화 + `auto-fill` 활성 + 보드가 비어 있음을 단언하도록 갱신했다.
+   ⚠️ 계약을 **약화한 것이 아니다** — 검사 항목이 하나 늘었다(비운 보드 · AUTO 활성 · AUTO 로
+      넘어감). 서버 덱 무접촉(`PUT /api/deck` 0회)은 신규 스펙 ⓓ 가 따로 문다.
+
+────────────────────────────────────────────────────────────────────────
+⑤ 이 웨이브가 **안 한 것**
+   · `packages/shared/**` · `docs/plan-v2/api/openapi.yaml` 무접촉(사전승인 없음)
+   · server-java 무접촉 — `/api/config.tutorial.starterCardId` 는 서버 W9 소웨이브 소관이고,
+     web 은 **있으면 쓰고 없으면 추론으로 내려간다**(구 서버 호환, 계약 3건).

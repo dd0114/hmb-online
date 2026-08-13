@@ -59,6 +59,23 @@ final class TestDbSupport {
         registry.add("hmb.match.delta.overhaul-axis-count", () -> "99");
     }
 
+    /**
+     * #493 W6-v3 튜토리얼 <b>재료 지급</b>을 끈 상태로 고정한다(= 이 웨이브 이전의 스타터).
+     *
+     * <p>왜 필요한가: 가입 시 무료 쿠폰(첫 강화 무료·단축 무료·첫 트레이드 등급 확정)이 붙으면서
+     * <b>신규 유저의 첫 강화·첫 단축·첫 오퍼가 달라졌다</b>. 잠재 다이스 과금·트레이드 등급 롤·부족
+     * 문구처럼 <b>튜토리얼이 주제가 아닌</b> 기존 테스트는 이걸 꺼서 자기 주제만 보게 한다
+     * ({@link #disableMatchClock} 과 같은 규율). 튜토리얼 동작 자체는 TutorialStarterTest ·
+     * TutorialFreebiesTest · TutorialMatchTest 가 전담한다.
+     *
+     * <p>⚠️ 이건 "쿠폰이 기존 계약을 깨서 껐다"가 아니다 — 그 계약들(값을 내면 차감된다 · 등급은
+     * 확률 롤이다)은 <b>쿠폰을 다 쓴 뒤에도 그대로 참</b>이고, 여기서 끄는 것은 그 계약이 관측되는
+     * <b>출발 상태</b>다.
+     */
+    static void disableTutorialStarter(DynamicPropertyRegistry registry) {
+        registry.add("hmb.tutorial.starter.enabled", () -> "false");
+    }
+
     /** 시드 임포트 파일이 아예 없는 시나리오(부팅 warn-and-continue 확인용). */
     static void registerTempDbWithMissingData(DynamicPropertyRegistry registry) {
         try {

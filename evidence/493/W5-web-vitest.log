@@ -1,0 +1,594 @@
+
+ RUN  v2.1.9 /Users/peter.park/spider20/hmb-online
+
+ ✓ apps/web/src/match/stage/stage-state.test.ts (55 tests) 13ms
+ ✓ apps/web/src/deck/directives.test.ts (41 tests) 14ms
+ ✓ apps/web/src/common/char-manifest.test.ts (43 tests) 16ms
+ ✓ apps/web/src/league/league-logic.test.ts (56 tests) 29ms
+ ✓ apps/web/src/match/highlight-reel.test.ts (33 tests) 13ms
+ ✓ apps/web/src/match/player-selection.test.ts (54 tests) 141ms
+ ✓ apps/web/src/match/player-stats.test.ts (105 tests) 184ms
+ ✓ apps/web/src/match/highlight-sequencer.test.ts (19 tests) 15ms
+ ✓ apps/web/src/common/full-art.test.ts (32 tests) 72ms
+ ✓ apps/web/src/match/player-stats-view.test.ts (33 tests) 9ms
+ ✓ apps/web/src/match/viewer-skins.test.ts (22 tests) 47ms
+ ✓ apps/web/src/match/flow/match-flow.test.ts (35 tests) 11ms
+ ✓ apps/web/src/mission/mission-logic.test.ts (36 tests) 8ms
+ ✓ apps/web/src/admin/notice-admin-logic.test.ts (35 tests) 9ms
+ ✓ apps/web/src/match/match-logic.test.ts (41 tests) 15ms
+ ✓ apps/web/src/match/halftime-shape.test.ts (21 tests) 7ms
+ ✓ apps/web/src/lobby/notice-logic.test.ts (23 tests) 10ms
+ ✓ apps/web/src/common/char-bundle-base.test.ts (15 tests) 24ms
+ ✓ apps/web/src/deck/tactics-logic.test.ts (20 tests) 7ms
+ ✓ apps/web/src/common/gacha-fx.test.ts (29 tests) 6ms
+ ✓ apps/web/src/deck/auto-lineup.test.ts (14 tests) 11ms
+ ✓ apps/web/src/match/skip-report-rating.test.ts (14 tests) 8ms
+ ✓ apps/web/src/rewards/match-reward-cards.test.ts (29 tests) 7ms
+ ✓ apps/web/src/admin/admin-units-logic.test.ts (31 tests) 10ms
+ ✓ apps/web/src/deck/fill-empty.test.ts (13 tests) 8ms
+ ✓ apps/web/src/growth/attribute-view.test.ts (19 tests) 7ms
+ ✓ apps/web/src/common/tutorial-logic.test.ts (26 tests) 5ms
+ ✓ apps/web/src/auth/login-flow.test.ts (22 tests) 5ms
+ ✓ apps/web/src/match/stage/log-labels.test.ts (10 tests) 6ms
+ ✓ apps/web/src/match/halftime-draft.test.ts (17 tests) 5ms
+ ✓ apps/web/src/match/player-detail-view.test.ts (18 tests) 6ms
+ ✓ apps/web/src/common/modal-layers.test.ts (5 tests) 195ms
+ ✓ apps/web/src/trade/trade-logic.test.ts (29 tests) 5ms
+ ✓ apps/web/src/splash/splash-test-bypass.test.ts (8 tests) 22ms
+ ✓ apps/web/src/match/live-clock.test.ts (18 tests) 5ms
+ ✓ apps/web/src/api/backend-health.test.ts (11 tests) 8ms
+ ✓ apps/web/src/common/match-lock.test.ts (16 tests) 6ms
+ ✓ apps/web/src/away/revenge-logic.test.ts (18 tests) 4ms
+ ✓ apps/web/src/rewards/registry.test.ts (16 tests) 4ms
+ ✓ apps/web/src/match/half-report.test.ts (15 tests) 5ms
+ ✓ apps/web/src/league/daily-reward-logic.test.ts (17 tests) 5ms
+ ✓ apps/web/src/match/seek-gate.test.ts (18 tests) 5ms
+ ✓ apps/web/src/qa/qa-console-logic.test.ts (20 tests) 5ms
+ ✓ apps/web/src/match/timeline-pins.test.ts (14 tests) 5ms
+ ✓ apps/web/src/common/team-colors.test.ts (6 tests) 436ms
+   ✓ #456 B4 — 팀색 단일 출처 > 팀색 리터럴이 다른 파일에 남아 있지 않다 431ms
+ ✓ apps/web/scripts/build-chars.test.ts (15 tests) 51ms
+ ✓ apps/web/src/common/notice-markup.test.ts (11 tests) 5ms
+ ✓ apps/web/src/common/currency.test.ts (24 tests) 17ms
+ ✓ apps/web/src/deck/deck-logic.test.ts (17 tests) 5ms
+ ✓ apps/web/src/match/live-pace.test.ts (13 tests) 3ms
+ ✓ apps/web/src/admin/economy-logic.test.ts (16 tests) 4ms
+ ✓ apps/web/src/common/icon-policy.test.ts (7 tests) 372ms
+   ✓ 판정이 한 곳인지 — 소비처가 등급을 다시 비교하지 않는다 > 정책 예외(artReviewExempt)는 검수 도구에서만 쓴다 350ms
+ ✓ apps/web/src/match/waiting-scenes.test.ts (11 tests) 8ms
+ ✓ apps/web/src/deck/preset-selector-logic.test.ts (14 tests) 4ms
+ ✓ apps/web/src/match/player-stats-view.names.test.ts (6 tests) 4ms
+ ✓ apps/web/src/admin/admin-logic.test.ts (22 tests) 17ms
+ ✓ apps/web/src/logs/logs-logic.test.ts (20 tests) 4ms
+ ✓ apps/web/src/match/briefing-preset-logic.test.ts (15 tests) 4ms
+ ✓ apps/web/src/rewards/types.test.ts (11 tests) 3ms
+ ✓ apps/web/src/mail/mail-logic.test.ts (10 tests) 5ms
+ ✓ apps/web/src/auth/return-to.test.ts (31 tests) 4ms
+ ✓ apps/web/src/match/viewer-skins.duplicate-id.test.ts (6 tests) 3ms
+ ✓ apps/web/src/logs/snapshot-import.test.ts (10 tests) 5ms
+ ✓ apps/web/src/admin/mail-admin-logic.test.ts (14 tests) 5ms
+ ✓ apps/web/src/codex/codex-sort.test.ts (9 tests) 12ms
+ ✓ apps/web/src/lobby/notice-viewport.test.ts (10 tests) 4ms
+ ✓ apps/web/src/deck/tactics-steps.test.ts (14 tests) 4ms
+ ✓ apps/web/scripts/rating-distribution.test.ts (6 tests) 315ms
+ ✓ apps/web/src/match/skip-mode.test.ts (19 tests) 5ms
+ ✓ apps/web/src/shop/topup-logic.test.ts (16 tests) 16ms
+ ✓ apps/web/src/lobby/away-report-logic.test.ts (12 tests) 3ms
+ ✓ apps/web/src/match/stage/LogPanel.person.test.ts (9 tests) 5ms
+ ✓ apps/web/src/deck/formation-lock.test.ts (4 tests) 3ms
+ ✓ apps/web/src/lobby/lobby-popup.test.ts (10 tests) 3ms
+ ✓ apps/web/src/match/qa-time-controls.test.ts (11 tests) 5ms
+ ✓ apps/web/src/common/retired-testids.test.ts (2 tests) 159ms
+ ✓ apps/web/src/growth/choice-reason.test.ts (10 tests) 3ms
+ ✓ apps/web/src/match/stage/stats-rows.test.ts (4 tests) 41ms
+ ✓ apps/web/src/auth/validation.test.ts (22 tests) 5ms
+ ✓ apps/web/src/deck/player-ranking.test.ts (7 tests) 3ms
+ ✓ apps/web/src/common/char-assets.test.ts (9 tests) 4ms
+ ✓ apps/web/src/match/playback-controls.test.ts (9 tests) 3ms
+ ✓ apps/web/src/match/auto-mode.test.ts (9 tests) 3ms
+ ✓ apps/web/src/common/deckless.test.ts (10 tests) 3ms
+ ✓ apps/web/src/deck/sheet-metrics.test.ts (7 tests) 3ms
+ ✓ apps/web/src/common/notice-asset-url.test.ts (6 tests) 6ms
+ ↓ apps/web/scripts/gen-p421-fixture.test.ts (1 test | 1 skipped)
+ ✓ apps/web/src/me/record-logic.test.ts (9 tests) 7ms
+ ✓ apps/web/src/shop/gacha-promo.test.ts (7 tests) 4ms
+ ✓ apps/web/src/deck/auto-shared-logic.test.ts (5 tests) 7ms
+ ✓ apps/web/src/common/relations.test.ts (10 tests) 3ms
+ ✓ apps/web/src/rewards/sections/growth-row-logic.test.ts (7 tests) 3ms
+ ✓ apps/web/src/deck/growth-ready.test.ts (4 tests) 2ms
+ ✓ apps/web/src/common/ranking-logic.test.ts (11 tests) 4ms
+ ✓ apps/web/src/common/player-names.test.ts (25 tests) 5711ms
+   ✓ 우회 금지 — 이름 조회는 초크포인트로만 > 카탈로그 행에서 이름을 직접 꺼내는 화면이 없다 2053ms
+   ✓ 우회 금지 — 이름 조회는 초크포인트로만 > `이름 ?? <id>` 폴백이 남아 있지 않다 — 그게 화면에 P077 을 띄운 패턴이다 1636ms
+   ✓ 우회 금지 — 이름 조회는 초크포인트로만 > 명시적 예외는 전부 실재하고 사유가 적혀 있다 1686ms
+   ✓ 우회 금지 — 이름 조회는 초크포인트로만 > 창구를 실제로 쓰는 화면이 여럿이다 — 만들어만 두고 아무도 안 쓰는 상태가 아니다 324ms
+ ✓ apps/web/src/common/guide-steps.test.ts (6 tests) 4ms
+ ✓ apps/web/src/growth/card-axis.test.ts (7 tests) 3ms
+ ✓ apps/web/src/deck/one-tap-directives.test.ts (8 tests) 3ms
+ ✓ apps/web/src/api/hooks-v2.test.ts (5 tests) 3ms
+ ✓ apps/web/src/home/home-logic.test.ts (5 tests) 2ms
+ ✓ apps/web/src/match/condition-clock.test.ts (9 tests) 4ms
+ ✓ apps/web/src/trade/propose-builder.test.ts (7 tests) 3ms
+ ✓ apps/web/src/deck/team-power.test.ts (7 tests) 3ms
+ ✓ apps/web/src/api/revenge-error.test.ts (7 tests) 3ms
+ ✓ apps/web/src/shop/shop-logic.test.ts (5 tests) 2ms
+ ✓ apps/web/src/deck/radio-group.test.ts (6 tests) 6ms
+ ✓ apps/web/src/shop/reveal-logic.test.ts (5 tests) 2ms
+ ✓ apps/web/scripts/gen-p388-fixture.test.ts (1 test) 462ms
+   ✓ #388 픽스처 생성 (하프 1350틱 레짐 실로그) 462ms
+ ✓ apps/web/src/match/position-label.test.ts (4 tests) 2ms
+ ✓ apps/web/src/game/ai-mode-notice.test.ts (4 tests) 2ms
+ ✓ apps/web/src/match/stage/LogPanel.number.test.ts (4 tests) 2ms
+ ✓ apps/web/src/api/client.test.ts (50 tests) 43ms
+ ✓ apps/web/src/common/CharAvatar.test.ts (30 tests) 179ms
+stderr | apps/web/src/common/tutorial-flow.test.ts > 자동 시작 (AC-B1) > 신규 신호가 있으면 첫 스텝부터 시작한다
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/common/tutorial-flow.test.ts (38 tests) 405ms
+ ✓ apps/web/src/admin/AdminUnitsSection.test.ts (20 tests) 492ms
+ ✓ apps/web/src/match/stage/PlayerStatsPanel.test.ts (15 tests) 218ms
+ ✓ apps/web/src/match/MatchViewer.controls.test.ts (32 tests) 270ms
+ ✓ apps/web/src/match/PlaybackControls.seek.test.ts (27 tests) 409ms
+stderr | apps/web/src/deck/assign-flow.test.ts > #442 R1 — 엔트리 대기 상태 > 취소하면 대상 표시가 사라지고, 그 뒤 슬롯을 눌러도 자리가 바뀌지 않는다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/assign-flow.test.ts > #442 R1 — 슬롯 탭이 하는 일 > 찬 자리를 누르면 **맞바꾸기**다 — 밀려난 선수는 올라온 선수가 있던 자리로 간다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/assign-flow.test.ts > #442 R1 — 슬롯 탭이 하는 일 > 빈 자리를 누르면 **배치**다 — 아무도 밀려나지 않는다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/assign-flow.test.ts > #442 R1 — 슬롯 탭이 하는 일 > 프롬프트는 선수를 따라간다(맞바꾸기가 지시를 지우지 않는다)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/assign-flow.test.ts > #442 R4-B — 덱셋팅: 밀려난 선수는 벤치로 내려간다 > 빈 벤치가 있으면 — 밀려난 선발이 첫 빈 벤치로 가고 **지시가 따라간다**
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/assign-flow.test.ts > #442 R4-B — 덱셋팅: 밀려난 선수는 벤치로 내려간다 > 벤치가 만석이면 — 지금처럼 덱에서 빠진다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/assign-flow.test.ts > #442 R3-B — 이미 명단에 있는 선수는 [엔트리] 가 잠긴다 > 행 본문 탭은 잠기지 않는다 — 배치된 선수도 지시 대상으로 고를 수 있다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+ ✓ apps/web/src/deck/assign-flow.test.ts (17 tests) 1047ms
+stderr | apps/web/src/deck/TeamSheet.test.ts > ③ 선수 탭 → 선수정보 시트가 아니라 레일이 바뀐다 > 토큰을 누르면 레일이 그 선수 지시로 바뀌고, 선수정보 시트는 뜨지 않는다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ③ 선수 탭 → 선수정보 시트가 아니라 레일이 바뀐다 > 레일 닫기 → 팀 지시로 복귀
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ③ 선수 탭 → 선수정보 시트가 아니라 레일이 바뀐다 > 레일에서 프롬프트를 고치면 지시 지표가 올라간다(보드↔레일 동기)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ④ 탭-투-플레이스 > 빈 슬롯 탭 → 리스트가 그 포지션으로 자동 필터 → 선수 탭 → 배치
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ④ 탭-투-플레이스 > 벤치 빈칸으로도 탭 배치된다(벤치가 보드와 같은 탭 규칙)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑥ 지시 레일 A안 — 선수 컨텍스트 > 역할은 라디오 세그먼트(4종) — 누르면 checked 가 옮겨간다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑥ 지시 레일 A안 — 선수 컨텍스트 > 역할·칩이 미리보기 문장에 즉시 반영된다(칩은 카탈로그 순서)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑥ 지시 레일 A안 — 선수 컨텍스트 > 미리보기 두 줄 = 실제 전송 promptText (A안 핵심 계약)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑥ 지시 레일 A안 — 선수 컨텍스트 > 칩을 껐다 켜도 문장이 중복 누적되지 않는다(합성 = 상태의 함수)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑥ 지시 레일 A안 — 선수 컨텍스트 > 영속된 프롬프트를 다시 열면 두 레이어로 복원된다(칩 1회 탭에 합성문이 중복되지 않는다)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑦ r1 — 배치 직후 토큰 1탭이면 그 선수 지시가 열린다 > 탭 배치 → 토큰 1탭 → 레일은 그 선수(팀 지시로 튕기지 않는다)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑦ r1 — 배치 직후 토큰 1탭이면 그 선수 지시가 열린다 > 해제는 보드 바 [선택 해제] 또는 레일 × 로 한다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑥ 빈 상태 — 선발 0/11 > 보유 선수 < 11 이면 CTA 는 비활성이지만 직접 배치 길이 열려 있다(막다른 길 금지)
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑦ 컨디션 — 색 외 축 > 레일 헤드는 컨디션을 글자로 말한다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/deck/TeamSheet.test.ts > ⑧ a11y > 문장 이동 알림 라이브 리전은 **내용이 오기 전에** 이미 DOM 에 있다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+ ✓ apps/web/src/deck/TeamSheet.test.ts (37 tests) 1308ms
+stderr | apps/web/src/match/HalftimePanel.shape.test.ts > HalftimePanel — 감독시간 배치 (#276) > ⑦ 만료되면 포메이션 셀렉트·보드가 잠긴다
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+stderr | apps/web/src/match/HalftimePanel.shape.test.ts > HalftimePanel — 감독시간 배치 (#276) > ⑧ 스쿼드 밖 선수를 데려올 수 없다 — 배치가 열려도 #244 계약은 그대로
+Error: Not implemented: window.scrollBy
+    at module.exports (/Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/not-implemented.js:9:17)
+    at /Users/peter.park/spider20/hmb-online/node_modules/jsdom/lib/jsdom/browser/Window.js:960:7
+    at /Users/peter.park/spider20/hmb-online/apps/web/src/deck/DeckEditor.tsx:457:29
+    at commitHookEffectListMount (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:23189:26)
+    at commitPassiveMountOnFiber (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24970:11)
+    at commitPassiveMountEffects_complete (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24930:9)
+    at commitPassiveMountEffects_begin (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24917:7)
+    at commitPassiveMountEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:24905:3)
+    at flushPassiveEffectsImpl (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27078:3)
+    at flushPassiveEffects (/Users/peter.park/spider20/hmb-online/node_modules/react-dom/cjs/react-dom.development.js:27023:14) undefined
+
+ ✓ apps/web/src/match/HalftimePanel.shape.test.ts (10 tests) 546ms
+ ✓ apps/web/src/common/FullArtCard.test.ts (11 tests) 205ms
+stderr | apps/web/src/auth/local-auth.test.ts > local auth entry point (AC-A1, additive) > provider 선택 화면에 기존 3버튼 + 아이디 진입점이 함께 있다 (무회귀)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+stderr | apps/web/src/admin/AdminPage.test.ts > RequireAdmin 가드 (AC-C2 클라 측) > 미로그인 → /login
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/auth/local-auth.test.ts (17 tests) 199ms
+ ✓ apps/web/src/admin/AdminPage.test.ts (18 tests) 237ms
+ ✓ apps/web/src/match/HalfReportModal.test.ts (10 tests) 85ms
+stderr | apps/web/src/trade/TradePage.test.ts > TradePage 슬롯 상태별 렌더 > renders 3 slots with their distinct views
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/trade/TradePage.test.ts (10 tests) 564ms
+   ✓ TradePage 슬롯 상태별 렌더 > renders 3 slots with their distinct views 427ms
+ ✓ apps/web/src/match/BriefingPanel.preset.test.ts (9 tests | 7 skipped) 103ms
+ ✓ apps/web/src/logs/MatchSnapshotDialog.test.ts (8 tests) 102ms
+ ✓ apps/web/src/match/flow/useMatchFlow.test.ts (17 tests) 31ms
+ ✓ apps/web/src/match/stage/ScoreBar.test.ts (16 tests) 69ms
+ ✓ apps/web/src/match/flow/MatchFlowOverlay.test.ts (8 tests) 92ms
+stderr | apps/web/src/common/guide-flow.test.ts > #493 W2 — GuideProvider > pending 래치 없이는 발화하지 않는다(기존 유저·목 유저 보호)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/common/guide-flow.test.ts (8 tests) 148ms
+ ✓ apps/web/src/lobby/NoticeCenter.test.ts (11 tests) 104ms
+ ✓ apps/web/src/match/HalfReportModal.names.test.ts (6 tests) 90ms
+stderr | apps/web/src/auth/LoginPage.test.ts > LoginPage OAuth mock flow (AC-A1) > shows 3 auth buttons (google, apple, guest)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/auth/LoginPage.test.ts (10 tests) 300ms
+ ✓ apps/web/src/rewards/sections/GrowthSection.names.test.ts (6 tests) 42ms
+ ✓ apps/web/src/match/usePlayerStats.test.ts (5 tests) 21ms
+stderr | apps/web/src/match/MatchPage.test.ts > MatchPage state router > BRIEFING → BriefingPanel (with opponent analysis + kickoff)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/match/MatchPage.test.ts (9 tests) 134ms
+stderr | apps/web/src/logs/LogsPage.trade-names.test.ts > 트레이드 이력 — 선수 이름 (#406) > ★ `detail.target`(문자열 id)을 카탈로그 이름으로 옮긴다 — 죽은 표현 회귀 가드
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/logs/LogsPage.trade-names.test.ts (4 tests) 81ms
+ ✓ apps/web/src/common/MaintenanceScreen.test.ts (7 tests) 394ms
+   ✓ 연락처 교체 지점 > 카카오 오픈채팅 URL 은 support-contact.ts 한 곳에만 있다 360ms
+stderr | apps/web/src/logs/LogsPage.test.ts > LogsPage 경기 탭 — 유저 관점 오리엔트 실측 > 어웨이 패배 행은 픽스처 원값(3:1)이 아니라 유저 관점(1:3)으로 표시
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/logs/LogsPage.test.ts (4 tests) 116ms
+stderr | apps/web/src/deck/DeckPage.test.ts > DeckPage — 프리셋 UI 를 화면에서 내림 (#106 R1) > 프리셋 진입점이 하나도 렌더되지 않는다
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/deck/DeckPage.test.ts (5 tests) 310ms
+stderr | apps/web/src/deck/DeckPage.teamprompt.test.ts > DeckPage — 팀 프롬프트 저장 관통 (#253) > 저장된 팀 문장을 다시 채운다(빈칸에서 시작하지 않는다)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/deck/DeckPage.teamprompt.test.ts (5 tests) 217ms
+ ✓ apps/web/src/match/HalftimePanel.tactics.test.ts (4 tests) 188ms
+ ✓ apps/web/src/deck/TacticsBoard.aria.test.ts (4 tests) 55ms
+ ✓ apps/web/src/match/BriefingPanel.marking.test.ts (2 tests) 146ms
+ ✓ apps/web/src/deck/PresetPanel.test.ts (5 tests) 175ms
+ ✓ apps/web/src/rewards/RewardSheet.names.test.ts (4 tests) 58ms
+ ✓ apps/web/src/trade/TradeResultModal.names.test.ts (5 tests) 58ms
+ ✓ apps/web/src/match/PromptFields.avatar.test.ts (4 tests) 57ms
+ ✓ apps/web/src/common/tutorial-storage.test.ts (11 tests) 10ms
+ ✓ apps/web/src/common/Modal.test.ts (7 tests) 49ms
+ ✓ apps/web/src/trade/ProposeBuilder.names.test.ts (5 tests) 86ms
+ ✓ apps/web/src/common/PlayerAvatar.names.test.ts (4 tests) 74ms
+ ✓ apps/web/src/splash/splash-assets.test.ts (6 tests) 3ms
+stderr | apps/web/src/common/AppNav.test.ts > AppNav render (LLD §7) > renders both a bottom tab bar (mobile) and a sidebar (desktop) — single source
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/common/AppNav.test.ts (10 tests) 49ms
+stderr | apps/web/src/match/GenWaitPanel.test.ts > GenWaitPanel — 축구장 정경 로테이션 (#382) > 첫 화면부터 정경 문장을 보여준다
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/match/GenWaitPanel.test.ts (7 tests) 73ms
+ ✓ apps/web/src/match/PlayerDetailModal.names.test.ts (3 tests) 48ms
+ ✓ apps/web/src/common/guide-storage.test.ts (9 tests) 4ms
+ ✓ apps/web/src/match/useTeamSegment.test.ts (4 tests) 13ms
+ ✓ apps/web/src/trade/TradePlayerCard.names.test.ts (4 tests) 59ms
+ ✓ apps/web/src/match/HighlightToggle.test.ts (4 tests) 32ms
+ ✓ apps/web/src/splash/splash-gate.test.ts (7 tests) 4ms
+ ✓ apps/web/src/codex/PlayerCard.test.ts (5 tests) 58ms
+ ✓ apps/web/src/auth/StarterReveal.test.ts (5 tests) 84ms
+ ✓ apps/web/src/common/PlayerAvatar.test.ts (5 tests) 84ms
+ ✓ apps/web/src/trade/TradePlayerCard.avatar.test.ts (2 tests) 39ms
+ ✓ apps/web/src/lobby/tutorial-hold.test.ts (4 tests) 15ms
+stderr | apps/web/src/admin/admin-nav.test.ts > AppNav admin 링크 노출 > 프로바이더 없이 렌더해도 admin 링크가 없다(안전한 기본값)
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/admin/admin-nav.test.ts (6 tests) 32ms
+ ✓ apps/web/src/deck/PlayerPicker.conditions.test.ts (3 tests) 58ms
+stderr | apps/web/src/common/MaintenanceGate.test.ts > MaintenanceGate — 라우트 전수 > 정상(ok)이면 / 에서 점검 화면이 뜨지 않는다
+⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition.
+⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath.
+
+ ✓ apps/web/src/common/MaintenanceGate.test.ts (30 tests) 135ms
+
+ Test Files  170 passed | 1 skipped (171)
+      Tests  2470 passed | 8 skipped (2478)
+   Start at  11:26:08
+   Duration  22.26s (transform 8.39s, setup 0ms, collect 45.48s, tests 19.12s, environment 54.73s, prepare 16.62s)
+

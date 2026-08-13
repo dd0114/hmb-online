@@ -1,0 +1,5 @@
+# cmd: cd server-java && ./gradlew test --tests online.hmb.UxActionRewardTest --rerun-tasks → 7/7 green
+# cmd: cd server-java && ./gradlew test --rerun-tasks (전량 콜드)
+1203 tests, 0 failures, 1 ignored — BUILD SUCCESSFUL in 1m 51s
+# 훅 5지점: OnboardingService.complete ① / RewardBundleService.acknowledge ② / DeckController.putDeck ③ / GachaService.pull ④ / TradeService.start+proposeFa ⑤
+# 멱등 축 = 우편함 기존 유니크(uq_user_mails_user_campaign) — V42 불필요(V33 머리말 규율 준수)

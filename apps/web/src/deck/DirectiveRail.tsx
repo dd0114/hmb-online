@@ -4,6 +4,7 @@ import type { Personality, TeamTactics } from "../api/v2";
 import { PersonalityBadge, TrustGauge } from "../common/RelationBits";
 import { FullArtCard } from "../common/FullArtCard";
 import { PromptBlock } from "../common/PromptBlock";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import { playerNameOf } from "../common/player-names";
 import { conditionLabel } from "../match/condition-clock";
 import { PROMPT_MAX_CHARS, type DraftSlot } from "./deck-logic";
@@ -457,6 +458,11 @@ function PlayerContext(props: PlayerContextProps) {
           title={props.promptScope === "halftime" ? "감독의 한마디 (후반)" : "감독의 한마디"}
           value={freeText}
           onChange={(text) => push(directive, text)}
+          /* 온레일(#493)이 "한마디를 썼다"를 기다린다. **빈 문자열은 행동이 아니다** — 그냥
+             지나간 것이라 신호를 내지 않는다(안 그러면 입력칸을 스쳐도 스텝이 넘어간다). */
+          onCommit={(text) => {
+            if (text.trim().length > 0) emitOnRailAction("deck-prompt");
+          }}
           placeholder="이 선수에게 자유롭게 한마디 (예: 오늘 너만 믿는다, 과감하게 슛 노려)"
           /* 카운터는 **합성 결과** 길이다 — 선택지 문장 + 내가 쓴 문장이 함께 전송되기 때문. */
           countLength={combinedLen}

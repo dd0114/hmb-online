@@ -65,6 +65,10 @@ public class MatchOrchestrator {
     private final RewardBundleService rewardBundleService;
     private final online.hmb.mission.MissionService missionService;
     private final MatchClockService clockService;
+    /** #493 W6-v3 — 튜토리얼 고정 매치의 구운 입력·로그(AI 0 · 러너 0). */
+    private final online.hmb.tutorial.TutorialMatchAsset tutorialAsset;
+    /** #493 W9 — 완주 보상 판정의 권위(클라 신고가 아니라 서버가 관측한 완료). */
+    private final online.hmb.tutorial.TutorialCompletionService tutorialCompletionService;
     /** #492 비즈니스 이벤트 — match_finish 는 정산 커밋 **후**에만 기록한다. */
     private final BusinessEventRecorder eventRecorder;
     private final ObjectMapper objectMapper;
@@ -94,6 +98,8 @@ public class MatchOrchestrator {
                              online.hmb.mission.MissionService missionService,
                              MatchClockService clockService,
                              DeckPrewarmService prewarmService,
+                             online.hmb.tutorial.TutorialMatchAsset tutorialAsset,
+                             online.hmb.tutorial.TutorialCompletionService tutorialCompletionService,
                              BusinessEventRecorder eventRecorder,
                              ObjectMapper objectMapper,
                              @Value("${hmb.match.delta.enabled}") boolean deltaEnabled,
@@ -103,6 +109,8 @@ public class MatchOrchestrator {
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.prewarmService = prewarmService;
+        this.tutorialAsset = tutorialAsset;
+        this.tutorialCompletionService = tutorialCompletionService;
         this.eventRecorder = eventRecorder;
         this.matchService = matchService;
         this.contextBuilder = contextBuilder;
@@ -157,6 +165,18 @@ public class MatchOrchestrator {
         String genState = half == 1 ? MatchService.S_GEN1 : MatchService.S_GEN2;
         if (genState.equals(match.state())) {
             jobQueue.restartPendingTimeout(matchId, half);
+        }
+
+        // #493 W6-v3 — 튜토리얼 고정 매치: AI 를 부르지 않는다. 구운 인풋을 <b>이미 done 인 잡</b>으로
+        // 넣어 두면(materialize = #95 가 "콜 0 재사용"에 쓰는 바로 그 경로) 이후는 평소와 같다 —
+        // maybeSimulate 가 양쪽 done 을 보고 진행하고, 거기서 러너 대신 구운 로그가 들어간다.
+        // 새 상태·새 전이·새 뷰 경로를 만들지 않는 것이 이 분기의 전부다.
+        if (match.tutorial()) {
+            online.hmb.tutorial.TutorialMatchAsset.BakedHalf baked = tutorialAsset.half(half);
+            jobQueue.insertMaterialized(matchId, "home", half, baked.homeInput().toString());
+            jobQueue.insertMaterialized(matchId, "away", half, baked.awayInput().toString());
+            maybeSimulate(matchId, half);
+            return;
         }
 
         BotService.BotRow bot = botService.get(match.botId());
@@ -422,6 +442,11 @@ public class MatchOrchestrator {
             if (match == null) {
                 return;
             }
+            // #493 W6-v3: 튜토리얼은 구운 인풋을 쓴다 — A 를 미리 만들면 <b>안 쓸 AI 호출</b>이다
+            // (이 웨이브의 요건이 "AI 호출 0" 이므로 여기서 새는 것을 막는 것이 그 요건의 절반이다).
+            if (match.tutorial()) {
+                return;
+            }
             JsonNode snapshot = matchService.readJson(match.userDeckJson());
             BotService.BotRow bot = botService.get(match.botId());
             PromptContextBuilder.BaseJob userBase = contextBuilder.userBaseJob(match, snapshot);
@@ -552,7 +577,12 @@ public class MatchOrchestrator {
         List<MatchService.Substitution> effectiveSubs = half == 2 ? subs : List.of();
 
         String halfSeed = Hashes.halfSeed(match.seed(), half);
-        Map<String, Object> selectData = buildSelectData(match, snapshot, bot, effectiveSubs);
+        // #493 W6-v3 — 튜토리얼은 **유저 덱이 아니라 고정 로스터**로 돈다(hero: "선수도 보유 선수말고
+        // 그냥 튜토리얼선수로. 그래야 시드값이 안바뀌어"). 유저의 성장·컨디션·프롬프트가 시뮬에
+        // 들어가지 않으므로 전 유저가 같은 경기를 본다.
+        Object selectData = match.tutorial()
+                ? tutorialAsset.selectData()
+                : buildSelectData(match, snapshot, bot, effectiveSubs);
         JsonNode homeInput = matchService.readJson(homeInputJson);
         JsonNode awayInput = matchService.readJson(awayInputJson);
 
@@ -572,8 +602,12 @@ public class MatchOrchestrator {
         JsonNode configOverrides = match.configOverridesJson() == null || match.configOverridesJson().isBlank()
                 ? null : matchService.readJson(match.configOverridesJson());
 
-        EngineRunnerClient.SimulateResult result =
-                runnerClient.simulate(halfSeed, selectData, homeInput, awayInput, half, resumeState,
+        // 튜토리얼은 러너도 부르지 않는다 — 구운 결과를 러너 응답 자리에 그대로 끼운다.
+        // ⚠️ "반드시 승리"(hero)는 엔진 버전에 걸린 성질이라 매번 시뮬하면 엔진이 바뀔 때 조용히
+        // 뒤집힌다. 구우면 그 위험이 0 이고, 대기도 문자 그대로 0 이 된다(TutorialMatchAsset 머리말).
+        EngineRunnerClient.SimulateResult result = match.tutorial()
+                ? bakedResult(half)
+                : runnerClient.simulate(halfSeed, selectData, homeInput, awayInput, half, resumeState,
                         configOverrides);
 
         // #383 B3 — 러너가 버린 경로가 있으면 **소리를 낸다**. 조용히 버리면 "설정했는데 아무 일도
@@ -645,6 +679,13 @@ public class MatchOrchestrator {
         if (half == 1 && Boolean.TRUE.equals(stored)) {
             resolveSecondHalfInputs(match.id());
         }
+    }
+
+    /** 구운 하프를 러너 응답 형태로 — 이후 저장·전이·정산이 평소 경로를 그대로 탄다(#493 W6-v3). */
+    private EngineRunnerClient.SimulateResult bakedResult(int half) {
+        online.hmb.tutorial.TutorialMatchAsset.BakedHalf baked = tutorialAsset.half(half);
+        return new EngineRunnerClient.SimulateResult(baked.matchLog(), baked.resumeState(),
+                baked.lastHash(), baked.playbackMs(), baked.effectiveConfigHash(), null);
     }
 
     /**
@@ -908,6 +949,17 @@ public class MatchOrchestrator {
         // #405 W2b §2.9: 보상 봉투 — 정산이 <b>끝난 뒤</b> 그 결과를 한 장으로 묶는다(멱등).
         // 표시용이므로 실패해도 정산을 되돌리지 않는다(RewardBundleService 내부에서 삼킨다).
         createRewardBundle(match, awarded[0]);
+
+        // #493 W9: 튜토리얼 완주 보상은 **서버가 완료를 관측한 이 자리**에서 발화한다(클라 신고 아님).
+        // 반드시 CAS 통과 뒤여야 한다 — 판정이 읽는 사실(FINISHED 인 튜토리얼 매치)을 바로 위 UPDATE 가
+        // 만든다. 우편 발송은 표시용이라 실패해도 정산을 되돌리지 않는다(보상 봉투와 같은 규율).
+        if (match.tutorial()) {
+            try {
+                tutorialCompletionService.grantIfCompleted(match.userId());
+            } catch (RuntimeException e) {
+                log.warn("튜토리얼 완주 보상 실패 match={}: {}", match.id(), e.toString());
+            }
+        }
         // #492: 값만 담아 나간다(쓰기 없음). 실제 기록은 settleFinishedIfDue 가 커밋 후에 한다.
         if (sink != null) {
             sink[0] = new FinishOutcome(modeOf(match), result, userGoals, oppGoals, awarded[0]);

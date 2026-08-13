@@ -166,6 +166,7 @@ test.describe("#209 AC3 — 가입 최상위 지급 연출", () => {
     await expect(page.getByTestId("starter-reveal-grant")).toContainText("15명");
 
     await page.getByTestId("starter-reveal-close").click();
+    // #493 W5: 신규 가입도 홈에 바로 착지한다(W1 의 /welcome 미니게임은 걷혔다).
     await expect(page).toHaveURL(/\/home$/);
   });
 
@@ -198,6 +199,7 @@ test.describe("#209 AC3 — 가입 최상위 지급 연출", () => {
 
     await expect(page.getByTestId("starter-reveal-card")).toHaveCount(0);
     await page.getByTestId("starter-reveal-close").click();
+    // 지급이 없어도 신규 유저다 — 곧바로 홈으로.
     await expect(page).toHaveURL(/\/home$/);
   });
 });

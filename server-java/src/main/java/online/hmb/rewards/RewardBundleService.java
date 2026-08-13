@@ -51,10 +51,13 @@ public class RewardBundleService {
 
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
+    private final UxActionRewardService uxActionRewardService;
 
-    public RewardBundleService(JdbcClient jdbcClient, ObjectMapper objectMapper) {
+    public RewardBundleService(JdbcClient jdbcClient, ObjectMapper objectMapper,
+                               UxActionRewardService uxActionRewardService) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
+        this.uxActionRewardService = uxActionRewardService;
     }
 
     /** 섹션 한 칸 — {@code kind} 는 web 의 섹션 레지스트리 키다(설계 §2.9.1). */
@@ -125,6 +128,9 @@ public class RewardBundleService {
                             """)
                     .params(Instant.now().toString(), bundleId, userId)
                     .update();
+            // #493 W3 ②: 첫 경기 결과 열람 보상 — "열람"의 정본은 ack 다(result GET 은 상태 무기록
+            // + 관전자도 지나간다). 멱등이라 두 번째 봉투부터는 no-op.
+            uxActionRewardService.grantOnce(userId, UxActionRewardService.UxAction.FIRST_RESULT_VIEW);
         }
         return byId(userId, bundleId).orElse(bundle);
     }

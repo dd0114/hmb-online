@@ -20,6 +20,7 @@ import online.hmb.common.ApiException;
 import online.hmb.common.Josa;
 import online.hmb.common.TxRunner;
 import online.hmb.common.Ulid;
+import online.hmb.coupon.CouponService;
 import online.hmb.meta.WalletService;
 import online.hmb.shop.GachaRandomSource;
 import org.slf4j.Logger;
@@ -86,6 +87,10 @@ public class GrowthService {
     private final WalletService walletService;
     private final GachaRandomSource randomSource;
     private final LiveGrowthConfigService growthConfig;
+    /** #493 W6-v3 — 첫 강화 무료 쿠폰(1회성 권리, 재화 아님). */
+    private final CouponService couponService;
+    /** #493 W6-v3 — 첫 강화 행동 보상(우편). */
+    private final online.hmb.rewards.UxActionRewardService uxActionRewardService;
 
     public GrowthService(JdbcClient jdbcClient,
                          TxRunner txRunner,
@@ -93,7 +98,11 @@ public class GrowthService {
                          EconomyService economyService,
                          WalletService walletService,
                          GachaRandomSource randomSource,
-                         LiveGrowthConfigService growthConfig) {
+                         LiveGrowthConfigService growthConfig,
+                         CouponService couponService,
+                         online.hmb.rewards.UxActionRewardService uxActionRewardService) {
+        this.couponService = couponService;
+        this.uxActionRewardService = uxActionRewardService;
         this.jdbcClient = jdbcClient;
         this.txRunner = txRunner;
         this.objectMapper = objectMapper;
@@ -909,7 +918,16 @@ public class GrowthService {
                         "잠재능력은 2★부터 해금됩니다", Map.of("star", st.star()));
             }
 
-            chargeRoll(userId, cash, cost);
+            // #493 W6-v3 — <b>첫 강화 무료 쿠폰</b>(hero: "첫강화비용도 공짜로해서 강화경험하게해야돼").
+            // 소비는 결제와 <b>같은 트랜잭션</b>이다 — 갈라 두면 "쿠폰은 썼는데 강화는 실패"가 되고
+            // 회수 경로가 없다. 무료면 차감 자체가 일어나지 않는다(원장에 0원 행을 만들지 않는다).
+            // 유상 리롤(CASH=다이아)에는 걸지 않는다 — 이 쿠폰이 대신 내주는 것은 <b>골드 비용</b>이다.
+            boolean freeByCoupon = !cash
+                    && couponService.consume(userId, CouponService.CouponType.FREE_ENHANCE,
+                            "dice:" + playerId).isPresent();
+            if (!freeByCoupon) {
+                chargeRoll(userId, cash, cost);
+            }
 
             PotentialRow prow = potentialRow(userId, playerId).orElse(PotentialRow.fresh());
             String seed = randomSource.newSeed();
@@ -948,9 +966,16 @@ public class GrowthService {
             out.put("lines", outcome.lines().stream().map(PotentialLine::toMap).toList());
             out.put("rollsSinceTierUp", outcome.rollsSinceTierUp());
             out.put("ceilingAt", outcome.ceilingAt() == Integer.MAX_VALUE ? 999999 : outcome.ceilingAt());
+            // #493 W6-v3 additive: 이번 롤이 쿠폰으로 무료였나 — 화면이 "무료로 강화했습니다"를 그릴
+            // 근거이자, 지갑이 안 줄어든 이유의 답이다(안 주면 클라가 잔액 버그로 읽는다).
+            out.put("freeByCoupon", freeByCoupon);
             // #247: 재고(diceLeft)가 사라진 자리에 지갑이 온다 — 재화를 정하는 쪽이 그 재화의
             // 잔액도 준다(#232). 안 주면 클라가 롤마다 /api/me 를 다시 물어야 한다.
             out.put("wallet", Map.of("points", walletService.points(userId), "gems", walletService.gems(userId)));
+            // #493 W6-v3 ⑥: 첫 강화 행동 보상(우편 GEM 300). 호출자 tx 안이고 INSERT OR IGNORE 라
+            // 멱등이다 — 보상 실패가 강화를 죽이면 안 되므로 반환값은 쓰지 않는다(UxAction 규약).
+            uxActionRewardService.grantOnce(userId,
+                    online.hmb.rewards.UxActionRewardService.UxAction.FIRST_ENHANCE);
             return out;
         });
     }
@@ -1581,6 +1606,76 @@ public class GrowthService {
      * 않는 한 같은 (유저, 카드, 레벨)의 두 지급이 같은 후보를 갖는 일이 없다.
      */
     static final String LEGACY_SEED_SOURCE = "legacy:";
+
+    /** 튜토리얼 프리필의 시드 접두 — 소급 지급(legacy)과 시드가 겹치지 않게 자리를 나눈다. */
+    static final String TUTORIAL_SEED_SOURCE = "tutorial:";
+
+    /**
+     * {@code targetStar} 로 승급하는 데 필요한 <b>여분 중복 수</b> (#493 W6-v3 이 스타터 지급량을
+     * 여기서 파생한다). 상수로 적어 두면 {@code star.copies} 를 무배포로 조정하는 순간 튜토리얼의
+     * "승급 1회 강제"가 조용히 불가능해진다 — 계수의 SoT 는 언제나 {@link GrowthTuning} 이다.
+     */
+    public int copiesForStar(int targetStar) {
+        return tuning().star().copies().getOrDefault(targetStar, Integer.MAX_VALUE);
+    }
+
+    /**
+     * #493 W6-v3 — 튜토리얼 카드에 <b>경험치를 미리 채운다</b>
+     * (hero: "경험치도 미리채워놔서 강화도 하게해보고").
+     *
+     * <p>"강화 1회 가능한 상태"의 정의는 <b>선택권(3지선다) 1장이 대기 중</b>이다 — 스탯이 오르는
+     * 유일한 경로가 그것이기 때문(#405 W2b). 그래서 XP 를 임의의 숫자로 넣지 않고
+     * <b>정확히 {@code levels} 번 레벨업하는 양</b>을 계산해 <b>정산과 같은 함수</b>
+     * ({@link GrowthMath#applyXp} → {@link #grantChoice})로 태운다. 다른 경로로 행을 만들면
+     * 그 카드만 다른 규칙으로 자란다.
+     *
+     * <p>멱등: 선택권은 {@code UNIQUE(user, player, level)} 라 재실행이 행을 늘리지 않는다.
+     * 다만 XP 자체는 누적이므로 <b>가입 tx 안에서 한 번만</b> 부른다.
+     *
+     * @return 실제로 오른 레벨 수(카드·계수가 없으면 0)
+     */
+    public int grantTutorialLevels(String userId, String playerId, int levels) {
+        if (levels <= 0) {
+            return 0;
+        }
+        GrowthTuning tuning = tuning();
+        PlayerBase pb = playerBase(playerId).orElse(null);
+        if (pb == null) {
+            return 0;
+        }
+        CardState card = cardState(userId, playerId);
+        double needed = 0;
+        int lv = card.level();
+        int carry = card.xp();
+        for (int i = 0; i < levels; i++) {
+            int toNext = xpToNextAt(tuning, lv);
+            if (toNext <= 0) {
+                break;  // 만렙 — 더 채울 자리가 없다
+            }
+            needed += Math.max(0, toNext - carry);
+            carry = 0;
+            lv++;
+        }
+        if (needed <= 0) {
+            return 0;
+        }
+        GrowthMath.LevelState after = GrowthMath.applyXp(tuning, card.level(), card.xp(), needed);
+        jdbcClient.sql("UPDATE user_players SET card_level = ?, card_xp = ? WHERE user_id = ? AND player_id = ?")
+                .params(after.level(), after.xp(), userId, playerId)
+                .update();
+
+        Map<String, Double> add = loadStatAdd(userId, playerId);
+        Map<String, Double> pre = prePotential(tuning, pb, card.star(), add);
+        String now = Instant.now().toString();
+        for (int i = 0; i < after.levelUps(); i++) {
+            grantChoice(tuning, userId, playerId, pb, card.star(), card.level() + i,
+                    TUTORIAL_SEED_SOURCE, null, pre, Map.of(), Map.of(), null, now,
+                    GrowthCandidates.Evidence.ofLegacy());
+        }
+        log.info("tutorial xp prefilled: user={} player={} levels={} xp={}",
+                userId, playerId, after.levelUps(), Math.round(needed));
+        return after.levelUps();
+    }
 
     private String playerName(String playerId) {
         return jdbcClient.sql("SELECT name FROM players WHERE id = ?")

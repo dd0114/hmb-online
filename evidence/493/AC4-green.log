@@ -1,0 +1,7 @@
+# cmd: npx vitest run apps/web/src/common/guide-storage.test.ts apps/web/src/common/guide-steps.test.ts apps/web/src/common/guide-flow.test.ts (+ 전량 npx vitest run apps/web)
+ Test Files  3 passed (3)
+      Tests  20 passed (20)
+# apps/web 전량:
+ Test Files  171 passed | 2 skipped (173) / Tests 2471 passed | 9 skipped (2480) / TYPECHECK-OK (콜드, 01:49)
+ Test Files  171 passed | 2 skipped (173)
+      Tests  2471 passed | 9 skipped (2480)

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
-import { usePlayers, type CatalogPlayer } from "../api/hooks";
+import { COUPON_FREE_TRADE_RUSH, useMe, usePlayers, type CatalogPlayer } from "../api/hooks";
 import {
   useAcceptTrade,
   useProposeFa,
@@ -13,6 +13,7 @@ import type { FaProposeRequest, TradeResolveResponse } from "../api/v2";
 import { Layout } from "../common/Layout";
 import { PointsBadge } from "../common/PointsBadge";
 import { ErrorToast } from "../common/ErrorToast";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import { TradeSlotCard } from "./TradeSlotCard";
 import { TradeResultModal } from "./TradeResultModal";
 import { countdownSec, slotView } from "./trade-logic";
@@ -63,6 +64,13 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
   // 미수신이 정상 경로인데, 0 으로 읽으면 유상재화를 들고 있는 유저가 **거짓으로 잠긴다**.
   const walletGems = data?.wallet?.gems;
   const walletLoaded = Boolean(data);
+  /**
+   * 남은 **무료 단축권** (#493 W6-v3 `/api/me.coupons`). 지갑은 `/api/trade` 가 주지만 쿠폰은
+   * `/api/me` 소관이고, 소비되면 `invalidateAfterTrade` 의 `["me"]` 가 이 값을 다시 읽어 온다.
+   * 모르는 서버·구 응답이면 0 = 종전 동작(잔액 게이팅).
+   */
+  const me = useMe().data as { coupons?: Record<string, number> } | undefined;
+  const freeRushCoupons = Number(me?.coupons?.[COUPON_FREE_TRADE_RUSH] ?? 0);
   const busy = start.isPending || speedup.isPending || propose.isPending || accept.isPending;
 
   function handleError(err: unknown, fallback: string) {
@@ -112,24 +120,44 @@ export function TradePage({ embedded = false }: { embedded?: boolean } = {}) {
               walletPoints={walletPoints}
               walletGems={walletGems}
               walletLoaded={walletLoaded}
+              freeRushCoupons={freeRushCoupons}
               catalog={catalog}
               owned={owned}
               busy={busy}
+              /* 온레일 S6 (#493) — **성공한 뒤에만** 신호를 낸다. 세 호출 전부 서버가 쿠폰·등급
+                 확정을 그 트랜잭션 안에서 처리하므로(W6-v3), 실패한 시도로 스텝이 넘어가면
+                 다음 스텝의 대상(단축 버튼·수락 버튼)이 아예 안 생긴다. */
               onStart={(s) =>
-                start.mutate(s, { onError: (e) => handleError(e, "장을 열지 못했습니다") })
+                start.mutate(s, {
+                  onSuccess: () => emitOnRailAction("trade-start"),
+                  onError: (e) => handleError(e, "장을 열지 못했습니다"),
+                })
               }
               onSpeedup={(s) =>
-                speedup.mutate(s, { onError: (e) => handleError(e, "단축에 실패했습니다") })
+                speedup.mutate(s, {
+                  onSuccess: () => emitOnRailAction("trade-rush"),
+                  onError: (e) => handleError(e, "단축에 실패했습니다"),
+                })
               }
               onPropose={(s, body: FaProposeRequest) =>
                 propose.mutate(
                   { slot: s, body },
-                  { onSuccess: onResolved, onError: (e) => handleError(e, "제안에 실패했습니다") },
+                  {
+                    onSuccess: (res) => {
+                      onResolved(res);
+                      // 제안형(FA)도 "첫 트레이드"의 한 갈래다 — 서버가 같은 보상을 태운다.
+                      emitOnRailAction("trade-accept");
+                    },
+                    onError: (e) => handleError(e, "제안에 실패했습니다"),
+                  },
                 )
               }
               onAccept={(s) =>
                 accept.mutate(s, {
-                  onSuccess: onResolved,
+                  onSuccess: (res) => {
+                    onResolved(res);
+                    emitOnRailAction("trade-accept");
+                  },
                   onError: (e) => handleError(e, "수락에 실패했습니다"),
                 })
               }

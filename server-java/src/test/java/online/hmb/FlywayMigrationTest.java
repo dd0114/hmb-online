@@ -133,7 +133,13 @@ class FlywayMigrationTest {
             //   범용 event 문자열 + props_json 이라 V18(admin_ops_audit)과 형태가 같다. 다만 그쪽은
             //   **운영자가 한 일**(actor=admin)이고 여기는 **유저가 한 일**이라 재사용하지 않았다.
             //   ⚠️ CHECK·FK 를 일부러 안 걸었다 — 둘 다 "기록 실패가 곧 본 동작 실패"가 되는 경로다.
-            "business_events"
+            "business_events",
+            // V43 무료 쿠폰(1) — #493 W6-v3: "이번 한 번은 값을 안 낸다"는 **1회성 권리**.
+            //   (#492 의 V42 와 번호가 겹쳐 머지 시 V42→V43 로 개번 — main 이 SoT.)
+            //   지갑도 원장도 아니다(그래서 V33/V40 의 "지급 표를 새로 만들지 않는다" 규율과 충돌하지
+            //   않는다) — 쿠폰이 소비되면 차감 자체가 일어나지 않으므로 재화는 여전히 기존 원장만이
+            //   만든다. 지급 멱등 = uq(user,type,grant_key) · 소비 멱등 = used_at IS NULL CAS.
+            "user_coupons"
     );
 
     /**

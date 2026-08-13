@@ -31,6 +31,11 @@ interface TradeSlotCardProps {
    */
   walletGems: number | undefined;
   walletLoaded: boolean;
+  /**
+   * 남은 **무료 단축권**(`/api/me.coupons.FREE_TRADE_RUSH`, #493 W6-v3). 0 이면 종전과 같이
+   * 잔액으로 판정한다 — 판정 규칙 자체는 `speedupButtonState` 가 소유한다(여기서 다시 적지 않는다).
+   */
+  freeRushCoupons?: number;
   /** playerId → catalog entry, for enriching PlayerRef with attributes·personality. */
   catalog: Map<string, CatalogPlayer>;
   /** My owned players (FA offer pool). */
@@ -92,6 +97,7 @@ export function TradeSlotCard(props: TradeSlotCardProps) {
           walletPoints={walletPoints}
           walletGems={walletGems}
           walletLoaded={walletLoaded}
+          freeRushCoupons={props.freeRushCoupons ?? 0}
           busy={busy}
           onSpeedup={props.onSpeedup}
         />
@@ -214,6 +220,7 @@ function WaitingBody({
   walletPoints,
   walletGems,
   walletLoaded,
+  freeRushCoupons,
   busy,
   onSpeedup,
 }: {
@@ -228,6 +235,8 @@ function WaitingBody({
    */
   walletGems: number | undefined;
   walletLoaded: boolean;
+  /** 남은 무료 단축권(#493 W6-v3) — 있으면 잔액으로 잠그지 않는다(`speedupButtonState` 머리말). */
+  freeRushCoupons: number;
   busy: boolean;
   onSpeedup: (slot: number) => void;
 }) {
@@ -243,7 +252,10 @@ function WaitingBody({
     points: balance ?? Number.POSITIVE_INFINITY,
     cost: slot.speedupCost,
     pending: busy,
+    freeCoupons: freeRushCoupons,
   });
+  /** 이 단축이 무료권으로 나갈 자리인가 — 표기의 주인은 여기, 잠금의 주인은 위 순수 함수다. */
+  const freeRush = freeRushCoupons > 0 && typeof slot.speedupCost === "number";
   // 등급만 공개 — 이름·포지션·능력치는 서버가 아예 안 보낸다(카운트다운 만료 전 정체 비공개).
   const grade = gradeContactLabel(slot.targetGrade);
   return (
@@ -286,6 +298,13 @@ function WaitingBody({
               value={slot.speedupCost}
               icon
             />
+            {/* 값을 **지우지 않고 옆에 말한다** — 지우면 "원래 얼마인가"를 배울 기회가 사라지고,
+                쿠폰을 다 쓴 다음 화면이 갑자기 값을 요구하는 것처럼 보인다(강화 쪽과 같은 규율). */}
+            {freeRush && (
+              <span className={styles.freeChip} data-testid={`trade-slot-${slot.slot}-rush-free`}>
+                무료 단축권
+              </span>
+            )}
           </span>
           <button
             type="button"
@@ -294,7 +313,7 @@ function WaitingBody({
             disabled={btn.disabled}
             onClick={() => onSpeedup(slot.slot)}
           >
-            {speedupCurrency.symbol}로 단축
+            {freeRush ? "무료로 단축" : `${speedupCurrency.symbol}로 단축`}
           </button>
         </div>
       )}

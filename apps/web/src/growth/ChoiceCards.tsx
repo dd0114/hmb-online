@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useApplyChoice } from "../api/growth-hooks";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import type { CardEffective, ChoiceCandidate, ChoiceResult, PendingChoice } from "../api/growth";
 import { CelebrationOverlay } from "../common/CelebrationOverlay";
 import { ErrorToast } from "../common/ErrorToast";
@@ -189,6 +190,7 @@ export function ChoiceCandidates({ choice, card, onApplied, footer }: ChoiceCand
           setCelebrate({ label: view.label, from: view.from, to: view.to, gain });
           setApplied({ stat: res.stat ?? view.stat, gain, from: view.from, to: view.to });
           onApplied?.(res);
+          emitOnRailAction("growth-choice"); // 온레일 S5 — 스타터 XP 프리필이 남긴 그 선택권
         },
         onError: (err) => {
           const matchId = matchInProgressIdOf(err);

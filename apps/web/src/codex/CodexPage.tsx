@@ -7,6 +7,7 @@ import { GRADE_LABELS, GRADE_ORDER, type Grade } from "../common/grades";
 import type { components } from "../api/schema";
 import { PlayerCard } from "./PlayerCard";
 import { CardGrowthDetail } from "./CardGrowthDetail";
+import { emitOnRailAction } from "../onrail/onrail-actions";
 import { sortByStrength } from "./codex-sort";
 import { usePendingChoices } from "../api/growth-hooks";
 import { useNavLocked } from "../common/nav-lock";
@@ -176,7 +177,10 @@ export function CodexPage() {
               growthPending={pendingIds.has(p.id)}
               onToggle={() => {
                 if (p.owned && matchLocked) return;   // 안내는 아래 배너가 상시로 한다
-                if (p.owned) setDetailPlayer(p);
+                if (p.owned) {
+                  setDetailPlayer(p);
+                  emitOnRailAction("growth-open"); // 온레일 S5 ① — 성장 화면을 열었다
+                }
                 else setExpandedId((cur) => (cur === p.id ? null : p.id));
               }}
             />
