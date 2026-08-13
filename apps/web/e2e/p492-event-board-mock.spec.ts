@@ -378,8 +378,14 @@ test.describe("#492 이벤트 보드 (route-mock)", () => {
     mkdirSync(CAPTURE_DIR, { recursive: true });
     await page.screenshot({ path: `${CAPTURE_DIR}p492-desktop.png`, fullPage: true });
 
-    // admin 계정에는 네비 이벤트 진입점이 보인다.
-    await expect(page.getByTestId("nav-events").first()).toBeAttached();
+    // admin 진입점 = 하단탭 [운영] 1칸 + 화면 상단 서브탭 (#498 안 A).
+    // ⚠️ 예전엔 `nav-events` 를 봤다. #498 이 8칸(320px 40.0px < 44pt)을 7칸으로 되돌리며
+    //    이벤트 보드 칸을 없앴다 — 그 칸이 서브탭으로 왔는지를 여기서 본다.
+    await expect(page.getByTestId("nav-events")).toHaveCount(0);
+    await expect(page.getByTestId("nav-admin").first()).toBeAttached();
+    await expect(page.getByTestId("admin-subnav-events")).toHaveAttribute("aria-current", "page");
+    // 하단탭 활성 표시는 [운영] 에 남는다(어느 탭도 안 켜지면 길을 잃는다).
+    await expect(page.getByTestId("nav-admin").first()).toHaveAttribute("aria-current", "page");
   });
 
   test("(b) 비admin 토큰으로 /event-board 직접 진입 → /home, admin DOM 0", async ({ page }) => {
@@ -393,9 +399,10 @@ test.describe("#492 이벤트 보드 (route-mock)", () => {
     await expect(page.getByTestId("event-board-page")).toHaveCount(0);
     await expect(page.getByTestId("event-funnel-table")).toHaveCount(0);
     await expect(page.getByTestId("event-stream-table")).toHaveCount(0);
-    // 네비 진입점도 비admin 에겐 DOM 에 없다.
+    // 네비 진입점도 비admin 에겐 DOM 에 없다 — 서브탭까지(#498: 그 화면 자체가 안 뜬다).
     await expect(page.getByTestId("nav-events")).toHaveCount(0);
     await expect(page.getByTestId("nav-admin")).toHaveCount(0);
+    await expect(page.getByTestId("admin-subnav")).toHaveCount(0);
   });
 
   test("(c) 미로그인 상태로 /event-board → /login", async ({ page }) => {

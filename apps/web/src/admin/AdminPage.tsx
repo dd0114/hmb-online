@@ -18,6 +18,7 @@ import {
   validateGrant,
 } from "./admin-logic";
 import { AdminUnitsSection } from "./AdminUnitsSection";
+import { AdminSubnav } from "./AdminSubnav";
 import { useCurrency } from "../common/Amount";
 import { CURRENCY_POINT, formatAmount, withEulReul } from "../common/currency";
 import styles from "./AdminPage.module.css";
@@ -164,6 +165,10 @@ export function AdminPage() {
     <Layout header={header} nav>
       <div data-testid="admin-page">
         {error && <ErrorToast message={error} onDismiss={() => setError(null)} />}
+
+        {/* #498 — 운영 **화면** 전환(이 화면 ↔ 이벤트 보드). 바로 아래 섹션 탭과 층위가 다르다:
+            여기는 라우트를 바꾸고, 아래는 이 화면 안의 섹션을 바꾼다. */}
+        <AdminSubnav />
 
         {/* 운영 화면 섹션 전환. 라우트를 늘리지 않고 탭 하나만 추가한다(#207 웨이브2-C). */}
         <div className={u.tabs} role="tablist">
