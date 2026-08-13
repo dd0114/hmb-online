@@ -1,5 +1,6 @@
 # #492 server-java 최종 게이트 — COLD (`./gradlew test --rerun-tasks`)
-# 2026-08-13T00:04:41 · feat/492-event-board · 측정 트리 HEAD=bf549b72
+# 2026-08-13T11:41 · feat/492-event-board · 측정 트리 HEAD=cf74d312
+# (origin/main 리베이스 후 콜드 재실행 — 수치 동일. 리베이스가 바꾼 것은 docs/deploy-log.md 4줄뿐이다.)
 TOTAL classes=178 tests=1216 skipped=1 failures=0 errors=0
 RESULT BUILD SUCCESSFUL in 2m 36s
 
@@ -11,10 +12,15 @@ RESULT BUILD SUCCESSFUL in 2m 36s
 # 그래서 `HEAD=` 가 리포의 현재 HEAD 보다 **뒤에 있어도 스테일이 아니다**(문서 커밋이 그 사이에
 # 있는 경우). 스테일 판정은 커밋 해시 일치가 아니라 아래 명령으로 한다:
 #
-#     git diff --stat bf549b72..HEAD -- server-java/src
+#     git diff --stat cf74d312..HEAD -- server-java/src
 #
 # 출력이 비어 있으면 이 수치는 현재 코드의 것이다. 비어 있지 않으면 콜드 재실행이 필요하다.
 # (AC7 패널 5R 증빙무결성 렌즈 — 헤더 갱신만으로는 다음 docs 커밋에서 같은 지적이 재발한다.)
+#
+# ⚠️ 리베이스하면 이 해시가 끊긴다(커밋이 재작성된다) — 그때는 리베이스 후의 대응 커밋으로
+#    바꿔 적고, 위 명령이 다시 빈 출력을 내는지 확인해라. 2026-08-13 origin/main 리베이스에서
+#    bf549b72 → cf74d312 로 갱신했고 코드 트리는 리베이스 전후 바이트 동일이다
+#    (`git diff --stat 5bf04c6d HEAD -- server-java/src apps/web` 빈 출력으로 확인).
 
 ## 전 클래스
   online.hmb.AdminAccessSingleDecisionPointTest           tests=3 skipped=0 failures=0 errors=0 time=0.198s
