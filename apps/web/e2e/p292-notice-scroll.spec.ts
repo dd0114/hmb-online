@@ -135,10 +135,13 @@ async function bodyMetrics(page: Page) {
   }));
 }
 
-/** 버튼이 첫 화면에 있는가 + 문서가 가로로 밀렸는가 — 본문을 키운 대가를 재는 자리. */
+/**
+ * 카드 하단(버튼 + 안내 한 줄)이 첫 화면에 있는가 + 문서가 가로로 밀렸는가
+ * — 본문을 키운 대가를 재는 자리. #473 이후 마지막 조각은 버튼이 아니라 안내 문구다.
+ */
 async function chromeIntact(page: Page) {
   const vh = page.viewportSize()!.height;
-  const box = await page.getByTestId("notice-dismiss-24h").boundingBox();
+  const box = await page.getByTestId("notice-dismiss-hint").boundingBox();
   return {
     lastButtonBottom: (box?.y ?? 0) + (box?.height ?? 0),
     viewportHeight: vh,

@@ -215,7 +215,7 @@ test.describe("#248 후속 — 공지 다시 보기 목록", () => {
    * 이 시나리오가 곧 기능의 존재 이유다: [24시간 안 보기]를 누른 뒤 그 사이 노출 기간이 끝나면
    * 팝업으로는 **영영 못 본다**. "점검이 몇 시부터랬지?" 에 답할 곳이 있어야 한다.
    */
-  test("[24시간 안 보기]를 누른 공지도 목록에서는 보인다", async ({ page }) => {
+  test("[닫기]로 억제한 공지도 목록에서는 보인다", async ({ page }) => {
     await mockLobby(page, {
       payload: {
         notices: [
@@ -226,9 +226,9 @@ test.describe("#248 후속 — 공지 다시 보기 목록", () => {
     });
     await gotoLobby(page);
 
-    // 두 장 모두 억제해 팝업을 완전히 비운다.
-    await page.getByTestId("notice-dismiss-24h").click();
-    await page.getByTestId("notice-dismiss-24h").click();
+    // 두 장 모두 닫아 팝업을 완전히 비운다(#473 — 닫기가 곧 일주일 억제다).
+    await page.getByTestId("notice-close").click();
+    await page.getByTestId("notice-close").click();
     await expect(page.getByTestId("notice-popup")).toHaveCount(0);
 
     // 재진입해도 팝업은 안 뜬다(억제는 살아 있다).
@@ -257,12 +257,12 @@ test.describe("#248 후속 — 공지 다시 보기 목록", () => {
     await expect(page.getByTestId("notice-center-open")).toHaveAttribute("data-unread", "0");
     await expect(page.getByTestId("notice-center-dot")).toHaveCount(0);
 
-    // 새 탭 세션이면 다시 안 읽음 — 그 상태에서 목록으로 읽어도 점이 꺼진다.
-    await page.evaluate(() => window.sessionStorage.clear());
-    await gotoLobby(page);
-    await page.getByTestId("notice-close").click();
-    await page.getByTestId("notice-close").click();
-    await page.evaluate(() => window.sessionStorage.clear());
+    // 억제를 통째로 지우면 다시 안 읽음 — 그 상태에서 **목록으로 읽어도** 점이 꺼진다.
+    // ⚠️ #473 이후 세션만 지우는 것으로는 안 된다(닫기가 기기에 일주일을 기록한다).
+    await page.evaluate(() => {
+      window.sessionStorage.clear();
+      window.localStorage.removeItem("hmb.notice.dismissed.v1");
+    });
     await gotoLobby(page);
     await expect(page.getByTestId("notice-center-open")).toHaveAttribute("data-unread", "2");
     await page.getByTestId("notice-popup").getByTestId("notice-close").click();

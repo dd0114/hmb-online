@@ -27,9 +27,13 @@ export interface ActiveNoticesResponse {
   notices: Notice[];
 }
 
-/** [닫기] — 이 **탭 세션** 동안만 억제. 로비는 덱·상점에서 계속 돌아오는 화면이라 인메모리면 매번 뜬다. */
+/**
+ * **탭 세션** 범위 억제. 두 곳이 쓴다:
+ *  - 공지 목록에서 행을 펼친 것(= 읽음) — 그건 "닫기"가 아니라 "읽었다"라 팝업 억제까지 가지 않는다.
+ *  - [닫기]의 **백스톱**(#473) — 아래 `markNoticeSuppressed` 주석 참조.
+ */
 export const NOTICE_CLOSED_KEY = "hmb.notice.closed.v1";
-/** [일주일 동안 안 보기] — 만료 epoch(ms) 를 기기에 저장. */
+/** [닫기] 의 억제 기록 — 만료 epoch(ms) 를 기기에 저장. */
 export const NOTICE_DISMISSED_KEY = "hmb.notice.dismissed.v1";
 /**
  * 억제 창 = **7일**(#450, hero 지시 "공지 일주일간 안보게하자").
@@ -41,24 +45,45 @@ export const NOTICE_DISMISSED_KEY = "hmb.notice.dismissed.v1";
  * ⚠️ **저장 키를 올리지 않았다** — 기존 만료값(구 24h 창으로 찍힌 것)은 그냥 더 일찍 만료될 뿐이라
  * 유저 손해가 없다. 키를 올리면 오히려 이미 닫은 유저 전원에게 팝업이 한 번 더 뜬다.
  *
- * ⚠️ 버튼 문구는 이 상수에서 **파생**한다(`noticeDismissLabel`) — 창만 바꾸고 문구를 안 고치면
- * 화면이 거짓말을 한다.
+ * ⚠️ 화면 문구는 이 상수에서 **파생**한다(`noticeDismissLabel`·`noticeDismissHint`) — 창만 바꾸고
+ * 문구를 안 고치면 화면이 거짓말을 한다.
  */
 export const NOTICE_DISMISS_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
-/**
- * [n일/n시간 동안 안 보기] 버튼 문구 — **창 길이에서 파생**한다.
- *
- * 상수와 문구가 각각 손으로 관리되면 다음에 창을 조정할 때 한쪽만 바뀐다. 계약이 이 함수의
- * 출력과 상수를 같이 본다.
- */
-export function noticeDismissLabel(windowMs: number = NOTICE_DISMISS_WINDOW_MS): string {
+/** 창 길이 → "일주일"/"3일"/"2시간" — 문구 두 개가 같은 곳에서 기간을 읽게 한다. */
+function windowPhrase(windowMs: number): string {
   const hours = Math.round(windowMs / (60 * 60 * 1000));
   if (hours % 24 === 0) {
     const days = hours / 24;
-    return days === 7 ? "일주일 동안 안 보기" : `${days}일 동안 안 보기`;
+    return days === 7 ? "일주일" : `${days}일`;
   }
-  return `${hours}시간 동안 안 보기`;
+  return `${hours}시간`;
+}
+
+/**
+ * [n일/n시간 동안 안 보기] 문구 — **창 길이에서 파생**한다.
+ *
+ * 상수와 문구가 각각 손으로 관리되면 다음에 창을 조정할 때 한쪽만 바뀐다. 계약이 이 함수의
+ * 출력과 상수를 같이 본다.
+ *
+ * ⚠️ **#473 이후 버튼 문구가 아니다.** 닫기 하나로 합쳐지면서 이 문구를 다는 버튼은 사라졌다 —
+ * 지금 소비처는 계약과 (문구를 되살릴 때의) 롤백 자산이다. 지우지 마라: 창을 다시 짧게 돌리거나
+ * 옵션 버튼을 되살리는 날 이 파생이 없으면 상수와 문구가 또 갈라진다.
+ */
+export function noticeDismissLabel(windowMs: number = NOTICE_DISMISS_WINDOW_MS): string {
+  return `${windowPhrase(windowMs)} 동안 안 보기`;
+}
+
+/**
+ * 닫기 버튼 아래 안내 한 줄 (#473).
+ *
+ * 버튼이 하나가 되면서 **누르면 무슨 일이 일어나는지 말할 자리가 사라졌다** — 구 UI 는
+ * [일주일 동안 안 보기]라는 별도 버튼이 그 사실을 스스로 말했다. 억제가 기본 동작이 된 이상
+ * 그 사실을 화면이 말하지 않으면 유저는 공지가 사라진 이유를 모른다. 되돌아갈 곳(목록)도 같이
+ * 말한다 — 억제가 "영영 못 봄"이 아니라는 것이 이 설계가 성립하는 근거이기 때문이다.
+ */
+export function noticeDismissHint(windowMs: number = NOTICE_DISMISS_WINDOW_MS): string {
+  return `닫으면 ${windowPhrase(windowMs)} 동안 다시 뜨지 않습니다. [공지]에서 언제든 볼 수 있어요.`;
 }
 
 /**
@@ -144,7 +169,7 @@ export function readClosedKeys(storage: Storage | null): Set<string> {
 }
 
 /**
- * [24시간 안 보기] 기록 — **읽을 때 만료분을 청소**한다(무한 증가 방지).
+ * [닫기] 억제 기록 — **읽을 때 만료분을 청소**한다(무한 증가 방지).
  *
  * ⚠️ localStorage 는 유저별이 아니다 — 같은 브라우저에서 계정을 바꾸면 억제가 공유된다.
  * 공지는 전체 브로드캐스트라 내용이 같으므로 실해는 없다(서버 "읽음" 테이블을 두지 않는 이유).
@@ -186,6 +211,10 @@ export function subscribeNoticeSuppression(listener: () => void): () => void {
   return () => void suppressionListeners.delete(listener);
 }
 
+/**
+ * **탭 세션** 범위 기록. 지금 이걸 직접 부르는 것은 공지 목록의 "펼침 = 읽음"뿐이다 —
+ * 읽은 것과 닫은 것은 다른 행위라 읽기가 팝업을 일주일 억제하지 않는다(#473).
+ */
 export function markNoticeClosed(stores: NoticeStores, key: string): void {
   const next = readClosedKeys(stores.session);
   next.add(key);
@@ -199,6 +228,26 @@ export function markNoticeDismissed(stores: NoticeStores, key: string, now: numb
   const next = { ...readDismissedMap(stores.local, now), [key]: expiresAt };
   writeJson(stores.local, NOTICE_DISMISSED_KEY, next);
   bumpSuppression();
+  return expiresAt;
+}
+
+/**
+ * 팝업 [닫기] 의 **유일한** 쓰기 경로 (#473, hero 지시 *"공지들 다 일주일 안보기로 바꿔"*).
+ *
+ * 구 동작은 닫기 = `sessionStorage` 라 **브라우저를 새로 열면 그대로 다시 떴다** — 유저에게는
+ * "닫아도 계속 뜬다"였다. 일주일 억제는 이미 있었지만 **별도 고스트 버튼 뒤에** 있어서 기본
+ * 경로가 아니었다. 이제 닫기가 그 억제를 기록한다.
+ *
+ * ⚠️ **세션 기록을 같이 남기는 것이 핵심이다.** `localStorage` 는 Safari 프라이빗·iframe 정책에서
+ * 통째로 없을 수 있고(`defaultNoticeStores` 가 `null` 로 흡수한다), 그때 로컬만 쓰면 **아무것도
+ * 기록되지 않아** 로비를 오갈 때마다 같은 팝업이 다시 뜬다 — 고치기 전보다 나쁘다. 세션 쓰기가
+ * 그 열화 경로의 백스톱이다(억제 범위가 탭 세션으로 줄 뿐 화면은 조용해진다).
+ *
+ * 두 저장소를 `visibleNotices` 가 이미 **둘 다** 보므로 판정 쪽은 손댈 것이 없다.
+ */
+export function markNoticeSuppressed(stores: NoticeStores, key: string, now: number): number {
+  const expiresAt = markNoticeDismissed(stores, key, now);
+  markNoticeClosed(stores, key);
   return expiresAt;
 }
 
@@ -250,7 +299,7 @@ export function normalizeNotice(item: unknown): Notice | null {
 }
 
 /**
- * 이번 진입에 보여줄 공지 목록 = 서버가 준 활성 목록 − (이 세션에서 닫은 것) − (24h 억제 중인 것).
+ * 이번 진입에 보여줄 공지 목록 = 서버가 준 활성 목록 − (이 세션에서 읽은 것) − (억제 창 안인 것).
  * 순서는 서버 순서 그대로.
  */
 export function visibleNotices(
@@ -269,9 +318,11 @@ export function visibleNotices(
 /**
  * 공지 목록(다시 보기) 화면이 쓰는 뷰.
  *
- * ⚠️ **억제는 팝업에만 적용된다.** `all` 은 서버가 준 활성 목록 **그대로**다 — [24시간 안 보기]를
- * 누른 공지도 여기엔 남는다. 그게 이 화면의 존재 이유다: 팝업은 한 번 닫으면 끝이고, 24시간
- * 억제 중에 노출 기간이 끝나면 **영영 못 본다**. "점검이 몇 시부터랬지?" 에 답할 곳이 필요하다.
+ * ⚠️ **억제는 팝업에만 적용된다.** `all` 은 서버가 준 활성 목록 **그대로**다 — [닫기]로 억제한
+ * 공지도 여기엔 남는다. 그게 이 화면의 존재 이유다: 팝업은 한 번 닫으면 끝이고, 억제 창(일주일)
+ * 안에 노출 기간이 끝나면 **영영 못 본다**. "점검이 몇 시부터랬지?" 에 답할 곳이 필요하다.
+ * ⚠️ #473 으로 닫기가 곧 일주일 억제가 되면서 이 화면이 **유일한 복귀 경로**가 됐다 — 팝업의
+ * 안내 문구(`noticeDismissHint`)가 여기를 가리킨다. 진입점을 없애면 그 문구가 거짓이 된다.
  *
  * `unread` 는 **팝업이 아직 처리하지 않은 공지** = `visibleNotices` 와 정확히 같은 집합이다.
  * 같은 함수를 재사용하는 것이 계약이다 — 목록 쪽에서 따로 세면 "점은 켜져 있는데 팝업은 안 뜬다"

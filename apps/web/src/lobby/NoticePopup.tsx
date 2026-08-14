@@ -3,9 +3,8 @@ import { Modal } from "../common/Modal";
 import { NoticeBody } from "../common/NoticeBody";
 import {
   defaultNoticeStores,
-  markNoticeClosed,
-  markNoticeDismissed,
-  noticeDismissLabel,
+  markNoticeSuppressed,
+  noticeDismissHint,
   noticeMetaText,
   noticeSuppressionKey,
   type Notice,
@@ -19,11 +18,17 @@ const MAX_BEHIND = 2;
 /**
  * 공지 팝업 — **중첩 스택**(hero Q1 확정).
  *
- * 뒤에 남은 공지가 카드로 겹쳐 보이고, 닫으면 다음 장이 앞으로 나온다. 버튼은 두 개뿐이고
- * **[다음]은 없다** — `닫기` 자체가 "이 장을 처리하고 다음 장"이다.
+ * 뒤에 남은 공지가 카드로 겹쳐 보이고, 닫으면 다음 장이 앞으로 나온다. **[다음]은 없다** —
+ * `닫기` 자체가 "이 장을 처리하고 다음 장"이다.
  *
- * ⚠️ **두 버튼 모두 그 장 하나에만 적용된다**(회차 일괄 아님). 스택 은유상 카드마다 개별
- * 결정이 자연스럽고, 그래야 `24시간 안 보기` 가 **아직 보지도 않은 공지를 삼키지 않는다**.
+ * ⚠️ **버튼은 하나다 (#473, hero: *"공지들 다 일주일 안보기로 바꿔"*).** 구 UI 는
+ * `[닫기]`(탭 세션) + `[일주일 동안 안 보기]`(고스트) 두 개였는데, 기본 경로인 닫기가 탭 세션
+ * 범위라 **브라우저를 새로 열면 같은 공지가 계속 떴다**. 이제 닫기가 곧 일주일 억제다
+ * (`markNoticeSuppressed`). 같은 일을 하는 버튼을 두 개 두지 않는다 — 둘 중 하나는 거짓말이 된다.
+ * 무슨 일이 일어나는지는 버튼 아래 안내 한 줄(`noticeDismissHint`)이 말한다.
+ *
+ * ⚠️ **억제는 그 장 하나에만 적용된다**(회차 일괄 아님). 스택 은유상 카드마다 개별 결정이
+ * 자연스럽고, 그래야 **아직 보지도 않은 다음 장을 삼키지 않는다**.
  */
 export function NoticePopup({
   notices,
@@ -45,7 +50,8 @@ export function NoticePopup({
    * 반대로 이미 숨김을 누른 공지를 딥링크로 열었다가 닫으면 억제 만료가 **연장**된다 —
    * 어느 쪽도 유저가 요청한 적 없는 부작용이다.
    *
-   * false 면 [일주일 동안 안 보기] 버튼도 그리지 않는다. 아무것도 안 하는 버튼은 거짓말이다.
+   * false 면 안내 문구도 그리지 않는다 — 억제하지 않는데 "일주일 동안 다시 뜨지 않습니다"라고
+   * 쓰면 그게 거짓말이다(구 UI 에서는 같은 이유로 [일주일 동안 안 보기] 버튼을 안 그렸다).
    */
   suppressible?: boolean;
 }) {
@@ -63,12 +69,7 @@ export function NoticePopup({
   }
 
   function close() {
-    if (suppressible) markNoticeClosed(stores, noticeSuppressionKey(current!));
-    advance();
-  }
-
-  function dismiss24h() {
-    markNoticeDismissed(stores, noticeSuppressionKey(current!), now());
+    if (suppressible) markNoticeSuppressed(stores, noticeSuppressionKey(current!), now());
     advance();
   }
 
@@ -140,17 +141,12 @@ export function NoticePopup({
           >
             닫기
           </button>
-          {suppressible && (
-            <button
-              type="button"
-              className={styles.ghost}
-              data-testid="notice-dismiss-24h"
-              onClick={dismiss24h}
-            >
-              {noticeDismissLabel()}
-            </button>
-          )}
         </div>
+        {suppressible && (
+          <p className={styles.hint} data-testid="notice-dismiss-hint">
+            {noticeDismissHint()}
+          </p>
+        )}
       </div>
     </Modal>
   );
