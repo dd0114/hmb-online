@@ -226,6 +226,9 @@ hmb:
       auto-resume-on-expiry: true  # 만료 시 후반 자동 시작(전반 프롬프트 승계)
       sweep-interval-ms: 1000      # 시계 스위퍼 주기(잡 스위퍼 10s 와 별도 — 초 단위 경계)
       sweep-parallelism: 4         # 만료 스윕 동시 매치 수(후반 시작이 동기 시뮬이라 순차면 서로를 막는다)
+      # 한 스윕이 작업 완료를 기다리는 총 상한(#512). 정상 최대치(엔진 RPC 30s × 2 × 재시도 2 = 120s)
+      # 위의 여유값 — 여기 걸리면 "느린 매치"가 아니라 "안 끝나는 무언가"다.
+      sweep-task-timeout-ms: 180000
       seek:
         forward-blocked: true      # 라이브 앞서가기 금지(뒤로 스크럽은 자유)
         grace-ms: 1500             # 지연·클럭 스큐 허용 오차

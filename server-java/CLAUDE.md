@@ -91,6 +91,28 @@
   - ⚠️ **알려진 창**: 시계가 `stuck-grace-ms` 넘게 멈춘 리그 매치는 포기 → 같은 픽스처 재플레이가
     된다("지고 있으면 서버 지연을 기다린다"). 시계가 실제로 5분 멈춰야 하므로 실현 가능성은 낮지만
     유예를 줄일 땐 이 트레이드오프를 같이 봐라.
+## 시계 스위퍼 — **블로킹 호출을 이 사슬에 넣지 마라** (#512)
+
+`MatchClockSweeper` 는 `@Scheduled(fixedDelay)` 다 = **이번 실행이 끝나야 다음이 뜬다.** 그래서
+스윕 안에서 무언가 영원히 안 돌아오면 **모든 매치의 자동 진행이 프로세스 재시작 전까지 멈춘다**
+(자기복구 경로 없음 — 유저의 수동 `POST /resume` 만 남는다).
+
+- ⚠️ **스위퍼 스레드는 엔진 RPC 를 직접 탄다.** 보통은 안 탄다(AI 잡 미완 → `maybeSimulate` 즉시
+  리턴). 그런데 **양쪽 인풋이 재사용으로 해소되는 경로**(`insertMaterialized` → `maybeSimulate`)
+  에서는 그 자리에서 시뮬이 돈다. **오토 매치(#249)는 감독시간이 0초라 사실상 항상** 그 경로다.
+- ⚠️ **`HttpRequest.timeout` 은 응답 <u>헤더</u>까지만 센다.** 헤더가 온 뒤 본문이 멈추면
+  `HttpClient.send()` 는 영원히 매달린다(JDK 21 실측: 요청 타임아웃 3s 에 120s 넘게 반환 없음).
+  "타임아웃을 걸어 뒀으니 유한하다"는 **거짓**이다. 그래서 `EngineRunnerClient` 는 `sendAsync` +
+  `get(마감)` + `cancel(true)` 로 **교환 전체**에 벽시계 마감을 건다(= `sendBounded`, 새 HTTP 호출도
+  반드시 그것을 써라). 매치 로그는 수 MB 라 본문 전송이 짧지 않다 = 그 창은 실재한다.
+- 그 위에 **스윕 전체 상한**(`sweep-task-timeout-ms` 180s, `MatchClockService.awaitAll`)이 있다.
+  작업당이 아니라 **한 스윕 전체**에 거는 이유 = 작업당이면 N 개가 각각 상한을 다 써 "유한하지만
+  실질적으로 멈춤"이 된다. 초과해도 **취소하지 않는다**(전이 트랜잭션 한가운데를 인터럽트하면
+  "늦은 시계"가 "반쯤 넘어간 매치"로 바뀐다) — 로그만 남기고 다음 스윕으로 간다.
+- 계약 = `EngineRunnerStallTest`(헤더 후 본문 정지 서버 + CTRL 정상 응답) · `MatchClockSweepBoundTest`
+  (막힌 작업 하나가 루프를 세우지 않는다 + CTRL 정상 작업은 끝까지 기다린다). ⚠️ 둘 다
+  `assertTimeoutPreemptively` 를 쓴다 — **실패가 hang 이 아니라 red 여야** 게이트가 의미를 갖는다.
+
 - ⚠️ **`/api/growth/*` 는 openapi 에 path 자체가 없다**(선존 갭, #217 이 만든 게 아니다).
   그래서 growth 의 409 계약 SoT 는 이 문서뿐이다 — growth 를 openapi 에 편입할 때 같이 옮겨라.
 - 재입장 진입점 = `GET /api/me/active-match` → `{match(MatchDetail 통짜), locked, abandonable}`.

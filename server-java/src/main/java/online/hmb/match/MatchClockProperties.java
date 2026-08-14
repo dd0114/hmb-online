@@ -61,6 +61,17 @@ public class MatchClockProperties {
      */
     private int sweepParallelism = 4;
 
+    /**
+     * 한 번의 스윕이 작업 완료를 기다리는 <b>총</b> 상한(ms) — 초과하면 기다리지 않고 다음 스윕으로
+     * 넘어간다 (#512, {@link MatchClockService#awaitAll}).
+     *
+     * <p>⚠️ 이 값은 <b>정상적으로 느린 전이보다 넉넉해야 한다</b>. 후반 시작은 엔진 RPC 를 동기로
+     * 물고 있고 그 호출의 최대치는 {@code hmb.servant.simulate-timeout-sec}(30s) × 2(교환 마감) ×
+     * (1 + {@code simulate-retries}) = <b>120s</b> 다. 180s 는 그 위의 여유이고, 이 상한에 걸리는
+     * 것은 "느린 매치"가 아니라 <b>영원히 안 끝나는 무언가</b>라는 신호로 읽어야 한다.
+     */
+    private long sweepTaskTimeoutMs = 180_000;
+
     private Seek seek = new Seek();
 
     public boolean isEnabled() {
@@ -109,6 +120,14 @@ public class MatchClockProperties {
 
     public void setSweepParallelism(int sweepParallelism) {
         this.sweepParallelism = sweepParallelism;
+    }
+
+    public long getSweepTaskTimeoutMs() {
+        return sweepTaskTimeoutMs;
+    }
+
+    public void setSweepTaskTimeoutMs(long sweepTaskTimeoutMs) {
+        this.sweepTaskTimeoutMs = sweepTaskTimeoutMs;
     }
 
     public Seek getSeek() {
