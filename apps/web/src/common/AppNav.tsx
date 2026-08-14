@@ -39,25 +39,46 @@ export const NAV_ITEMS: readonly NavItem[] = [
   { key: "me", label: "내 정보", icon: "🙋", to: "/me" },
 ];
 
-/** 운영자 전용 항목 (PRD-v4 §C) — admin 계정에만 붙인다. 비admin 에겐 DOM 에도 없다. */
+/**
+ * 운영자 전용 항목 (PRD-v4 §C) — admin 계정에만 붙인다. 비admin 에겐 DOM 에도 없다.
+ *
+ * ⚠️ **admin 이 하단탭에 더할 수 있는 칸은 이 하나뿐이다**(#498). 운영 화면이 늘어도 여기에
+ * 칸을 더하지 마라 — 그 자리는 {@link ADMIN_SUBNAV}(`AdminSubnav.tsx`) 다. 근거는 산수다:
+ * 하단탭은 `flex:1 1 0` 균등분할이라 320px 에서 7칸 45.7px(44pt 충족) · **8칸 40.0px**(미달) ·
+ * 9칸 35.6px 다. #492 가 8칸을 만들었던 것을 #498 이 되돌렸다.
+ */
 export const ADMIN_NAV_ITEM: NavItem = { key: "admin", label: "운영", icon: "🛠", to: "/admin" };
 /**
- * 이벤트 보드(#492) — 같은 admin 전용 항목. 운영 탭 안의 서브탭이 아니라 **별도 진입점**인 것은
- * 이 화면의 독자가 다르기 때문이다(운영 액션이 아니라 "심사위원이 어디까지 갔나"를 보는 자리).
+ * 이벤트 보드(#492)의 **경로·아이콘 SoT**. 하단탭 항목이 **아니다** — `navItemsFor` 가 이것을
+ * 반환하지 않는다.
  *
- * ⚠️ 라벨은 3글자를 넘기지 마라 — 모바일 하단탭은 `flex:1 1 0` 균등분할이고 항목이 8칸이면
- * 390px 에서 칸당 ~48px 다. 라벨이 `nowrap` 이라 길어지면 그대로 가로 오버플로가 된다.
+ * ── ⚠️ 여기 있던 결정은 #498 에서 뒤집혔다 ─────────────────────────────────
+ * 원문: *"운영 탭 안의 서브탭이 아니라 **별도 진입점**인 것은 이 화면의 독자가 다르기 때문이다
+ * (운영 액션이 아니라 '심사위원이 어디까지 갔나'를 보는 자리)."*
+ *
+ * 그 근거(독자가 다르다)는 지금도 맞다. 뒤집힌 이유는 **자리가 없어서**다 — 별도 진입점으로
+ * 두면 admin 하단탭이 8칸이 되고 320px 칸 폭이 40.0px 로 iOS 44pt·Material 48dp 를 밑돈다
+ * (그리고 다음 운영 화면에서 오버플로). 그래서 진입은 `운영` 한 칸으로 모으고, "독자가 다르다"는
+ * **화면 안 서브탭**({@link ADMIN_SUBNAV})이 표현한다 — 1탭 + pill 하나라 접근성 손실이 작다.
+ *
+ * ⚠️ 그러므로 이 상수를 `navItemsFor` 에 되돌려 넣지 마라. 되돌릴 값이 있다면 그건 8칸이
+ * 아니라 **안 B**(하단탭에서 admin 을 완전히 빼고 `내 정보` 아래 섹션으로) 이고, 그건 새 이슈다
+ * (#498 §조정 지점 — 트리거 = "게임 탭바에 admin 항목이 하나도 없어야 한다"가 방침으로 서는 시점).
  */
 export const EVENTS_NAV_ITEM: NavItem = {
   key: "events",
-  label: "이벤트",
+  label: "이벤트 보드",
   icon: "📊",
   to: "/event-board",
 };
 
-/** 표시할 항목 = 기본 6개 + (admin 이면) 운영 · 이벤트. */
+/**
+ * 표시할 항목 = 기본 6개 + (admin 이면) 운영 **1칸**.
+ *
+ * 이벤트 보드는 여기 없다 — `/admin` · `/event-board` 화면 상단의 {@link ADMIN_SUBNAV} 가 가른다.
+ */
 export function navItemsFor(isAdmin: boolean): readonly NavItem[] {
-  return isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM, EVENTS_NAV_ITEM] : NAV_ITEMS;
+  return isAdmin ? [...NAV_ITEMS, ADMIN_NAV_ITEM] : NAV_ITEMS;
 }
 
 /**
@@ -65,8 +86,16 @@ export function navItemsFor(isAdmin: boolean): readonly NavItem[] {
  *
  * 리그·원정은 `[게임]` 탭의 **하위 페이지**라 탭 활성 표시가 게임에 남는다 — 유저가 리그
  * 순위표를 보는 동안 어느 탭에 있는지 잃어버리지 않게.
+ *
+ * 이벤트 보드도 같은 형태다(#498) — `/event-board` 는 `[운영]` 탭 안 서브탭이라 활성 표시가
+ * 운영에 남는다. 이게 없으면 이벤트 보드에서 **어느 탭도 활성이 아니다**(그 화면으로 가는
+ * 진입점이 하단탭에 없어졌으므로).
  */
-const SUB_ROUTES: Record<string, string> = { "/league": "game", "/away": "game" };
+const SUB_ROUTES: Record<string, string> = {
+  "/league": "game",
+  "/away": "game",
+  [EVENTS_NAV_ITEM.to]: ADMIN_NAV_ITEM.key,
+};
 
 export function activeNavKey(pathname: string, items: readonly NavItem[] = NAV_ITEMS): string | null {
   const sub = Object.entries(SUB_ROUTES).find(

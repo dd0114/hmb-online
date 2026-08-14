@@ -45,28 +45,42 @@ describe("activeNavKey", () => {
   });
 });
 
-describe("navItemsFor — admin 전용 진입점 (#492)", () => {
+describe("navItemsFor — admin 전용 진입점 (#492 → #498)", () => {
   it("비admin 에게는 운영·이벤트 항목이 아예 없다", () => {
     const items = navItemsFor(false);
     expect(items).toEqual(NAV_ITEMS);
     expect(items.some((i) => i.key === "admin" || i.key === "events")).toBe(false);
   });
 
-  it("admin 에게는 기본 6칸 뒤에 운영·이벤트가 붙는다", () => {
+  it("admin 에게 붙는 칸은 [운영] **하나뿐**이다 (#498)", () => {
+    // #492 는 여기에 이벤트 보드까지 더해 8칸을 만들었다. #498 이 그걸 되돌린 이유는 아래
+    // 폭 계약이다 — 이벤트 보드 진입은 화면 안 서브탭(AdminSubnav)으로 옮겼다.
     const items = navItemsFor(true);
-    expect(items).toHaveLength(NAV_ITEMS.length + 2);
-    expect(items.at(-2)).toEqual(ADMIN_NAV_ITEM);
-    expect(items.at(-1)).toEqual(EVENTS_NAV_ITEM);
+    expect(items).toHaveLength(NAV_ITEMS.length + 1);
+    expect(items.at(-1)).toEqual(ADMIN_NAV_ITEM);
+    expect(items.some((i) => i.key === "events")).toBe(false);
+  });
+
+  it("하단탭은 7칸을 넘지 않는다 — 320px 에서 44pt 를 지키는 상한 (#498)", () => {
+    // `flex:1 1 0` 균등분할이라 칸 폭 = 뷰포트 / 칸수. 320px 기준:
+    //   7칸 45.7px(iOS 44pt·Material 48dp 충족) / **8칸 40.0px**(미달) / 9칸 35.6px.
+    // 이 단언이 red 면 늘릴 곳은 여기가 아니라 AdminSubnav 다(그쪽은 가로 스크롤이라 상한 없음).
+    const count = navItemsFor(true).length;
+    expect(count).toBeLessThanOrEqual(7);
+    expect(320 / count).toBeGreaterThanOrEqual(44);
+  });
+
+  it("이벤트 보드는 라우트 상수로만 남는다 — 하단탭 항목이 아니다 (#498)", () => {
+    // 상수를 지우지 않은 것은 AdminSubnav 가 경로 SoT 로 쓰기 때문이다(라우트 이중 기재 방지).
     expect(EVENTS_NAV_ITEM.to).toBe("/event-board");
+    expect(navItemsFor(true)).not.toContain(EVENTS_NAV_ITEM);
   });
 
-  it("이벤트 라벨은 3글자 이하 — 8칸 하단탭이 390px 에서 넘치지 않게", () => {
-    // `flex:1 1 0` 균등분할 + `white-space:nowrap` 이라 긴 라벨은 곧바로 가로 오버플로가 된다.
-    expect(EVENTS_NAV_ITEM.label.length).toBeLessThanOrEqual(3);
-  });
-
-  it("/event-board 는 이벤트 탭으로 활성 표시된다", () => {
-    expect(activeNavKey("/event-board", navItemsFor(true))).toBe("events");
+  it("/event-board 에서도 활성 탭은 [운영] 이다 — 어느 탭도 안 켜지면 길을 잃는다 (#498)", () => {
+    // 리그/원정이 [게임] 에 남는 것과 같은 관용구(SUB_ROUTES). 이 화면으로 가는 하단탭 칸이
+    // 없어졌으므로 이게 없으면 활성 표시가 통째로 비어 "어디에 있는지" 신호가 사라진다.
+    expect(activeNavKey("/event-board", navItemsFor(true))).toBe("admin");
+    expect(activeNavKey("/admin", navItemsFor(true))).toBe("admin");
     // 비admin 항목 집합에서는 어느 탭도 활성이 아니다(그 화면에 갈 수 없다).
     expect(activeNavKey("/event-board", navItemsFor(false))).toBeNull();
   });

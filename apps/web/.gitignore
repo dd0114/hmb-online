@@ -46,3 +46,5 @@ public/chars/
 .p479/
 # #492 이벤트 보드 실화면 캡처·목 계약 덤프(`e2e/p492-event-board-mock.spec.ts` 산출) — 같은 관례.
 .p492/
+# #498 운영 서브탭 실화면 캡처(`e2e/p498-subnav.capture.ts` 산출) — 같은 관례.
+.p498/

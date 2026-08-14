@@ -5,6 +5,7 @@ import { useAdminEventFunnel, useAdminEvents } from "../api/event-hooks";
 import { Layout } from "../common/Layout";
 import { formatStamp } from "../admin/admin-logic";
 import { FORBIDDEN_REDIRECT_MS } from "../admin/AdminPage";
+import { AdminSubnav } from "../admin/AdminSubnav";
 import {
   DEFAULT_EVENT_FILTER,
   EVENT_TYPES,
@@ -98,6 +99,10 @@ export function EventBoardPage() {
   return (
     <Layout header={header} nav>
       <div data-testid="event-board-page">
+        {/* #498 — 이 화면으로 오는 하단탭 칸이 없어졌다(admin 은 `운영` 1칸). 그 대신 두 운영
+            화면이 같은 서브탭을 이고 있어서 여기서 곧바로 되돌아갈 수 있다. */}
+        <AdminSubnav />
+
         {/* ── ① 유저 퍼널 — 이 화면의 주인공 ───────────────────────────── */}
         <section className={styles.section} data-testid="event-funnel-section">
           <h2 className={styles.sectionTitle}>

@@ -35,13 +35,13 @@ describe("navItemsFor", () => {
     expect(navItemsFor(false)).toEqual(NAV_ITEMS);
   });
 
-  it("admin 은 운영·이벤트 항목이 뒤에 추가 (#492 로 하나 늘었다)", () => {
-    // ⚠️ 이 단언은 원래 `+1 / 마지막 = 운영` 이었다. #492 가 이벤트 보드 진입점을 더하면서
-    //    **개수와 마지막 항목이 둘 다 바뀌었다** — 상수만 늘리고 이 계약을 안 고치면 red 다.
+  it("admin 은 운영 항목 하나만 뒤에 추가 (#492 로 늘었다가 #498 로 되돌아왔다)", () => {
+    // ⚠️ 이 단언은 `+1`(원래) → `+2`(#492) → **`+1`**(#498) 로 두 번 움직였다. 되돌린 것은
+    //    취향이 아니라 폭이다(8칸 = 320px 40.0px < 44pt). 이벤트 보드는 AdminSubnav 로 갔다.
     const items = navItemsFor(true);
-    expect(items.length).toBe(NAV_ITEMS.length + 2);
-    expect(items.at(-2)).toEqual(ADMIN_NAV_ITEM);
-    expect(items.at(-1)).toEqual(EVENTS_NAV_ITEM);
+    expect(items.length).toBe(NAV_ITEMS.length + 1);
+    expect(items.at(-1)).toEqual(ADMIN_NAV_ITEM);
+    expect(items).not.toContain(EVENTS_NAV_ITEM);
   });
 
   it("/admin 은 admin 항목 목록에서만 활성 키를 갖는다", () => {
@@ -67,11 +67,18 @@ describe("AppNav admin 링크 노출", () => {
     expect(screen.getAllByTestId("nav-admin").length).toBe(2);
   });
 
-  it("이벤트 보드(#492) 링크도 admin 에게만, 양쪽 nav 에", () => {
-    renderNav(false);
-    expect(screen.queryAllByTestId("nav-events").length).toBe(0);
-    cleanup();
+  it("이벤트 보드는 하단탭/사이드바 어디에도 없다 — admin 에게도 (#498)", () => {
+    // #492 는 여기에 `nav-events` 를 2개(두 nav 표현) 그렸다. #498 이후 진입은 `운영` 탭 →
+    // 화면 상단 서브탭이다. 이 단언이 없으면 두 진입점이 조용히 공존해도 아무도 모른다.
     renderNav(true);
-    expect(screen.getAllByTestId("nav-events").length).toBe(2);
+    expect(screen.queryAllByTestId("nav-events").length).toBe(0);
+    expect(screen.getAllByTestId("nav-admin").length).toBe(2);
+  });
+
+  it("/event-board 에서도 하단탭 활성은 [운영] (#498)", () => {
+    renderNav(true, "/event-board");
+    for (const btn of screen.getAllByTestId("nav-admin")) {
+      expect(btn.getAttribute("aria-current")).toBe("page");
+    }
   });
 });

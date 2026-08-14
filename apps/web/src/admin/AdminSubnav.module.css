@@ -1,0 +1,41 @@
+/*
+ * 운영 화면 전환 바 (#498). AdminUnits.module.css 의 `.tabs`(섹션 탭)와 **일부러 다르게** 생겼다 —
+ * `/admin` 에서는 이 바로 아래에 그 섹션 탭이 한 줄 더 오는데, 같은 모양이면 두 줄이 같은 층위로
+ * 보여 "지금 어느 화면인가"를 잃는다. 여기는 pill(999px) + 활성 채움, 섹션 탭은 사각 + 테두리.
+ */
+.subnav {
+  display: flex;
+  gap: 6px;
+  margin: 10px 0 2px;
+  /* 화면이 늘면 항목도 는다(#498 조정 지점) — 넘치면 이 안에서만 가로 스크롤한다.
+     페이지 body 가로 오버플로 0 규칙(AC4)을 이 바가 깨지 않게. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.subnav::-webkit-scrollbar {
+  display: none;
+}
+
+.item {
+  flex: 0 0 auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.itemActive {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #06101f;
+  font-weight: 600;
+}
+
+.icon {
+  margin-right: 5px;
+}
