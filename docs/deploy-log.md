@@ -1,3 +1,115 @@
+## 2026-08-14T10:13Z — **배포 v3.30 — web 단독** — 터널 사망 긴급 복구 + admin 서브탭(#498)·공지(#473)
+
+- **git**: `739f6b13787ba78ff2a70f534a6c7e53834b233e` (`origin/main`, `dirty: false`) ← 라이브 `d76c6c68`(v3.29)
+- **모듈 버전**: engine **0.43.0 (무접촉)** · server-java 0.1.0(**무접촉 — 이미지·컨테이너 그대로**) ·
+  web 0.0.0(**재빌드 + 재배포 — 아래 §web**) · servants 0.0.1(**무접촉**)
+- **이미지**: java `sha256:68c90a8548dec85f18817fdd91eaf34f9aa7b2f64ff9953fb67d903f957e1831`(**무변경**)
+  / runner `sha256:97a82f3f362b2864eb95f2e9b002816090d75bd177d5c028f9511a41657648d1`(**무변경**)
+  · 롤백 핀도 v3.29 그대로(이번 배포는 도커를 만들지 않았다)
+- **컨테이너 재기동 0회**(실측): `hmb-java` `StartedAt = 2026-08-13T14:01:31Z`(=v3.29 전환 시각) 그대로,
+  `hmb-runner` `2026-08-13T13:08:17Z` 그대로. `deploy-web.sh` 는 `WEB_ORIGINS` 를 만지지 않으므로
+  v3.29 노트가 경계한 **CORS 재결선용 java recreate 경로를 아예 타지 않는다**.
+- **Flyway**: **무접촉** — server-java diff 0건 · 재기동 0회. 백업도 뜨지 않았다(DB 를 건드리는 단계가 없다).
+- **배포시각**: 터널 기동 `2026-08-14T10:13:21Z` → 등록 `10:13:28Z`(7초) → web `/config.json` `10:13:44Z`
+- **URL**: web `https://hmb-online.pages.dev` (Pages 배포 `https://0b49d507.hmb-online.pages.dev`)
+  / 백엔드 터널 `https://translation-sellers-rounds-corn.trycloudflare.com` (pid 83512, **회전함**)
+- **스코프** `1dd9c4a3..739f6b13`: `apps/web/**` **24건** · `server-java/**` **0건** · `packages/**` **0건** ·
+  `data/**` **0건** · `infra/**` **0건** → **web 만 재배포하면 되고, java/runner 는 만질 이유가 없다**.
+- **무엇이 올라갔나**: PR **#503**(#498 admin 서브탭, merge `1c71f3be`) · PR **#476**(#473 공지 히어로 이미지 +
+  닫기=1주 억제, merge `739f6b13`).
+
+**§web — 이번엔 재배포했다 (v3.29 와 반대인 이유)**
+
+v3.29 는 `apps/web/**` diff 가 **0건**이라 "재빌드해도 같은 바이트"였고 재배포에 실비용(java recreate)만
+있어서 **안 했다.** 이번엔 두 축이 다 뒤집혔다:
+1. **`apps/web/**` 24파일이 실제로 바뀌었다**(#498 admin 서브탭 · #473 공지) — 재배포하지 않으면 그 두 PR 이
+   테스터에게 도달하지 않는다.
+2. **터널 URL 이 회전했다** — `VITE_API_BASE` 가 빌드 인라인이고 `/config.json` 이 런타임 결선이라,
+   URL 이 바뀌면 web 재배포는 **선택이 아니라 복구 그 자체**다(그게 이 배포의 시작점이다).
+
+**미오픈 캐릭터 유출 게이트(§0.7)**: **PASS** — 두 PR 의 `apps/web` diff 에 **신규 캐릭터 아트 0건**.
+공지 히어로 이미지는 `scripts/notice-hero/make-notice-hero.py` 생성물이고 `.gitignore` 에 들어갔다.
+
+**⚠️ 이 배포는 계획된 것이 아니라 장애 복구였다**
+
+- 증상: `status.sh` 에서 **터널 ✗** = 테스터 접속 불가. 백엔드·runner·executor·web 은 **내내 정상**이었다.
+- 워치독(#183/#497)이 `09:59:50Z` · `10:04:57Z` **두 번 치유를 시도해 두 번 다 실패**했고
+  (`HEAL_FAIL 새 URL 획득 실패`), 사람이 `10:13:21Z` 에 `bash infra/start-tunnel.sh` 로 살렸다.
+- **다운타임 09:59:49Z → 10:13:28Z = 13분 39초.** 규명·후속 = 아래 §워치독 + **#505**.
+
+**검증(콜드 실측)**
+
+| 축 | 결과 |
+|---|---|
+| `status.sh` | **10/10 ✓** (java·runner·executor·로컬 18080·터널 pid 83512·터널경유 401·web 200·CORS 결선·워치독 심박·web→백엔드 결선) |
+| 터널 경유 백엔드 | `/internal/health` **401**(토큰 없음 = 경로 정상) |
+| web | `https://hmb-online.pages.dev` **200** |
+| `/config.json` | `apiBase` = 새 터널 URL · `source: build` · `updatedAt 2026-08-14T10:13:44Z` |
+| 워치독 추적 | `--check` = `✓ 터널 정상 — translation-sellers-rounds-corn…` · 심박 갱신 중 · `DEGRADED` 마커 **없음** · 설치본(`~/.local/bin/hmb-tunnel-heal.sh`)은 `origin/main` 판과 **SYNCED**(자동설치 배너 2줄만 차이) |
+| 스트레이 프로세스 | `cloudflared` **1개뿐**(pid 83512) — 실패한 치유가 남긴 좀비 없음 |
+
+**⚠️ 발견 — 이 배포물에는 `version.json` 이 없다 (라이브 버전 오독의 함정)**
+
+`start-tunnel.sh` → **`deploy-web.sh`** 경로는 `version-manifest.sh` 를 **부르지 않는다**(부르는 것은
+`deploy-pages.sh` 뿐이다). 그래서:
+- 새 배포물 `https://0b49d507.hmb-online.pages.dev/version.json` = **SPA 폴백 index.html**(463B).
+- 그런데 apex `https://hmb-online.pages.dev/version.json` 은 **200 에 740B 를 준다** — CF 엣지 캐시가
+  `cache-control: s-maxage=604800`(7일)로 **v3.28 시점 매니페스트**(`b851bdcc` · java `5043de47`)를
+  물고 있다(`cf-cache-status: HIT`, `age: 79625` ≈ 22시간).
+- ⇒ **`version.json` 을 라이브 버전의 SoT 로 읽으면 두 세대 전을 읽는다.** 라이브 결선의 SoT 는
+  `/config.json` + 이 로그이고(v3.29 노트와 같은 결론), 버전 식별은 **이 항목**이 SoT 다.
+- 후속(코드 수정 제안) = **#506**.
+
+---
+
+## 2026-08-14T10:00Z — **장애 기록(무배포)** — 워치독 자동복구 2회 연속 실패 → 사람이 손으로 복구
+
+배포가 아니라 **위 v3.30 을 유발한 장애**의 규명 기록이다. 조치는 `start-tunnel.sh` 1회뿐.
+
+**타임라인(전부 `~/.local/state/hmb/tunnel-heal.log` 실측)**
+
+| 시각(UTC) | 사건 |
+|---|---|
+| 09:56:59 | `BLIP` — 1차 실패 `http:530`, 재확인에서 회복 → 치유 안 함 |
+| 09:59:49 | `UNHEALTHY` — 2회 연속 `http:530`(CF 엣지가 오리진에 못 닿음) |
+| 09:59:50 | `HEAL_START` — 기존 터널 pid 71748 종료, 새 cloudflared pid 75065 기동 |
+| 10:00:23 | cloudflared: **`failed to request quick Tunnel: Post "https://api.trycloudflare.com/tunnel": dial tcp: lookup api.trycloudflare.com: no such host`** |
+| 10:02:27 | `HEAL_FAIL 새 URL 획득 실패` |
+| 10:04:57 | `HEAL_START`(reason=`url-unknown`) — pid 77018 기동 |
+| 10:13:16 | `HEAL_FAIL 새 URL 획득 실패` |
+| 10:13:21 | **사람**이 `start-tunnel.sh` 실행 (2차 FAIL 로부터 **5초 뒤**) |
+| 10:13:28 | 새 터널 등록 성공 — 요청→등록 **7초** |
+
+**규명된 것 — 1차 실패의 원인은 cloudflared 의 DNS 다.** 워치독이 매달리거나(#391) 락을 굶긴 것이
+**아니다**: 두 번 다 정직하게 시도하고 정직하게 실패했으며, `DEGRADED` 도 서지 않았고 좀비도 안 남겼다.
+실패한 것은 `cloudflared` 가 **자기 등록 엔드포인트를 해석하지 못한 것**이다(`no such host`).
+`10:13:21Z` 사람 실행은 **같은 명령이 6초 만에 성공**했다 = 그 시점엔 DNS 가 돌아와 있었다.
+
+**규명 못 한 것(추정하지 않는다)**
+- **2차 시도(10:04:57)의 실패 사유는 증거가 없다.** cloudflared 로그는 `/tmp/hmb-cf-tunnel.log` **단일
+  파일**이고 회전은 치유가 새로 뜰 때 `.prev` 로 한 번뿐이라, 사람이 `10:13:21Z` 에 실행한
+  `start-tunnel.sh` 가 그 로그를 **덮어썼다**(`.prev` 는 1차 시도분 = mtime `10:00Z`). 원인 소실.
+- **왜 한 시도가 벽시계로 그렇게 오래 걸렸나**: URL 획득 루프는 공칭 `30 × sleep 2` = **60초**인데
+  실측은 1차 **157초**, 2차 **499초**다. `HEAL_START 09:59:50` → cloudflared 첫 로그줄 `10:00:23`
+  = 기동에만 **33초**가 걸린 것까지가 관측이고, 그 지연의 원인은 **규명하지 않았다**(당시 부하 기록
+  없음. 참고로 사후 `10:18Z` 실측 `load average 50.61` — 같은 시각의 값이 아니므로 근거로 쓰지 않는다).
+
+**패턴 — 첫 치유는 4/4 로 실패한다**(같은 로그, 최근 4개 장애 전수)
+
+| 장애 | 1차 | 2차 | 3차 | 회복 |
+|---|---|---|---|---|
+| 08-13 02:01:59 | FAIL 02:05:06 | **OK 02:09:09** | — | 자동, 7분 10초 |
+| 08-13 12:09:26 | FAIL 12:13:33 | FAIL 12:16:54 | **OK 12:18:57** | 자동, 9분 31초(**상한 3/h 에 정확히 닿음**) |
+| 08-14 02:03:35 | FAIL 02:05:47 | **OK 02:08:49** | — | 자동, 5분 14초 |
+| 08-14 09:59:50 | FAIL 10:02:27 | FAIL 10:13:16 | (사람이 5초 먼저) | **수동, 13분 39초** |
+
+즉 **복구를 실제로 만드는 것은 재시도**이고 상한은 `MAX_HEALS_PER_HOUR=3`(`heal.conf` 없음 = 기본값)이라
+**여유가 한 번뿐**이다. 그리고 §11 이 광고하는 **MTTR 98초는 최근 실측(5~10분)과 맞지 않는다.**
+
+⇒ 이슈 **#505**(#497·#391 링크). 이번 배포는 재기동·재배포 외 조치를 하지 않았다.
+
+---
+
 ## 2026-08-13T14:01Z — **배포 v3.29 — java 단독** — 멱등 튜토리얼 호출의 이벤트 중복 (#496)
 
 - **git**: `d76c6c68ee03292f81a20d854403f403a967d1bf` (`origin/main`, `dirty: false`) ← 라이브 `b851bdcc`(v3.28)
