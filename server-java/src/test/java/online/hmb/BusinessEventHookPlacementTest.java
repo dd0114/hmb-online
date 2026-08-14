@@ -66,6 +66,13 @@ class BusinessEventHookPlacementTest {
             "online/hmb/away/AwayController.java", 1,             // match_start (away · revenge 공용 헬퍼)
             "online/hmb/match/MatchOrchestrator.java", 1));       // match_finish (커밋 후)
 
+    static {
+        // #504 — 온레일 관측 입구. 훅 2개(`recordOnce` 1 + `record` 1)가 **한 컨트롤러 안**에 있다:
+        // 한 번뿐인 사건 5종과 반복이 의미를 갖는 `onrail_step` 이 억제 규칙이 달라 갈린다.
+        // 여기 등록하는 것 자체가 계약이다 — 훅을 지우면 개수가 어긋나 red 다.
+        EXPECTED_HOOKS.put("online/hmb/events/OnRailEventsController.java", 2);
+    }
+
     // ── ① 훅이 트랜잭션 람다 안에 있으면 안 된다 ──────────────────────────
 
     @Test

@@ -26,6 +26,7 @@ import type { OnRailSkipReason } from "./onrail-logic";
 import { ONRAIL_FIRST_STEP, ONRAIL_SCRIPT } from "./onrail-script";
 import type { OnRailCta, OnRailStep } from "./onrail-script";
 import { appendSkip, readOnRail, writeOnRail } from "./onrail-storage";
+import { ONRAIL_EVENTS, reportOnRail } from "./onrail-telemetry";
 import type { OnRailState } from "./onrail-storage";
 
 /**
@@ -121,6 +122,15 @@ export function OnRailProvider({
       };
       setState(merged);
       writeOnRail(userId, merged);
+      // #504 D2 — 진행도를 서버에 **보고만** 한다(관측 전용). 스텝을 옮기는 자리가 여섯 곳이라
+      // 각 호출부에 계측을 흩으면 하나만 빠뜨려도 퍼널에 구멍이 나고, 그 구멍은 아무 화면도
+      // 빨갛게 만들지 않는다 — 위 `skips`·`deckDraftReset` 를 여기로 모은 것과 **같은 이유**다.
+      // 중복(같은 스텝 재렌더·새로고침)은 `reportOnRail` 이 스텝별 1회로 좁힌다.
+      if (merged.status === "running" && merged.stepId) {
+        reportOnRail(userId, ONRAIL_EVENTS.step, { stepId: merged.stepId });
+      } else if (merged.status === "done") {
+        reportOnRail(userId, ONRAIL_EVENTS.done);
+      }
     },
     [userId],
   );

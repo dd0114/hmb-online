@@ -25,6 +25,7 @@ import {
   shouldOfferPracticeTutorial,
 } from "../common/guide-storage";
 import { useOnRail } from "../onrail/onrail-context";
+import { ONRAIL_EVENTS, reportOnRail } from "../onrail/onrail-telemetry";
 import { PracticeTutorialDialog } from "./PracticeTutorialDialog";
 import { resumeLabelFor, shouldOfferResume, type ActiveMatchInfo } from "../common/match-lock";
 import { HOME_TILES, homeNotice, homeTileState, openTradeCount, teamLine } from "./home-logic";
@@ -193,6 +194,9 @@ export function HomePage() {
       return;
     }
     if (key === "game" && shouldOfferPracticeTutorial(me?.user?.id ?? null)) {
+      // #504 D2 — **제안이 실제로 떴다**는 사실. 이게 없으면 "제안을 못 받았다"와 "받고 거절했다"의
+      // 서버 흔적이 같아 #493 이 발화했는지를 영영 판정할 수 없다. 계측은 동선을 바꾸지 않는다.
+      reportOnRail(me?.user?.id ?? null, ONRAIL_EVENTS.offerShown);
       setPracticeAsk(true);
       return;
     }
@@ -209,6 +213,7 @@ export function HomePage() {
    */
   function acceptPracticeTutorial() {
     markPracticeTutorialAnswered(me?.user?.id ?? null);
+    reportOnRail(me?.user?.id ?? null, ONRAIL_EVENTS.accepted);
     setPracticeAsk(false);
     onRail.start();
   }
@@ -221,6 +226,9 @@ export function HomePage() {
    */
   function declinePracticeTutorial() {
     markPracticeTutorialAnswered(me?.user?.id ?? null);
+    // #504 D2 — **이 한 줄이 "미노출"과 "거절"을 가른다.** 그 둘을 못 가르는 것이 이 이슈의
+    // 두 번째 결함이었다(서버 흔적이 완전히 동일).
+    reportOnRail(me?.user?.id ?? null, ONRAIL_EVENTS.declined);
     onRail.skip();
     setPracticeAsk(false);
     navigate("/game");

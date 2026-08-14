@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useActiveMatch, useAwayReports, useMe } from "../api/hooks";
 import { useLeague } from "../api/hooks-v2";
@@ -7,6 +7,8 @@ import { ErrorToast } from "../common/ErrorToast";
 import { AwayReportModal } from "../lobby/AwayReportModal";
 import { shouldShowAwayPopup } from "../lobby/away-report-logic";
 import { useDecklessGuard } from "../common/useDecklessGuard";
+import { shouldOfferPracticeTutorial } from "../common/guide-storage";
+import { ONRAIL_EVENTS, reportOnRail } from "../onrail/onrail-telemetry";
 import { shouldForceResume } from "../common/match-lock";
 import { useAppConfigValue } from "../common/AppConfigContext";
 import { usePracticeStart } from "../common/usePracticeStart";
@@ -59,6 +61,31 @@ export function GamePage() {
    *      클라 가드는 진실이 아니므로, 서버 응답도 **같은 안내**로 흡수한다.
    */
   const deckless = useDecklessGuard();
+
+  /**
+   * #504 D2 — **제안 자격이 있는데 제안 없이 여기 도착했다**(관측 전용).
+   *
+   * 온레일 제안 판정은 홈 타일 `pressTile` **한 곳에만** 있고, 하단탭 [게임]·`/deck` 의
+   * `navigate("/game")`·URL 직접 진입은 그 판정을 **평가조차 하지 않는다**(#504 D1). 그 우회가
+   * 실제로 얼마나 일어나는지는 지금까지 **셀 방법이 없었다** — 서버에 아무 흔적도 안 남으므로.
+   *
+   * ⚠️ **여기서 제안을 띄우지 않는다.** 그건 동선 변경이라 hero 게이트 대상이고(D1), 이 웨이브는
+   * 관측만 한다. 고친 뒤 이 이벤트가 0 으로 떨어지는 것이 그 수정의 증거가 된다.
+   *
+   * ⚠️ 자격은 `me` 가 도착한 뒤에만 판정한다 — userId 를 모르는 동안은 `shouldOfferPracticeTutorial`
+   * 이 언제나 false 라(익명 키를 만들지 않는 규율) 로딩 중 판정은 언제나 "우회 아님"으로 굳는다.
+   *
+   * ⚠️ **경로는 싣지 않는다.** 이 컴포넌트는 `App.tsx` 의 `path="/game"` **한 곳**에만 마운트되므로
+   * 여기서 읽는 `pathname` 은 어느 동선으로 왔는지가 아니라 **도착한 화면**이고 언제나 같은 값이다.
+   * 경로 분포가 필요하면 내비게이션 **출처**를 실어야 하고, 그건 유저당 1행 좁힘(`recordOnce`)도
+   * 함께 풀어야 하는 별개 웨이브다. 지금 세는 것은 **우회한 유저 수** 하나다.
+   */
+  const userId = me?.user?.id ?? null;
+  useEffect(() => {
+    if (!userId) return;
+    if (!shouldOfferPracticeTutorial(userId)) return;
+    reportOnRail(userId, ONRAIL_EVENTS.offerMissed);
+  }, [userId]);
 
   function pressAway() {
     if (!deckless.guard()) return;
