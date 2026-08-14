@@ -24,7 +24,7 @@ DEG="${HMB_STATE_DIR:-$HOME/.local/state/hmb}/DEGRADED"
 if [ -f "$DEG" ]; then
   printf "  \033[1;31m▲ 워치독 DEGRADED — 자가복구 백오프 중(터널이 죽어도 자동으로 안 고쳐진다)\033[0m\n"
   printf "     %s\n" "$(cat "$DEG" 2>/dev/null | tr '\t' ' ')"
-  printf "     완화: printf 'HMB_HEAL_MAX_PER_HOUR=6\\\\n' > %s   (원복: rm 그 파일)\n" \
+  printf "     완화: 위 사유가 말하는 축을 올린다 (예: printf 'HMB_HEAL_TRIES=8\\\\n' > %s, 원복: rm 그 파일)\n" \
          "${HMB_STATE_DIR:-$HOME/.local/state/hmb}/heal.conf"
   printf "     지금 복구: bash infra/start-tunnel.sh  또는  bash infra/publish-backend-url.sh <새URL>\n"
 fi
@@ -134,7 +134,40 @@ if watchdog_installed; then
     printf "  \033[1;31m▲ 자가복구 워치독이 %s초째 안 돈다 (심박 정지) — 터널이 죽어도 자동으로 안 고쳐진다\033[0m\n" "$AGE"
     printf "     마지막 종료코드=%s  ← 78(EX_CONFIG)이면 유닛의 기동 전제(경로)가 사라진 것이다 (#497)\n" "${XSTAT:-?}"
   else
-    ok "자가복구 워치독: 가동 중 (심박 ${AGE}초 전, exit=${XSTAT:-0})${LAST:+ · 최근 이벤트: $LAST}"
+    # ⚠️ **"돌고 있다" 는 "고치고 있다" 가 아니다** (#505, 2026-08-14 실장애).
+    #    그날 이 화면은 10/10 ✓ 였고 워치독 줄도 ✓ 였다 — 그런데 직전에 자동복구가 **2연속 실패**
+    #    했고 터널을 살린 것은 사람이었다. 심박(도는가)과 치유 결과(고쳤는가)는 다른 축인데
+    #    한 줄이 심박만 보고 ✓ 를 찍었다. 최근 이벤트가 실패 계열이면 그 줄을 경고로 올린다.
+    #    ⚠️ 영구 경고가 되면 노이즈다 → 창(기본 6시간) 안의 실패만 본다. 그 뒤 성공 이벤트가
+    #    있으면 마지막 줄이 그 성공이라 자동으로 사라진다.
+    LASTEV=$(tail -1 "$HEAL_STATE/tunnel-heal.log" 2>/dev/null | cut -f3)
+    LASTTS=$(tail -1 "$HEAL_STATE/tunnel-heal.log" 2>/dev/null | cut -f1)
+    EVAGE=999999; case "${LASTTS:-}" in ''|*[!0-9]*) ;; *) EVAGE=$(( $(date +%s) - LASTTS ));; esac
+    case "$LASTEV" in
+      HEAL_FAIL|HEAL_UNPROPAGATED|PUBLISH_FAIL|PUBLISH_UNVERIFIED|RUN_TIMEOUT|BACKEND_DOWN|DEGRADED|HEAL_DEFER)
+        if [ "$EVAGE" -le "${HMB_HEAL_FAIL_WINDOW:-21600}" ]; then
+          printf "  ${Y}!${N} 자가복구 워치독: 돌고는 있는데 ${Y}최근 자동복구가 실패했다${N} — $LAST\n"
+          printf "     심박 ${AGE}초 전 · 지금 터널이 살아 있다면 그건 사람이 살린 것이다 (#505)\n"
+        else
+          ok "자가복구 워치독: 가동 중 (심박 ${AGE}초 전, exit=${XSTAT:-0})${LAST:+ · 최근 이벤트: $LAST}"
+        fi;;
+      *) ok "자가복구 워치독: 가동 중 (심박 ${AGE}초 전, exit=${XSTAT:-0})${LAST:+ · 최근 이벤트: $LAST}";;
+    esac
+    # 남은 재시도 예산 (#505 축1/축2/축3) — "자동으로 몇 발 더 쏘나" 가 안 보이면 판단할 수 없다.
+    # ⚠️ **설치본을 먼저 묻는다** — 실제로 도는 것이 그것이고, 리포 판을 물으면 아직 배포 안 된
+    #    노브 값을 현재 상태로 오독한다. 설치본이 구버전이라 `--budget` 을 모르면(usage 64) 그
+    #    출력은 예산 줄이 아니므로 버리고 리포 판으로 폴백한다(그러면 "설치본이 낡았다"가 보인다).
+    budget_of(){ [ -r "$1" ] && bash "$1" --budget 2>/dev/null | head -1 | grep '^재시도 예산' || true; }
+    BUD=$(budget_of "$HOME/.local/bin/hmb-tunnel-heal.sh")
+    if [ -n "$BUD" ]; then
+      printf "     %s\n" "$BUD"
+    else
+      BUD=$(budget_of infra/tunnel-heal.sh)
+      if [ -n "$BUD" ]; then
+        printf "     %s  ${Y}(리포 판 기준 — 설치본은 --budget 을 모른다 = 낡았다)${N}\n" "$BUD"
+        warn "워치독 설치본이 리포보다 낡았다 → bash infra/install-tunnel-heal.sh"
+      fi
+    fi
   fi
   # 스크립트가 돌더라도 종료코드가 비정상이면 그 자체가 신호다.
   case "${XSTAT:-0}" in

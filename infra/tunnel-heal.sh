@@ -24,7 +24,13 @@
 
 set -uo pipefail   # -e 는 쓰지 않는다 — 헬스 실패는 예외가 아니라 정상 흐름이다
 
-PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
+# launchd 는 최소 PATH 로 부른다 → 필요한 디렉토리를 앞에 붙여 고정한다.
+# `HMB_BIN_PREFIX` = 그보다 **더 앞**에 놓을 탐색 경로. 두 용도가 있다:
+#   ① 특정 cloudflared 빌드를 지정할 때
+#   ② **테스트 주입** — 이 줄이 호출자의 PATH 를 덮어써서, 가짜 도구를 앞에 깔아도 시스템
+#      바이너리가 이겼다(#505 하네스가 이 자리에서 통째로 무력화됐다. 실패 주입이 불가능한
+#      스크립트는 "고쳤다"를 증명할 방법이 없다).
+PATH="${HMB_BIN_PREFIX:+$HMB_BIN_PREFIX:}/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH:-}"
 export PATH
 
 # ── 설정 (전부 env 로 덮어쓸 수 있다) ──────────────────────────────────────────────
@@ -50,13 +56,63 @@ LOCK="$STATE_DIR/deploy.lock"
 PUBLISH="${HMB_PUBLISH_CMD:-$HOME/.local/bin/hmb-publish-backend-url.sh}"
 RESOLVERS="${HMB_RESOLVERS:-system 8.8.8.8 9.9.9.9 1.1.1.1}"
 CONFIRM_SLEEP="${HMB_CONFIRM_SLEEP:-10}"           # 1차 실패 후 재확인까지 (일시적 blip 흡수)
-# 초과 시 DEGRADED — 무한 재기동 방지. 회선이 불안정한 날엔 `heal.conf` 로 잠깐 올린다(위 참조).
-# ⚠️ 구 이름 `HMB_MAX_HEALS_PER_HOUR` 도 계속 받는다 — 이미 그 이름을 쓰는 곳이 있으면 조용히
-#    무시되는 게 최악이다. 새 이름이 우선, 없으면 구 이름, 그것도 없으면 3.
-MAX_HEALS_PER_HOUR="${HMB_HEAL_MAX_PER_HOUR:-${HMB_MAX_HEALS_PER_HOUR:-3}}"
 DEGRADED_MARK="$STATE_DIR/DEGRADED"                # status.sh 가 첫 줄에 띄우는 마커
 DNS_WAIT="${HMB_DNS_WAIT:-120}"                    # 새 호스트가 글로벌 DNS 에 뜰 때까지 대기 상한
 PROBE_TIMEOUT="${HMB_PROBE_TIMEOUT:-12}"
+
+# ── 재시도 예산: 세 축 (#505) ──────────────────────────────────────────────────────
+#
+# 구조는 `MAX_HEALS_PER_HOUR=3` **한 노브**였고, 그 하나가 서로 다른 두 질문을 겸했다:
+#   ⓐ "이 장애 하나를 고치는 데 몇 번까지 시도할까"  ⓑ "한 시간에 장애를 몇 번까지 처리할까"
+# 겸직의 대가가 실측으로 나왔다 — 최근 4개 장애에서 **첫 시도는 4/4 실패**했다(복구를 만드는
+# 것은 언제나 재시도다). 그런데 상한이 3 이라 **여유가 한 번뿐**이었고, 08-13 12:09 건은
+# 정확히 3번째에 성공했다(한계에 닿았다). 08-14 09:59 건은 두 번 실패하고 사람이 갔다.
+#
+#   축1 재시도 예산 — 장애 1건당 연속 시도 (기본 5)
+#   축2 장애 상한   — 시간당 '서로 다른 장애' 처리 횟수 (기본 3) ← 구 노브의 진짜 의도
+#   축3 폭주 방지선 — 종류 불문 시간당 절대 시도 상한 (기본 15) ← 위 두 축의 회계가 틀렸을 때만 걸린다
+#
+# 값의 근거(`heals.tsv` 전수, 08-10~08-14):
+#   · 한 장애를 고치는 데 실제로 든 시도 = 최대 **3**. 예산 5 = 실측 최악 + 2.
+#   · 장애 **내부** 시도 간격 = 172~360초 / 장애 **사이** = 3509초 이상 → 경계 900초로 깨끗이 갈린다.
+#   · 시간당 장애 수 실측 최대 = **1**. 3 은 플랩(같은 시간에 계속 죽는다)만 잡는 선이다.
+#   · 시간당 시도 수 실측 최대 = **3**. 15 는 정상 운전에서 절대 안 걸린다 = 그게 방지선의 역할이다(#391).
+HEAL_TRIES_PER_INCIDENT="${HMB_HEAL_TRIES:-5}"
+INCIDENT_GAP="${HMB_HEAL_INCIDENT_GAP:-900}"
+MAX_INCIDENTS_PER_HOUR="${HMB_HEAL_MAX_INCIDENTS_PER_HOUR:-3}"
+# ⚠️ 구 이름 두 개를 계속 받는다 — 이미 그 이름을 쓰는 곳이 있으면 조용히 무시되는 게 최악이다.
+#    ⚠️ **의미가 바뀌었다**: 이 노브는 이제 축3(절대 방지선)이지 축1·2 가 아니다. `heal.conf` 로
+#    `HMB_HEAL_MAX_PER_HOUR=6` 을 걸어 두던 완화책은 이제 **축2**(`HMB_HEAL_MAX_INCIDENTS_PER_HOUR`)
+#    를 올려야 한다. DEGRADED 메시지가 어느 축이 걸렸는지 이름으로 알려준다.
+MAX_HEALS_PER_HOUR="${HMB_HEAL_MAX_PER_HOUR:-${HMB_MAX_HEALS_PER_HOUR:-15}}"
+
+# 소모된 시도 사이의 백오프. 실측 자연 간격이 172~360초라 이 값들은 평소엔 **걸리지 않는다** —
+# 아래 DNS 게이트가 시도를 싸게 만든 뒤(무산은 예산을 안 쓴다) 연타가 될 때만 무는 브레이크다.
+HEAL_RETRY_BASE="${HMB_HEAL_RETRY_BASE:-60}"       # 1회 실패 후 60s → 120 → 240 → 상한
+HEAL_RETRY_MAX="${HMB_HEAL_RETRY_MAX:-300}"
+
+# ── 선행조건 게이트: cloudflared 의 등록 엔드포인트가 풀리나 (#505) ────────────────
+# 2026-08-14 09:59 장애의 1차 실패는 우리 코드가 아니라 **cloudflared 의 DNS** 였다:
+#   `failed to request quick Tunnel: … lookup api.trycloudflare.com: no such host`
+# 그 상태에서 시도해봐야 무조건 실패하는데, 지금 구조는 그 무산에 **예산을 한 칸 쓰고**
+# 멀쩡히 살아 있는(=530 이어도 프로세스는 있는) 기존 터널까지 죽인다. 둘 다 손해다.
+# → 시도 **전에** 이름이 풀리는지 보고, 안 풀리면 예산도 안 쓰고 기존 터널도 안 건드리고 빠진다.
+#   다음 틱(60초)이 다시 본다 = DNS 가 돌아오는 즉시 복구가 시작된다(백오프보다 빠르다).
+# ⚠️ **system 해석기로만** 판정한다 — cloudflared 가 쓰는 것이 그것이라서다. 공개 해석기가
+#    풀린다고 통과시키면 게이트가 cloudflared 의 현실과 다른 것을 보게 된다.
+# ⚠️ 게이트가 **영구 차단이 되면 안 된다**(dig 는 실패하는데 cloudflared 는 되는 경우가 있다 —
+#    probe() 가 같은 이유로 "해석기 전멸해도 단정하지 않는다"를 한다). 데드라인을 넘기면 그냥 시도한다.
+TUNNEL_REG_HOST="${HMB_TUNNEL_REG_HOST:-api.trycloudflare.com}"
+DNS_GATE_MAX="${HMB_HEAL_DNS_GATE_MAX:-600}"
+DEFER_MARK="$STATE_DIR/heal-defer"
+
+# ── cloudflared 로그 보관함 (#505 B) ──────────────────────────────────────────────
+# 2026-08-14 2차 시도의 실패 사유는 **영구 소실**됐다: 로그가 `/tmp/…log` 단일 파일이고
+# 회전은 `.prev` 한 장뿐이라, 사람이 돌린 `start-tunnel.sh` 가 원본을 덮고 그 전에 치유가
+# `.prev` 를 1차분으로 덮어 두 시도 중 하나만 남았다. 시도마다 타임스탬프로 남긴다.
+# ⚠️ 보관함은 `/tmp` 가 아니라 STATE_DIR 아래다 — /tmp 는 부팅 때 비워진다(#497).
+TUNNEL_LOG_DIR="${HMB_TUNNEL_LOG_DIR:-$STATE_DIR/tunnel-logs}"
+TUNNEL_LOG_KEEP="${HMB_TUNNEL_LOG_KEEP:-20}"
 
 mkdir -p "$STATE_DIR"
 
@@ -145,10 +201,65 @@ backend_alive(){
 
 # 상한은 **시도** 기준으로 센다. 성공만 세면 "매번 실패하는 치유" 가 상한에 안 걸려 무한
 # 재기동으로 번진다(실측: 전파가 3연속 실패하자 매 틱 새 터널을 만들어 URL 이 4번 바뀌었다).
-heals_last_hour(){
-  local cutoff; cutoff=$(( $(now) - 3600 ))
-  [ -f "$HEALS_FILE" ] || { echo 0; return; }
-  awk -F'\t' -v c="$cutoff" '$1 >= c' "$HEALS_FILE" | wc -l | tr -d ' '
+#
+# `heals.tsv` 는 append-only 라 시각이 오름차순이다. 그 한 파일에서 세 축을 다 뽑는다:
+#   출력 = "<현 장애의 소모 시도수> <마지막 시도 ts> <1시간 내 장애 수> <1시간 내 시도 수>"
+# 현 장애 = 지금부터 뒤로 `INCIDENT_GAP` 안에 연쇄한 묶음. 연쇄가 끊기면 거기가 장애 경계다.
+# ⚠️ 파일 포맷은 안 바꿨다(구 파일 그대로 읽힌다) — 마이그레이션이 필요 없어야 한다.
+heal_stats(){
+  [ -f "$HEALS_FILE" ] || { echo "0 0 0 0"; return; }
+  awk -F'\t' -v now="$(now)" -v gap="$INCIDENT_GAP" '
+    $1 ~ /^[0-9]+$/ { t[++n] = $1 + 0 }
+    END {
+      cur = 0; last = 0; inc = 0; att = 0
+      if (n > 0) {
+        last = t[n]
+        if (now - t[n] <= gap) {
+          cur = 1
+          for (i = n - 1; i >= 1; i--) { if (t[i+1] - t[i] <= gap) cur++; else break }
+        }
+      }
+      cutoff = now - 3600
+      for (i = 1; i <= n; i++) if (t[i] >= cutoff) { att++; if (i == 1 || t[i] - t[i-1] > gap) inc++ }
+      printf "%d %d %d %d", cur, last, inc, att
+    }' "$HEALS_FILE"
+}
+
+# 이미 k 번 소모했을 때 다음 시도까지 기다릴 초. 60 → 120 → 240 → 상한(300).
+backoff_for(){
+  local k="${1:-0}" w="$HEAL_RETRY_BASE" i=1
+  [ "$k" -le 0 ] && { echo 0; return; }
+  while [ "$i" -lt "$k" ]; do
+    w=$((w * 2)); i=$((i + 1))
+    [ "$w" -ge "$HEAL_RETRY_MAX" ] && { w="$HEAL_RETRY_MAX"; break; }
+  done
+  echo "$w"
+}
+
+# cloudflared 가 쓰는 해석기(system)로만 본다 — 위 게이트 주석 참조.
+reg_host_resolves(){
+  dig +short +time=3 +tries=1 "$TUNNEL_REG_HOST" 2>/dev/null \
+    | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
+}
+
+# cloudflared 로그에서 사람이 읽을 실패 줄 하나. 없으면 마지막 줄이라도 준다.
+cf_error_line(){
+  local l
+  l=$(grep -aiE 'failed|error|ERR |no such host|refused|timeout|unauthorized' "$TUNNEL_LOG" 2>/dev/null | tail -1)
+  [ -z "$l" ] && l=$(tail -1 "$TUNNEL_LOG" 2>/dev/null)
+  printf '%s' "$l" | tr '\t\n' '  ' | cut -c1-300
+}
+
+# 시도별 증거 보존. `.prev` 도 계속 쓴다(구 경로를 보는 사람이 있다).
+archive_tunnel_log(){
+  local tag="${1:-attempt}" f
+  [ -s "$TUNNEL_LOG" ] || return 0
+  mkdir -p "$TUNNEL_LOG_DIR" 2>/dev/null || return 0
+  cp -f "$TUNNEL_LOG" "$TUNNEL_LOG_DIR/$(iso | tr -d ':-')-$tag.log" 2>/dev/null || true
+  cp -f "$TUNNEL_LOG" "$TUNNEL_LOG.prev" 2>/dev/null || true
+  # shellcheck disable=SC2012
+  ls -1t "$TUNNEL_LOG_DIR"/*.log 2>/dev/null | tail -n +$((TUNNEL_LOG_KEEP + 1)) | while read -r f; do rm -f "$f"; done
+  return 0
 }
 
 # Pages 가 현재 서빙 중인 백엔드 주소(실패하면 빈 문자열).
@@ -292,12 +403,58 @@ heal(){
     return 4
   fi
 
-  local n; n=$(heals_last_hour)
-  if [ "$n" -ge "$MAX_HEALS_PER_HOUR" ]; then
-    record DEGRADED "1시간 내 치유 $n 회 ≥ 상한 $MAX_HEALS_PER_HOUR — 백오프"
-    degraded_mark "1시간 내 치유 $n 회 ≥ 상한 $MAX_HEALS_PER_HOUR (완화: printf 'HMB_HEAL_MAX_PER_HOUR=6\\n' > $HEAL_CONF)"
-    say "✗ DEGRADED — 1시간에 $n 번 치유했다(상한 $MAX_HEALS_PER_HOUR). 반복 사망은 사람이 봐야 한다."
+  # ── 선행조건: 등록 엔드포인트가 풀리나 (#505) ────────────────────────────────────
+  # 안 풀리면 **예산을 쓰지 않고** 빠진다. 기존 터널도 죽이지 않는다 — 대체품을 못 만드는데
+  # 죽이면 순수 손실이다(2026-08-14 1차 시도가 정확히 그렇게 했다).
+  if [ "${HMB_HEAL_DNS_GATE:-1}" = "1" ] && ! reg_host_resolves; then
+    local since elapsed
+    since=$(cut -f1 "$DEFER_MARK" 2>/dev/null)
+    case "${since:-}" in ''|*[!0-9]*) since=$(now); printf '%s\t%s\n' "$since" "$(iso)" > "$DEFER_MARK";; esac
+    elapsed=$(( $(now) - since ))
+    if [ "$elapsed" -lt "$DNS_GATE_MAX" ]; then
+      record HEAL_DEFER "dns:$TUNNEL_REG_HOST 미해석 — 예산 무소모, 다음 틱 재시도 (${elapsed}s/${DNS_GATE_MAX}s)"
+      say "· $TUNNEL_REG_HOST 가 안 풀린다 — 지금 시도해도 100% 실패한다. 예산 안 쓰고 대기(${elapsed}s/${DNS_GATE_MAX}s)"
+      return 3
+    fi
+    # 데드라인 초과 = 게이트가 틀렸을 수 있다(dig 는 죽었는데 cloudflared 는 될 수 있다) → 그냥 시도한다.
+    say "! $TUNNEL_REG_HOST 미해석이 ${elapsed}s 째다 — 게이트 신뢰 한도 초과, 그래도 시도한다"
+    record HEAL_GATE_OVERRIDE "dns:$TUNNEL_REG_HOST ${elapsed}s ≥ ${DNS_GATE_MAX}s — 게이트 무시하고 시도"
+  fi
+  rm -f "$DEFER_MARK" 2>/dev/null || true
+
+  # ── 예산 세 축 (#505) ────────────────────────────────────────────────────────────
+  local cur last inc att need since_last
+  read -r cur last inc att <<EOF
+$(heal_stats)
+EOF
+  # 축3 — 폭주 방지선. 정상 운전에서 걸리면 그건 위 두 축의 회계가 틀린 것이다(#391 부류).
+  if [ "$att" -ge "$MAX_HEALS_PER_HOUR" ]; then
+    record DEGRADED "폭주방지선: 1시간 내 시도 $att 회 ≥ $MAX_HEALS_PER_HOUR"
+    degraded_mark "폭주방지선 — 1시간 내 시도 $att 회 ≥ $MAX_HEALS_PER_HOUR (축1/축2 회계 점검 필요)"
+    say "✗ DEGRADED — 폭주 방지선($MAX_HEALS_PER_HOUR/h)에 걸렸다. 사람이 봐야 한다."
     return 5
+  fi
+  # 축1 — 이 장애 하나에 쓸 재시도 예산.
+  if [ "$cur" -ge "$HEAL_TRIES_PER_INCIDENT" ]; then
+    record DEGRADED "재시도 예산 소진: 이 장애에 $cur 회 ≥ $HEAL_TRIES_PER_INCIDENT"
+    degraded_mark "재시도 예산 소진 — 이 장애에 $cur 회 시도했다(예산 $HEAL_TRIES_PER_INCIDENT). 완화: printf 'HMB_HEAL_TRIES=8\\n' > $HEAL_CONF"
+    say "✗ DEGRADED — 이 장애에 $cur 번 시도했다(예산 $HEAL_TRIES_PER_INCIDENT). 원인이 우리 밖에 있다."
+    return 5
+  fi
+  # 축2 — 시간당 장애 수. **새 장애를 여는 경우에만** 본다(진행 중인 장애를 여기서 끊으면 축1 이 무의미해진다).
+  if [ "$cur" -eq 0 ] && [ "$inc" -ge "$MAX_INCIDENTS_PER_HOUR" ]; then
+    record DEGRADED "장애 상한: 1시간 내 장애 $inc 건 ≥ $MAX_INCIDENTS_PER_HOUR"
+    degraded_mark "1시간에 장애가 $inc 건 ≥ 상한 $MAX_INCIDENTS_PER_HOUR (완화: printf 'HMB_HEAL_MAX_INCIDENTS_PER_HOUR=6\\n' > $HEAL_CONF)"
+    say "✗ DEGRADED — 1시간에 서로 다른 장애가 $inc 건이다(상한 $MAX_INCIDENTS_PER_HOUR). 반복 사망은 사람이 봐야 한다."
+    return 5
+  fi
+  # 백오프 — 소모한 시도끼리만 간격을 둔다(무산된 시도는 위에서 이미 예산 밖이다).
+  if [ "$cur" -gt 0 ]; then
+    need=$(backoff_for "$cur"); since_last=$(( $(now) - last ))
+    if [ "$since_last" -lt "$need" ]; then
+      say "· 직전 시도로부터 ${since_last}s — 백오프 ${need}s 대기 중(이 장애 ${cur}/${HEAL_TRIES_PER_INCIDENT})"
+      return 3
+    fi
   fi
 
   if ! try_lock; then
@@ -305,9 +462,9 @@ heal(){
   fi
 
   old_url=$(current_url)
-  record HEAL_START "reason=$reason old=${old_url:-<없음>}"
+  record HEAL_START "reason=$reason old=${old_url:-<없음>} try=$((cur + 1))/${HEAL_TRIES_PER_INCIDENT} 장애=${inc}/${MAX_INCIDENTS_PER_HOUR}per-h"
   printf '%s\t%s\tattempt\n' "$(now)" "$(iso)" >> "$HEALS_FILE"   # 상한은 시도 기준(위 주석)
-  say "▶ 치유 시작 (사유: $reason, 기존 URL: ${old_url:-없음})"
+  say "▶ 치유 시작 (사유: $reason, 기존 URL: ${old_url:-없음}, 시도 $((cur + 1))/$HEAL_TRIES_PER_INCIDENT)"
 
   # 1) 기존 터널 종료 — **PID 로만**, 그리고 그 PID 가 정말 cloudflared 인지 확인하고서.
   if [ -f "$TUNNEL_PID" ]; then
@@ -321,8 +478,8 @@ heal(){
     fi
   fi
 
-  # 2) 새 터널
-  [ -f "$TUNNEL_LOG" ] && mv -f "$TUNNEL_LOG" "$TUNNEL_LOG.prev" 2>/dev/null
+  # 2) 새 터널 — 덮어쓰기 **전에** 직전 로그를 보관함으로 (#505 B)
+  archive_tunnel_log "pre-heal"
   # ⚠️ `--protocol` 기본 http2 — quick tunnel 의 기본 QUIC(UDP)은 **모바일 핫스팟/제한적 NAT
   #    에서 조용히 죽는다**. 2026-07-31 09:40~09:53Z 실장애: QUIC 로 뜬 터널이 "timeout: no
   #    recent network activity"·"datagram manager ... failure" 를 반복하다 호스트가 DNS 에서
@@ -337,8 +494,11 @@ heal(){
 
   for _ in $(seq 1 30); do new_url=$(current_url); [ -n "$new_url" ] && break; sleep 2; done
   if [ -z "${new_url:-}" ]; then
-    record HEAL_FAIL "새 URL 획득 실패 — $TUNNEL_LOG"
-    say "✗ 새 URL 을 못 얻었다 — $TUNNEL_LOG 확인"; return 1
+    # ⚠️ 실패 **사유를 여기서 heal 로그로 복사한다** (#505 B). 안 그러면 다음 시도나 사람의
+    #    start-tunnel.sh 가 cloudflared 로그를 덮어 원인이 영구 소실된다(2026-08-14 2차 시도가 그랬다).
+    archive_tunnel_log "failed-no-url"
+    record HEAL_FAIL "새 URL 획득 실패 — cf: $(cf_error_line) [보존: $TUNNEL_LOG_DIR]"
+    say "✗ 새 URL 을 못 얻었다 — $(cf_error_line)"; return 1
   fi
   say "· 새 URL = $new_url"
 
@@ -360,7 +520,8 @@ heal(){
     sleep 5
   done
   if [ "$alive" != "1" ]; then
-    record HEAL_FAIL "새 터널이 ${DNS_WAIT}s 안에 살아나지 않음 url=$new_url 실경과=$(( $(date +%s) - started ))s"
+    archive_tunnel_log "failed-no-roundtrip"
+    record HEAL_FAIL "새 터널이 ${DNS_WAIT}s 안에 살아나지 않음 url=$new_url 실경과=$(( $(date +%s) - started ))s cf: $(cf_error_line)"
     say "✗ 새 터널이 ${DNS_WAIT}s 안에 응답하지 않는다"; return 1
   fi
 
@@ -393,6 +554,9 @@ heal(){
 # 어디서 매달리든 상한 안에 죽고, 다음 틱이 깨끗한 상태로 다시 시작하게 한다.
 # (macOS 엔 `timeout(1)` 이 없다 — 백그라운드 감시자로 직접 건다.)
 RUN_DEADLINE="${HMB_RUN_DEADLINE:-420}"
+# `--budget` 는 파일 몇 줄 읽고 끝난다 — 감시자를 달면 status.sh 를 부를 때마다 7분짜리 sleep 이
+# 하나씩 남는다. 매달릴 일이 없는 모드에 백스톱을 달지 않는다.
+[ "$MODE" = "--budget" ] && RUN_DEADLINE=0
 if [ "$RUN_DEADLINE" -gt 0 ] 2>/dev/null; then
   # ⚠️ 감시자의 stdout/stderr 는 **반드시 /dev/null 로 갈아끼운다.** 안 하면 부모의 fd 를 물려받는데,
   #    이 스크립트가 파이프로 불릴 때(`… | tail`) 파이프는 **쓰는 쪽이 전부 닫혀야** EOF 가 난다 →
@@ -408,7 +572,10 @@ if [ "$RUN_DEADLINE" -gt 0 ] 2>/dev/null; then
 fi
 
 # ── 모드 ───────────────────────────────────────────────────────────────────────────
-beat
+# ⚠️ `--budget` 는 심박을 찍지 **않는다**. status.sh 가 이 모드를 부르는데, 여기서 심박을
+#    갱신하면 **워치독이 죽어 있어도 status.sh 가 자기 호출로 심박을 살려** "가동 중" 이 된다
+#    (= #497 을 잡으려고 만든 신호를 관측 행위가 오염시킨다). 읽기 전용 모드는 읽기만 한다.
+[ "$MODE" = "--budget" ] || beat
 case "$MODE" in
   --selftest)
     rc=0
@@ -478,6 +645,20 @@ case "$MODE" in
     heal "unhealthy:$out2"
     exit $?;;
 
+  # 예산 상태를 한 줄로 — status.sh 와 사람이 "지금 자동복구가 몇 발 남았나" 를 묻는 창구.
+  # 아무것도 바꾸지 않는다(심박만 갱신된다).
+  --budget)
+    read -r b_cur b_last b_inc b_att <<EOF
+$(heal_stats)
+EOF
+    b_ago=0; [ "${b_last:-0}" -gt 0 ] && b_ago=$(( $(now) - b_last ))
+    say "재시도 예산: 이 장애 ${b_cur}/${HEAL_TRIES_PER_INCIDENT}  ·  1시간 내 장애 ${b_inc}/${MAX_INCIDENTS_PER_HOUR}  ·  시도 ${b_att}/${MAX_HEALS_PER_HOUR}(방지선)  ·  마지막 시도 ${b_ago}s 전"
+    [ -f "$DEFER_MARK" ] && say "유예 중: $TUNNEL_REG_HOST 미해석 (since $(cut -f2 "$DEFER_MARK" 2>/dev/null))"
+    [ -f "$DEGRADED_MARK" ] && say "DEGRADED: $(tr '\t' ' ' < "$DEGRADED_MARK")"
+    exit 0;;
+
   *)
-    say "usage: $(basename "$0") [--selftest|--check|--once]"; exit 64;;
+    say "usage: $(basename "$0") [--selftest|--check|--once|--budget]"
+    say "  종료코드: 0 정상 · 1 치유 실패 · 3 유예(예산 무소모) · 4 백엔드 사망 · 5 DEGRADED · 64 사용법"
+    exit 64;;
 esac

@@ -26,6 +26,12 @@ if [ -f "$PIDF" ] && ps -p "$(cat "$PIDF")" >/dev/null 2>&1; then
   echo "[tunnel] 기존 터널 종료 (pid $(cat "$PIDF"))"; kill "$(cat "$PIDF")" 2>/dev/null || true; sleep 1
 fi
 
+# ⚠️ 로그를 덮어쓰기 **전에** 보존한다 (#505 B). 2026-08-14 장애에서 이 세 줄이 없어서,
+#    사람이 이 스크립트를 돌린 순간 워치독 2차 치유의 실패 사유가 **영구 소실**됐다.
+#    (워치독과 같은 보관함을 쓴다 — /tmp 가 아니라 STATE_DIR: /tmp 는 부팅 때 비워진다, #497.)
+ARCH="${HMB_STATE_DIR:-$HOME/.local/state/hmb}/tunnel-logs"
+[ -s "$LOG" ] && { mkdir -p "$ARCH"; cp -f "$LOG" "$ARCH/$(date -u +%Y%m%dT%H%M%SZ)-manual.log" 2>/dev/null || true; }
+
 echo "[tunnel] cloudflared quick tunnel 기동 → localhost:18080"
 # `--protocol` 기본 http2 — 근거·실장애 기록은 tunnel-heal.sh 의 같은 자리 주석 참조
 # (QUIC 는 핫스팟/제한 NAT 에서 죽는다. 되돌리기 = HMB_TUNNEL_PROTOCOL=quic).
