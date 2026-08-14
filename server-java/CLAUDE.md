@@ -97,6 +97,49 @@
   MatchDetail 통짜인 이유 = web 이 한 요청으로 `clock` 을 받아 seek-to-now 를 태운다.
   `locked`/`abandonable` 판정은 **서버가 SoT** — 클라가 복제하면 규칙이 바뀔 때 조용히 어긋난다.
 
+## 시계 스위퍼 — **블로킹 호출을 이 사슬에 넣지 마라** (#512)
+
+`MatchClockSweeper` 는 `@Scheduled(fixedDelay)` 다 = **이번 실행이 끝나야 다음이 뜬다.** 그래서
+스윕 안에서 무언가 영원히 안 돌아오면 **모든 매치의 자동 진행이 프로세스 재시작 전까지 멈춘다**
+(자기복구 경로 없음 — 유저의 수동 `POST /resume` 만 남는다).
+
+⚠️ **그리고 피해는 시계에서 끝나지 않는다.** 초판은 *"가상스레드라 다른 `@Scheduled` 는 안 막힌다"*
+고 적었는데 **거짓이다**(#512 독립검증 blocker-1 이 실측으로 반증). `SimpleAsyncTaskScheduler` 의
+스케줄 실행자는 **단일 스레드**이고 fixedDelay·fixedRate **트리거가 그 한 스레드에서** 돈다(⚠️ 그
+스레드가 가상이라는 것과 "서로 안 막는다"는 별개다 — **fixedDelay 는 본체까지** 그 스레드에서 돌고,
+본체를 새 가상스레드로 던지는 fixedRate 계열도 **트리거가 굶으면 발화 자체가 없다**).
+한 태스크를 hang 시키면 같은 창에서 다른 fixedDelay 29회 → **0회**,
+fixedRate 25회 → **0회**. 즉 **`JobLeaseSweeper`(잡 리스 회수)·`MatchAbandonSweeper`(멈춘 매치 회수)·
+`AwaySeasonSweeper` 까지 같이 굶는다.** 완화책으로 읽으면 안 되고 **피해 목록**으로 읽어야 한다 —
+멈춘 매치를 되살릴 백스톱이 바로 그 죽은 스위퍼들이다.
+
+- ⚠️ **스위퍼 스레드는 엔진 RPC 를 직접 탄다.** 보통은 안 탄다(AI 잡 미완 → `maybeSimulate` 즉시
+  리턴). 그런데 **양쪽 인풋이 재사용으로 해소되는 경로**(`insertMaterialized` → `maybeSimulate`)
+  에서는 그 자리에서 시뮬이 돈다. **오토 매치(#249)는 감독시간이 0초라 사실상 항상** 그 경로다.
+- ⚠️ **`HttpRequest.timeout` 은 응답 <u>헤더</u>까지만 센다.** 헤더가 온 뒤 본문이 멈추면
+  `HttpClient.send()` 는 영원히 매달린다(JDK 21 실측: 요청 타임아웃 3s 에 120s 넘게 반환 없음).
+  "타임아웃을 걸어 뒀으니 유한하다"는 **거짓**이다. 그래서 `EngineRunnerClient` 는 `sendAsync` +
+  `get(마감)` + `cancel(true)` 로 **교환 전체**에 벽시계 마감을 건다(= `sendBounded`, 새 HTTP 호출도
+  반드시 그것을 써라). 매치 로그는 수 MB 라 본문 전송이 짧지 않다 = 그 창은 실재한다.
+- 그 위에 **스윕 전체 상한**(`sweep-task-timeout-ms` 180s, `MatchClockService.awaitAll`)이 있다.
+  작업당이 아니라 **한 스윕 전체**에 거는 이유 = 작업당이면 N 개가 각각 상한을 다 써 "유한하지만
+  실질적으로 멈춤"이 된다. 초과해도 **취소하지 않는다**(전이 트랜잭션 한가운데를 인터럽트하면
+  "늦은 시계"가 "반쯤 넘어간 매치"로 바뀐다) — 로그만 남기고 다음 스윕으로 간다.
+  - ⚠️ 그래서 **이 상한만으로는 완전하지 않다**: 마감 없는 블로킹 호출이 4개 쌓이면 `sweepPool`
+    (고정 4)이 고갈되고, 그 뒤 스윕은 큐에만 쌓여 **시계가 실제로 선다**(180s 마다 에러 로그 한 줄이
+    붙을 뿐). 상한은 *루프를 살려 신호를 내보내는 것*이고, **호출마다 마감을 거는 것이 진짜 방어**다.
+  - ⚠️ 180s 는 **작업 1개 최대치(엔진 RPC 30s × 2 × 재시도 2 = 120s)** 위의 여유인데 예산은
+    **스윕 전체**다 — 무거운 만료가 `sweep-parallelism`(4)을 넘게 몰리면 여기 걸릴 수 있다.
+    걸려도 손실은 없다(전이 CAS 가 RPC **앞에서** 커밋돼 그 매치는 다음 스윕 후보에서 빠진다).
+- 계약 = `EngineRunnerStallTest`(헤더 후 본문 정지 서버 + CTRL 정상 응답) · `MatchClockSweepBoundTest`
+  (막힌 작업이 루프를 세우지 않는다 + **두 번째 대기가 "새 예산"이 아니라 "남은 예산"을 쓴다** + CTRL) ·
+  **`MatchClockSweepDeadlineTest`
+  (호출부 — 실제 만료 전이에서 `advanceAllDue` 가 상한 안에 돌아온다 + CTRL 정상 러너는 전이를 끝까지
+  마친다)** · `MatchClockShippedDefaultsTest`(상한이 유한하고 정상 전이를 죽이지 않는 밴드).
+  ⚠️ **호출부 계약이 왜 따로 있나**: 정적 헬퍼만 검정하면 *"호출부가 그 값을 넘기는가"* 가 빈다 —
+  독립 검증이 `advanceAllDue` 의 인자를 무한대로 되돌려 **1264개 전부 green** 을 실증했다.
+  ⚠️ 계약들이 `assertTimeoutPreemptively` 를 쓰는 이유 = **실패가 hang 이 아니라 red 여야** 한다.
+
 ## 재화 표기 메타 (#232)
 
 - **표기는 데이터다.** `EconomyService.Currency`(code·symbol·name·icon·position·separator)가 economy

@@ -7,8 +7,17 @@ spring:
   task:
     scheduling:
       # ⚠️ 아래 pool.size 는 **가상스레드가 켜져 있는 한 무효**다(Boot 가 SimpleAsyncTaskScheduler 를
-      # 고른다 — 스케줄 실행마다 새 가상스레드라 @Scheduled 끼리 서로 막지 않는다). 가상스레드를 끄는
-      # 날을 대비한 방어값으로만 둔다(#170 독립검증 minor: 선언≠효과였던 것 정정).
+      # 고른다). 가상스레드를 끄는 날을 대비한 방어값으로만 둔다(#170 독립검증 minor: 선언≠효과).
+      #
+      # ⚠️⚠️ **"@Scheduled 끼리 서로 막지 않는다"는 거짓이다**(#512 독립검증 blocker-1 이 반증).
+      # SimpleAsyncTaskScheduler 의 내부 스케줄 실행자는 **단일 스레드**이고(corePoolSize 1),
+      # fixedDelay·fixedRate 의 **트리거가 그 한 스레드에서** 돈다. ⚠️ 그 스레드가 가상이라는 것과
+      # "서로 안 막는다"는 별개다 — 게다가 **fixedDelay 는 태스크 본체까지 그 스레드에서** 돈다
+      # (`taskOnSchedulerThread`). 본체를 새 가상스레드로 던지는 것은 fixedRate·트리거 계열이고,
+      # 그래도 **트리거 자체가 굶으면 발화가 안 된다**(#512 델타검증 m8: 결합은 오히려 더 강하다).
+      # 실측: 한 태스크를 hang 시키면 같은 6초 창에서 다른 fixedDelay 태스크 29회 → **0회**,
+      # fixedRate 태스크 25회 → **0회**. 즉 스위퍼 하나가 매달리면 **네 스위퍼가 전부 굶는다**
+      # (시계·잡 리스·방치 회수·시즌). 회수 백스톱까지 같이 죽으므로 "자기복구"를 거기에 기대지 마라.
       pool:
         size: 4
   threads:
@@ -226,6 +235,9 @@ hmb:
       auto-resume-on-expiry: true  # 만료 시 후반 자동 시작(전반 프롬프트 승계)
       sweep-interval-ms: 1000      # 시계 스위퍼 주기(잡 스위퍼 10s 와 별도 — 초 단위 경계)
       sweep-parallelism: 4         # 만료 스윕 동시 매치 수(후반 시작이 동기 시뮬이라 순차면 서로를 막는다)
+      # 한 스윕이 작업 완료를 기다리는 총 상한(#512). 정상 최대치(엔진 RPC 30s × 2 × 재시도 2 = 120s)
+      # 위의 여유값 — 여기 걸리면 "느린 매치"가 아니라 "안 끝나는 무언가"다.
+      sweep-task-timeout-ms: 180000
       seek:
         forward-blocked: true      # 라이브 앞서가기 금지(뒤로 스크럽은 자유)
         grace-ms: 1500             # 지연·클럭 스큐 허용 오차

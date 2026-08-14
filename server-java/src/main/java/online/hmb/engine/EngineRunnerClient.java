@@ -29,6 +29,8 @@ public class EngineRunnerClient {
     private final ObjectMapper objectMapper;
     private final String runnerUrl;
     private final Duration timeout;
+    /** 교환 전체(헤더+본문)의 벽시계 마감 — 생성자 주석 참조(#512). */
+    private final Duration hardDeadline;
     private final int retries;
     private final HttpClient httpClient;
 
@@ -39,10 +41,54 @@ public class EngineRunnerClient {
         this.objectMapper = objectMapper;
         this.runnerUrl = runnerUrl;
         this.timeout = Duration.ofSeconds(timeoutSec);
+        // ⚠️ **교환 전체의 벽시계 마감**(#512). `HttpRequest.timeout` 은 **응답 헤더까지**만 센다 —
+        // 헤더가 온 뒤 본문이 멈추면 `send()` 는 그 자리에 영원히 매달린다(JDK 21 실측: 요청
+        // 타임아웃 3s 에 120s 넘게 반환 없음). 이 호출은 **매치 시계 스위퍼 스레드가 직접 탈 수
+        // 있고**(AI 인풋이 양쪽 다 재사용으로 해소되는 경로), 스위퍼는 `@Scheduled(fixedDelay)` 라
+        // 한 번 매달리면 **모든 매치의 자동 진행이 재시작 전까지 멈춘다**. 그래서 헤더 타임아웃과
+        // 별개로 마감을 하나 더 건다. 2배인 이유 = 헤더 몫과 본문 몫을 같은 예산으로 보되(매치
+        // 로그는 수 MB 라 본문 전송이 짧지 않다) 상한은 반드시 유한하게 두려는 것.
+        this.hardDeadline = this.timeout.multipliedBy(2);
         this.retries = retries;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(5))
                 .build();
+    }
+
+    /**
+     * 마감이 걸린 동기 호출 — {@code send()} 자리를 전부 이것으로 바꾼다(#512).
+     *
+     * <p>{@code sendAsync} + {@code get(마감)} 이라야 <b>본문 정지</b>까지 끊긴다. 초과 시
+     * {@code cancel(true)} 로 교환 자체를 끊는다 — 안 끊으면 호출자는 풀려나도 소켓과 읽기 작업이
+     * 남는다.
+     */
+    private HttpResponse<String> sendBounded(HttpRequest request) throws Exception {
+        java.util.concurrent.CompletableFuture<HttpResponse<String>> pending =
+                httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofString());
+        try {
+            return pending.get(hardDeadline.toMillis(), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            pending.cancel(true);
+            throw new IllegalStateException("runner 응답 마감 초과(" + hardDeadline.toSeconds() + "s): "
+                    + request.uri());
+        } catch (InterruptedException e) {
+            /*
+             * ⚠️ **인터럽트는 재시도하지 않는다**(#512 R1, 독립 검증 m4). 이걸 그냥 흘리면
+             * `callOnce` 의 `catch (Exception)` 이 IllegalStateException 으로 감싸고, `simulate` 의
+             * 재시도 루프가 **인터럽트 플래그가 지워진 채 한 번 더** 러너를 부른다(최대 마감만큼 더).
+             * 인터럽트가 오는 자리는 `sweepPool.shutdownNow()`(= 종료 중)라, 그때 새 왕복을 시작하는
+             * 것은 종료를 늦출 뿐이다. 플래그를 되살리고 교환도 끊는다.
+             */
+            pending.cancel(true);
+            Thread.currentThread().interrupt();
+            throw e;
+        } catch (java.util.concurrent.ExecutionException e) {
+            Throwable cause = e.getCause() == null ? e : e.getCause();
+            if (cause instanceof Exception ex) {
+                throw ex;
+            }
+            throw new IllegalStateException("runner 호출 실패: " + cause, cause);
+        }
     }
 
     /**
@@ -84,6 +130,16 @@ public class EngineRunnerClient {
             } catch (RuntimeException e) {
                 last = e;
                 log.warn("simulate attempt {}/{} failed: {}", attempt + 1, retries + 1, e.toString());
+                // 인터럽트(= 종료 중)면 재시도하지 않는다 — `callOnce` 가 검사예외를 런타임으로
+                // 감싸므로 종류로는 못 가른다. 플래그로 가른다(`sendBounded` 가 되살려 둔다).
+                //
+                // ⚠️ **이 줄은 백스톱이고, 계약이 무는 것은 이 줄이 아니다**(변이 실측): 지워도
+                // 다음 시도의 `pending.get()` 이 **선 플래그 때문에 즉시** InterruptedException 을
+                // 내서 결과가 같다. 진짜 성질은 `sendBounded` 의 플래그 복원이고, 그걸 지우면
+                // 계약이 죽는다. 이 줄은 "왜 안 도는가"를 로그·의도로 남기는 몫이다.
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IllegalStateException("엔진러너 simulate 중단(인터럽트): " + e.getMessage(), e);
+                }
             }
         }
         throw new IllegalStateException("엔진러너 simulate 실패(재시도 소진): " + last.getMessage(), last);
@@ -97,7 +153,7 @@ public class EngineRunnerClient {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(body)))
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendBounded(request);
             if (response.statusCode() != 200) {
                 throw new IllegalStateException("runner HTTP " + response.statusCode() + ": "
                         + truncate(response.body()));
@@ -141,7 +197,7 @@ public class EngineRunnerClient {
                     .timeout(timeout)
                     .GET()
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendBounded(request);
             if (response.statusCode() != 200) {
                 throw new IllegalStateException("runner /config/knobs HTTP " + response.statusCode());
             }
@@ -169,7 +225,7 @@ public class EngineRunnerClient {
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = sendBounded(request);
             JsonNode root = objectMapper.readTree(response.body());
             if (response.statusCode() == 400) {
                 throw ApiException.validation(issuesOf(root));

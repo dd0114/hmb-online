@@ -430,16 +430,51 @@ public class MatchClockService {
                 }
             }));
         }
+        awaitAll(pending, props.getSweepTaskTimeoutMs());
+        return due.size();
+    }
+
+    /**
+     * 던진 스윕 작업들을 <b>상한을 두고</b> 기다린다 (#512).
+     *
+     * <p>구 코드는 {@code f.get()} 을 <b>타임아웃 없이</b> 걸었다. 그런데 그 작업 안에는 엔진 RPC 가
+     * 있고(AI 인풋이 양쪽 다 재사용으로 해소되는 경로에서는 스위퍼 스레드가 <b>직접</b> 탄다 —
+     * 오토 매치는 감독시간이 0초라 사실상 항상 그 경로다), 그 호출은 러너가 응답 <b>본문 중간에</b>
+     * 멈추면 영원히 안 돌아왔다({@code EngineRunnerStallTest}). 스위퍼는 {@code @Scheduled(fixedDelay)}
+     * 라 <b>이번 실행이 끝나야 다음이 뜨므로</b>, 한 번 매달리면 <b>모든 매치의 자동 진행이 프로세스
+     * 재시작 전까지 멈춘다</b>. 자기복구 경로가 없다.
+     *
+     * <p>근인(그 RPC)은 {@code EngineRunnerClient} 에서 마감으로 막았다. 이 상한은 그 위의 방어선이다 —
+     * <b>다음에 어떤 블로킹 호출이 이 사슬에 들어와도 시계는 안 서야 한다</b>.
+     *
+     * <p>⚠️ 상한은 <b>작업 하나당이 아니라 이번 스윕 전체</b>에 건다. 작업당으로 걸면 N 개가 각각
+     * 상한을 다 쓸 수 있어 "유한하지만 실질적으로 멈춤"이 된다.
+     *
+     * <p>⚠️ 초과해도 {@code cancel(true)} 하지 <b>않는다</b>. 그 작업은 전이 트랜잭션 한가운데일 수
+     * 있고, 거기서 인터럽트를 던지면 "시계가 늦는 것"을 "상태가 반쯤 넘어간 매치"로 바꾼다. 대신
+     * 로그로 알리고 다음 스윕으로 넘어간다 — 그 작업은 자기 마감(위 RPC)에 걸려 스스로 끝난다.
+     */
+    public static void awaitAll(List<java.util.concurrent.Future<?>> pending, long totalTimeoutMs) {
+        long deadline = System.nanoTime() + totalTimeoutMs * 1_000_000L;
         for (java.util.concurrent.Future<?> f : pending) {
+            long remainingMs = (deadline - System.nanoTime()) / 1_000_000L;
+            if (remainingMs <= 0) {
+                log.error("clock sweep 상한({}ms) 초과 — 남은 작업을 기다리지 않고 다음 스윕으로 넘어간다."
+                        + " 러너 응답 정지나 새로 들어온 블로킹 호출을 의심하라(#512).", totalTimeoutMs);
+                return;
+            }
             try {
-                f.get();
+                f.get(remainingMs, java.util.concurrent.TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
-                break;
+                return;
+            } catch (java.util.concurrent.TimeoutException e) {
+                log.error("clock sweep 작업이 상한({}ms) 안에 끝나지 않았다 — 취소하지 않고 넘어간다(#512).",
+                        totalTimeoutMs);
+                return;
             } catch (Exception e) {
                 log.error("clock sweep 작업 실패: {}", e.toString());
             }
         }
-        return due.size();
     }
 }
