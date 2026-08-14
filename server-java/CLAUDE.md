@@ -105,8 +105,10 @@
 
 ⚠️ **그리고 피해는 시계에서 끝나지 않는다.** 초판은 *"가상스레드라 다른 `@Scheduled` 는 안 막힌다"*
 고 적었는데 **거짓이다**(#512 독립검증 blocker-1 이 실측으로 반증). `SimpleAsyncTaskScheduler` 의
-스케줄 실행자는 **단일 스레드**이고 fixedDelay·fixedRate **트리거가 그 한 스레드에서** 돈다 —
-가상스레드는 태스크 본체 몫이다. 한 태스크를 hang 시키면 같은 창에서 다른 fixedDelay 29회 → **0회**,
+스케줄 실행자는 **단일 스레드**이고 fixedDelay·fixedRate **트리거가 그 한 스레드에서** 돈다(⚠️ 그
+스레드가 가상이라는 것과 "서로 안 막는다"는 별개다 — **fixedDelay 는 본체까지** 그 스레드에서 돌고,
+본체를 새 가상스레드로 던지는 fixedRate 계열도 **트리거가 굶으면 발화 자체가 없다**).
+한 태스크를 hang 시키면 같은 창에서 다른 fixedDelay 29회 → **0회**,
 fixedRate 25회 → **0회**. 즉 **`JobLeaseSweeper`(잡 리스 회수)·`MatchAbandonSweeper`(멈춘 매치 회수)·
 `AwaySeasonSweeper` 까지 같이 굶는다.** 완화책으로 읽으면 안 되고 **피해 목록**으로 읽어야 한다 —
 멈춘 매치를 되살릴 백스톱이 바로 그 죽은 스위퍼들이다.
@@ -130,7 +132,8 @@ fixedRate 25회 → **0회**. 즉 **`JobLeaseSweeper`(잡 리스 회수)·`Match
     **스윕 전체**다 — 무거운 만료가 `sweep-parallelism`(4)을 넘게 몰리면 여기 걸릴 수 있다.
     걸려도 손실은 없다(전이 CAS 가 RPC **앞에서** 커밋돼 그 매치는 다음 스윕 후보에서 빠진다).
 - 계약 = `EngineRunnerStallTest`(헤더 후 본문 정지 서버 + CTRL 정상 응답) · `MatchClockSweepBoundTest`
-  (막힌 작업이 루프를 세우지 않는다 + 예산이 작업당이 아니다 + CTRL) · **`MatchClockSweepDeadlineTest`
+  (막힌 작업이 루프를 세우지 않는다 + **두 번째 대기가 "새 예산"이 아니라 "남은 예산"을 쓴다** + CTRL) ·
+  **`MatchClockSweepDeadlineTest`
   (호출부 — 실제 만료 전이에서 `advanceAllDue` 가 상한 안에 돌아온다 + CTRL 정상 러너는 전이를 끝까지
   마친다)** · `MatchClockShippedDefaultsTest`(상한이 유한하고 정상 전이를 죽이지 않는 밴드).
   ⚠️ **호출부 계약이 왜 따로 있나**: 정적 헬퍼만 검정하면 *"호출부가 그 값을 넘기는가"* 가 빈다 —

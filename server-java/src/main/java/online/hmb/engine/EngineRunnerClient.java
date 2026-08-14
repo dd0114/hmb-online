@@ -132,6 +132,11 @@ public class EngineRunnerClient {
                 log.warn("simulate attempt {}/{} failed: {}", attempt + 1, retries + 1, e.toString());
                 // 인터럽트(= 종료 중)면 재시도하지 않는다 — `callOnce` 가 검사예외를 런타임으로
                 // 감싸므로 종류로는 못 가른다. 플래그로 가른다(`sendBounded` 가 되살려 둔다).
+                //
+                // ⚠️ **이 줄은 백스톱이고, 계약이 무는 것은 이 줄이 아니다**(변이 실측): 지워도
+                // 다음 시도의 `pending.get()` 이 **선 플래그 때문에 즉시** InterruptedException 을
+                // 내서 결과가 같다. 진짜 성질은 `sendBounded` 의 플래그 복원이고, 그걸 지우면
+                // 계약이 죽는다. 이 줄은 "왜 안 도는가"를 로그·의도로 남기는 몫이다.
                 if (Thread.currentThread().isInterrupted()) {
                     throw new IllegalStateException("엔진러너 simulate 중단(인터럽트): " + e.getMessage(), e);
                 }
