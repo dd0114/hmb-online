@@ -55,6 +55,17 @@ async function mockApi(page: Page): Promise<St> {
     (route) =>
       route.fulfill(json({ token: "tok_g", user: { id: "u493g", nickname: "가이드감독" }, isNew: true })),
   );
+  /*
+   * ⚠️ **이 404 는 이 스펙을 우연히 지켜 주고 있다**(#504 D1-A 독립 검증 m4 — 기록해 둔다).
+   *
+   * 이 스펙은 온보딩을 앱 안에서 완주해 **가이드 pending 래치를 실제로 세우는 유일한 스펙**인데,
+   * 그 래치는 연습경기 튜토리얼 **제안의 발화 조건과 같다**(`shouldOfferPracticeTutorial`). 그리고
+   * 제안 판정은 `/game` **도착**에서 돈다(#504 D1-A) — 즉 여기서 덱을 200 으로 주면 `/game` 스텝에서
+   * **제안 모달이 가이드보다 먼저 떠** 진행도 단언(`"1 / 3"` 등)이 흔들릴 수 있다.
+   *
+   * 지금은 404 라 판정이 `deckless-first` 로 빠져 모달이 안 뜬다. 덱을 주도록 바꿀 일이 생기면
+   * **그 사실을 먼저 보고** 바꿔라(모달을 먼저 답하게 하거나, 래치를 심지 않는 경로로 바꾸거나).
+   */
   await page.route(
     (url) => url.pathname === "/api/deck",
     (route) => route.fulfill(json({ code: "NOT_FOUND", message: "활성 덱이 없습니다" }, 404)),
