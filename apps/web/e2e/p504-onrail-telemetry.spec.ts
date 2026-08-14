@@ -106,9 +106,14 @@ async function mockApi(page: Page, over: Partial<Harness> = {}): Promise<Harness
       return route.fulfill(json({ match: null, locked: false, abandonable: false }));
     }
     if (p === "/api/deck") {
-      return h.deckMissing
-        ? route.fulfill(json({ code: "NOT_FOUND", message: "덱이 없습니다" }, 404))
-        : route.fulfill(json(deck));
+      if (h.deckMissing) {
+        // 실서버처럼 한 박자 늦게 온다. ⚠️ **여기서는 그게 계약이 아니다** — 이 스펙의 ③은 `/deck`
+        // 을 거쳐 오므로 도착 시점엔 덱이 이미 캐시에 있다. 로딩 창 가드(`deck === undefined`)를
+        // 무는 것은 `p504-d1-game-entry.spec.ts` ⑦ 이고, 변이체로 확인한 것도 그쪽이다.
+        await new Promise((r) => setTimeout(r, 300));
+        return route.fulfill(json({ code: "NOT_FOUND", message: "덱이 없습니다" }, 404));
+      }
+      return route.fulfill(json(deck));
     }
     return route.fulfill(json({}));
   });

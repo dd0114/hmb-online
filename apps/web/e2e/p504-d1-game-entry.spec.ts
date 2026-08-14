@@ -96,9 +96,18 @@ async function mockApi(page: Page, over: Partial<Harness> = {}): Promise<Harness
       return route.fulfill(json({ match: null, locked: false, abandonable: false }));
     }
     if (p === "/api/deck") {
-      return h.deckMissing
-        ? route.fulfill(json({ code: "NOT_FOUND", message: "덱이 없습니다" }, 404))
-        : route.fulfill(json(deck));
+      if (h.deckMissing) {
+        /*
+         * ⚠️ **이 지연이 계약의 일부다**(독립 검증 m1). 목이 즉시 응답하면 `me` 와 `deck` 이 같은
+         * 배치에 도착해 **로딩 창이 열리지 않고**, 그러면 `GamePage` 의 `deck === undefined` 가드를
+         * 지워도 이 스펙이 통과한다(실측: 변이체 생존). 실서버에는 그 창이 있고, 거기서 가드가
+         * 없으면 `deckMissing(undefined) === false` 라 **덱 없는 유저에게 제안이 떠** D3 분기가
+         * 언제나 "제안"으로 굳는다 — 스위치가 무의미해지는 바로 그 시나리오다.
+         */
+        await new Promise((r) => setTimeout(r, 300));
+        return route.fulfill(json({ code: "NOT_FOUND", message: "덱이 없습니다" }, 404));
+      }
+      return route.fulfill(json(deck));
     }
     return route.fulfill(json({}));
   });
