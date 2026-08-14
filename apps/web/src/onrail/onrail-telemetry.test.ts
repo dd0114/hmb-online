@@ -59,9 +59,11 @@ describe("#504 — 온레일 사실 보고", () => {
     expect(apiFetch.mock.calls[0]?.[0]).toBe("/api/me/onrail-events");
   });
 
-  it("우회 관측은 어느 경로로 왔는지를 같이 싣는다 (D1 처방을 고를 근거)", () => {
-    reportOnRail(UID, ONRAIL_EVENTS.offerMissed, { path: "/game" });
-    expect(bodyOf(apiFetch.mock.calls[0])).toEqual({ event: "onrail_offer_missed", path: "/game" });
+  it("우회 관측은 이벤트만 싣는다 — 도착 화면을 '경로'라고 부르지 않는다", () => {
+    // ⚠️ 이 계약은 부재를 박는다. 보고 지점(GamePage)이 라우트 하나에만 마운트되므로 거기서 읽는
+    // pathname 은 상수라, 실어 봐야 "어느 동선으로 왔나"에 답하지 못한다(#504 blocker-1).
+    reportOnRail(UID, ONRAIL_EVENTS.offerMissed);
+    expect(bodyOf(apiFetch.mock.calls[0])).toEqual({ event: "onrail_offer_missed" });
   });
 
   it("스텝은 스텝별로 한 번씩 나간다 — 같은 스텝 재렌더는 안 나간다", () => {
@@ -133,7 +135,7 @@ describe("#504 — 온레일 사실 보고", () => {
 
   it("전송이 실패하면 표시를 되돌린다 — 네트워크 한 번 튄 유저가 영영 관측 밖이 되면 안 된다", async () => {
     apiFetch.mockRejectedValueOnce(new Error("network"));
-    reportOnRail(UID, ONRAIL_EVENTS.offerMissed, { path: "/game" });
+    reportOnRail(UID, ONRAIL_EVENTS.offerMissed);
     // 보내기 **전에** 표시한다(같은 전이가 두 번 그려져도 두 번 나가지 않게).
     expect(readSentMarkers(UID)).toContain("onrail_offer_missed");
 
@@ -141,7 +143,7 @@ describe("#504 — 온레일 사실 보고", () => {
     await Promise.resolve();
     expect(readSentMarkers(UID)).not.toContain("onrail_offer_missed");
 
-    reportOnRail(UID, ONRAIL_EVENTS.offerMissed, { path: "/game" });
+    reportOnRail(UID, ONRAIL_EVENTS.offerMissed);
     expect(apiFetch).toHaveBeenCalledTimes(2);
   });
 

@@ -51,7 +51,6 @@ const TEN = PLAYERS.slice(0, 10).map((p) => p.id);
 interface Reported {
   event: string;
   stepId?: string;
-  path?: string;
 }
 
 interface Harness {
@@ -180,7 +179,6 @@ test("③ 하단탭 [게임]으로 들어가면 제안이 평가조차 안 된 �
   await expect(page).toHaveURL(/\/game$/);
 
   await expect.poll(() => eventsOf(h)).toContain("onrail_offer_missed");
-  expect(h.reports.find((r) => r.event === "onrail_offer_missed")?.path).toBe("/game");
   // **이것이 계약의 핵심이다** — 제안 모달도, 노출 이벤트도 없다. 자격은 그대로 남아 있다.
   await expect(page.getByTestId("practice-tutorial-dialog")).toHaveCount(0);
   expect(eventsOf(h)).not.toContain("onrail_offer_shown");

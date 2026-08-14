@@ -25,7 +25,12 @@ import { apiFetch } from "../api/client";
 export const ONRAIL_EVENTS = {
   /** 홈 [게임 시작]에서 제안 모달이 실제로 떴다. */
   offerShown: "onrail_offer_shown",
-  /** **자격이 있는데 제안 없이 게임 화면에 도착했다** — D1 우회의 크기를 재는 유일한 신호. */
+  /**
+   * **자격이 있는데 제안 없이 게임 화면에 도착했다** — D1 우회의 **크기**를 재는 유일한 신호.
+   *
+   * ⚠️ **어느 경로로 우회했는지는 재지 않는다.** 보고 지점(`GamePage`)이 라우트 하나에만
+   * 마운트되므로 거기서 읽는 pathname 은 진입 경로가 아니라 **도착 화면**(언제나 `/game`)이다.
+   */
   offerMissed: "onrail_offer_missed",
   accepted: "onrail_accepted",
   declined: "onrail_declined",
@@ -44,7 +49,10 @@ export type OnRailEvent = (typeof ONRAIL_EVENTS)[keyof typeof ONRAIL_EVENTS];
  */
 const SENT_KEY = (userId: string) => `hmb.onrail.sent.${userId}`;
 
-/** 각본 길이(현재 21)의 세 배 — 어떤 run 도 다 담고 무한히 자라지 않는다. */
+/**
+ * 이력 상한. 각본은 22 스텝이고 유저당 남는 마커는 스텝 22 + 1회성 5 = **27** 이 최대라,
+ * 64 는 그 두 배 이상 여유를 두고도 무한히 자라지 않는 자리다(각본이 두 배로 길어져도 안 잘린다).
+ */
 export const ONRAIL_SENT_MAX = 64;
 
 /** 같은 사실을 두 번 세지 않기 위한 식별자. 스텝만 스텝 id 로 갈린다. */
@@ -79,7 +87,14 @@ export function writeSentMarkers(userId: string | null, sent: readonly string[])
   }
 }
 
-/** 계정 전환·다시 시작 — 그 계정 몫만 지운다(`clearOnRail` 과 같은 규율). */
+/**
+ * 계정 전환·다시 시작 — 그 계정 몫만 지운다(`clearOnRail` 과 같은 규율).
+ *
+ * ⚠️ **지금 프로덕션 호출부는 0 이다** — 짝인 `clearOnRail`(#493)도 마찬가지라, "온레일을 처음부터
+ * 다시 돈다"는 경로가 **아직 화면에 없다**. 그 경로를 만들 때 **둘을 같이** 불러라: 진행 상태만
+ * 지우면 두 번째 run 의 스텝 보고가 이력에 막혀 **통째로 사라지고**(퍼널이 "1회차에서 이탈"로
+ * 보인다), 이력만 지우면 이미 센 사실이 다시 세어진다.
+ */
 export function clearSentMarkers(userId: string | null): void {
   if (!userId) return;
   try {
@@ -90,10 +105,8 @@ export function clearSentMarkers(userId: string | null): void {
 }
 
 export interface OnRailReportExtra {
-  /** `onrail_step` 전용 — 어느 스텝인가. */
+  /** `onrail_step` 전용 — 어느 스텝인가. 그 외 이벤트는 실을 것이 없다. */
   stepId?: string | null;
-  /** `onrail_offer_missed` 전용 — 어느 경로로 우회했나. */
-  path?: string | null;
 }
 
 /**
@@ -111,7 +124,6 @@ export function reportOnRail(
 ): void {
   if (!userId) return;
   const stepId = extra?.stepId ?? null;
-  const path = extra?.path ?? null;
   const marker = sentMarkerOf(event, stepId);
 
   const before = readSentMarkers(userId);
@@ -120,7 +132,6 @@ export function reportOnRail(
 
   const body: Record<string, string> = { event };
   if (stepId) body.stepId = stepId;
-  if (path) body.path = path;
 
   void apiFetch("/api/me/onrail-events", { method: "POST", body }).catch(() => {
     // 표시를 되돌린다 — 다음 방문에 다시 시도한다. 이 catch 가 유일한 실패 처리다(화면 신호 0).

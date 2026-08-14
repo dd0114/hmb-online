@@ -74,13 +74,9 @@ public class OnRailEventsController {
         }
 
         String stepId = clamp(trimOrNull(body.stepId()));
-        String path = clamp(trimOrNull(body.path()));
         Map<String, Object> props = new LinkedHashMap<>();
         if (stepId != null) {
             props.put("stepId", stepId);
-        }
-        if (path != null) {
-            props.put("path", path);
         }
 
         if (BusinessEvent.CLIENT_ONCE_PER_USER.contains(event)) {
@@ -106,8 +102,15 @@ public class OnRailEventsController {
         return raw.length() <= MAX_STEP_ID ? raw : raw.substring(0, MAX_STEP_ID);
     }
 
-    /** {@code stepId} 는 {@code onrail_step} 에만, {@code path} 는 {@code onrail_offer_missed} 에만 실린다. */
-    public record Request(String event, String stepId, String path) {
+    /**
+     * {@code stepId} 는 {@code onrail_step} 에만 실린다 — 그 외 이벤트에 붙여 보내도 props 에
+     * 담기지 않는다(빈 props 로 기록된다).
+     *
+     * <p>⚠️ 모르는 필드는 Spring 기본 설정이 <b>조용히 무시</b>한다. 구 클라가 보내던
+     * {@code path}(#504 초판, 철회 근거는 {@link BusinessEvent#ONRAIL_OFFER_MISSED})가 그대로
+     * 날아와도 400 이 아니라 무시되므로, 배포 순서를 맞출 필요가 없다.
+     */
+    public record Request(String event, String stepId) {
     }
 
     public record Response(boolean recorded) {

@@ -58,6 +58,8 @@ class OnRailEventsApiTest extends ApiTestBase {
         // 대조군 — 하단탭으로 우회해 제안 자체를 못 받은 유저(#504 D1 이 만드는 상태).
         String missedToken = login("or_missed");
         String missedId = userIdOf("or_missed");
+        // ⚠️ 구 클라가 보내던 `path` 를 같이 실어 보낸다 — 필드가 은퇴한 뒤에도 400 이 아니라
+        // 무시돼야 배포 순서를 맞출 필요가 없다(#504 blocker-1 수습).
         ResponseEntity<Map> missed = post(missedToken,
                 Map.of("event", BusinessEvent.ONRAIL_OFFER_MISSED, "path", "/game"));
         assertThat(missed.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -73,8 +75,8 @@ class OnRailEventsApiTest extends ApiTestBase {
                 .as("제안을 못 받은 것은 거절이 아니다 — 이 둘이 갈리지 않으면 #504 는 답을 못 낸다")
                 .isZero();
         assertThat(propsOf(missedId, BusinessEvent.ONRAIL_OFFER_MISSED))
-                .as("어느 경로로 우회했는지가 같이 남아야 D1 처방을 고를 수 있다")
-                .contains("\"path\":\"/game\"");
+                .as("이 이벤트는 우회 '횟수'만 센다 — 도착 화면을 경로라고 부르지 않는다(blocker-1)")
+                .doesNotContain("path");
     }
 
     // ── ② 미지 이벤트는 400 (조용히 삼키면 오타가 결손으로 굳는다) ──────────

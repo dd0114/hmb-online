@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useActiveMatch, useAwayReports, useMe } from "../api/hooks";
 import { useLeague } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
@@ -74,14 +74,18 @@ export function GamePage() {
    *
    * ⚠️ 자격은 `me` 가 도착한 뒤에만 판정한다 — userId 를 모르는 동안은 `shouldOfferPracticeTutorial`
    * 이 언제나 false 라(익명 키를 만들지 않는 규율) 로딩 중 판정은 언제나 "우회 아님"으로 굳는다.
+   *
+   * ⚠️ **경로는 싣지 않는다.** 이 컴포넌트는 `App.tsx` 의 `path="/game"` **한 곳**에만 마운트되므로
+   * 여기서 읽는 `pathname` 은 어느 동선으로 왔는지가 아니라 **도착한 화면**이고 언제나 같은 값이다.
+   * 경로 분포가 필요하면 내비게이션 **출처**를 실어야 하고, 그건 유저당 1행 좁힘(`recordOnce`)도
+   * 함께 풀어야 하는 별개 웨이브다. 지금 세는 것은 **우회한 유저 수** 하나다.
    */
   const userId = me?.user?.id ?? null;
-  const { pathname } = useLocation();
   useEffect(() => {
     if (!userId) return;
     if (!shouldOfferPracticeTutorial(userId)) return;
-    reportOnRail(userId, ONRAIL_EVENTS.offerMissed, { path: pathname });
-  }, [userId, pathname]);
+    reportOnRail(userId, ONRAIL_EVENTS.offerMissed);
+  }, [userId]);
 
   function pressAway() {
     if (!deckless.guard()) return;

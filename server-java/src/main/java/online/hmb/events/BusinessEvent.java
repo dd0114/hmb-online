@@ -49,7 +49,14 @@ public final class BusinessEvent {
      * <b>제안 자격이 있는데 제안 없이 게임 화면에 도착했다</b>(하단탭 [게임] 등 우회 경로).
      *
      * <p>이 이벤트가 #504 관측의 값어치 대부분이다 — 판정이 <b>평가조차 되지 않는</b> 동선의
-     * 크기를 재고, 그 동선을 고치면 0 으로 떨어지는 것이 수정의 증거가 된다. props: path
+     * 크기를 재고, 그 동선을 고치면 0 으로 떨어지는 것이 수정의 증거가 된다.
+     *
+     * <p>⚠️ <b>props 는 없다 — 이것은 "몇 명이 우회했나"만 센다.</b> 한때 여기에 "어느 경로로
+     * 우회했나"를 담겠다며 {@code props.path} 를 실었는데, 보고 주체(web {@code GamePage})가
+     * 라우트 <b>하나</b>({@code /game})에만 마운트되므로 그 값은 <b>진입 경로가 아니라 도착
+     * 화면</b>이고 언제나 같은 상수였다. 경로 분포를 보려면 <b>내비게이션 출처</b>를 실어야 하고,
+     * 그건 {@link #CLIENT_ONCE_PER_USER} 에서도 빼야 하는(유저당 1행이면 분포가 안 생긴다)
+     * 별개 웨이브다. props: 없음
      */
     public static final String ONRAIL_OFFER_MISSED = "onrail_offer_missed";
     /** 제안을 수락했다(온레일 시작). props: 없음 */
