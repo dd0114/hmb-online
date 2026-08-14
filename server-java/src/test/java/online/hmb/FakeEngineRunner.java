@@ -34,6 +34,20 @@ public class FakeEngineRunner {
     private final JsonNode h2Response;
     public final List<JsonNode> requests = new CopyOnWriteArrayList<>();
 
+    /**
+     * 이 하프 요청에서 <b>헤더만 보내고 본문을 멈춘다</b>(0 = 끔, #512 계약 전용).
+     * {@code deadKnobs} 와 같은 규율의 additive 손잡이 — 기본값에서는 기존 테스트와 동작이 같다.
+     */
+    public volatile int stallHalf = 0;
+
+    private final java.util.concurrent.CountDownLatch stallRelease =
+            new java.util.concurrent.CountDownLatch(1);
+
+    /** 멈춰 둔 응답을 푼다(테스트 정리 — 핸들러 스레드를 60s 동안 잡아 두지 않게). */
+    public void releaseStall() {
+        stallRelease.countDown();
+    }
+
     public FakeEngineRunner() {
         try {
             h1Response = MAPPER.readTree(new File(FIXTURE_DIR, "matchlog-h1.json")).path("response");
@@ -43,6 +57,24 @@ public class FakeEngineRunner {
                 byte[] requestBytes = exchange.getRequestBody().readAllBytes();
                 JsonNode request = MAPPER.readTree(requestBytes);
                 requests.add(request);
+
+                if (stallHalf > 0 && request.path("half").asInt() == stallHalf) {
+                    /*
+                     * #512 — **헤더는 보내고 본문에서 멈춘다**. 이게 실서버에서 시계를 세우는 그 모양이다:
+                     * `HttpRequest.timeout` 은 헤더까지만 세므로 여기서 클라가 매달린다. 연결을 끊거나
+                     * 아무것도 안 보내는 흉내로는 이 결함이 재현되지 않는다(그건 타임아웃이 잡는다).
+                     */
+                    exchange.sendResponseHeaders(200, 1_000_000);
+                    OutputStream partial = exchange.getResponseBody();
+                    partial.write("{\"matchLog\":".getBytes(StandardCharsets.UTF_8));
+                    partial.flush();
+                    try {
+                        stallRelease.await(60, java.util.concurrent.TimeUnit.SECONDS);
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    }
+                    return;
+                }
 
                 JsonNode response = respond(request);
                 byte[] bytes = MAPPER.writeValueAsBytes(response);

@@ -33,7 +33,7 @@ import org.junit.jupiter.api.Test;
  */
 class MatchClockSweepBoundTest {
 
-    private final ExecutorService pool = Executors.newFixedThreadPool(2);
+    private final ExecutorService pool = Executors.newFixedThreadPool(4);
     private final CountDownLatch release = new CountDownLatch(1);
 
     @AfterEach
@@ -66,6 +66,38 @@ class MatchClockSweepBoundTest {
 
         // 막힌 작업 하나가 나머지를 취소시키지도 않는다(한 매치의 사고가 다른 매치를 끄지 않는다).
         assertThat(fastRan).isTrue();
+    }
+
+    /**
+     * 상한은 <b>작업당이 아니라 이번 스윕 전체</b>다 (#512).
+     *
+     * <p>작업당으로 걸면 N 개가 각각 상한을 다 써서 "유한하지만 실질적으로 멈춤"이 된다 — 스윕
+     * 주기가 1초인데 막힌 작업 4개면 그 스윕만 상한×4 를 쓴다. 독립 검증이 이 성질에 계약이 없다고
+     * 지적했다(작업당 예산으로 바꾼 변이체가 풀스위트를 통과했다).
+     */
+    @Test
+    void theBudgetIsForTheWholeSweepNotPerTask() {
+        List<Future<?>> stuck = List.of(blockForever(), blockForever());
+
+        assertTimeoutPreemptively(Duration.ofSeconds(20), () -> {
+            long t0 = System.nanoTime();
+            MatchClockService.awaitAll(stuck, 1_000L);
+            long elapsedMs = (System.nanoTime() - t0) / 1_000_000;
+
+            assertThat(elapsedMs)
+                    .as("막힌 작업 2개에 총 상한 1s 인데 %d ms 썼다 — 작업당 예산이면 2s 를 쓴다", elapsedMs)
+                    .isLessThan(1_800L);
+        });
+    }
+
+    private Future<?> blockForever() {
+        return pool.submit(() -> {
+            try {
+                release.await(120, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
     }
 
     /** CTRL — 정상 작업만 있으면 상한과 무관하게 <b>전부 끝난 뒤</b> 돌아온다(semantics 유지). */

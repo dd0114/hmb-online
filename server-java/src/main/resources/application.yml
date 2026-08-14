@@ -7,8 +7,14 @@ spring:
   task:
     scheduling:
       # ⚠️ 아래 pool.size 는 **가상스레드가 켜져 있는 한 무효**다(Boot 가 SimpleAsyncTaskScheduler 를
-      # 고른다 — 스케줄 실행마다 새 가상스레드라 @Scheduled 끼리 서로 막지 않는다). 가상스레드를 끄는
-      # 날을 대비한 방어값으로만 둔다(#170 독립검증 minor: 선언≠효과였던 것 정정).
+      # 고른다). 가상스레드를 끄는 날을 대비한 방어값으로만 둔다(#170 독립검증 minor: 선언≠효과).
+      #
+      # ⚠️⚠️ **"@Scheduled 끼리 서로 막지 않는다"는 거짓이다**(#512 독립검증 blocker-1 이 반증).
+      # SimpleAsyncTaskScheduler 의 내부 스케줄 실행자는 **단일 스레드**이고(corePoolSize 1),
+      # fixedDelay·fixedRate 의 **트리거가 그 한 스레드에서** 돈다 — 가상스레드는 태스크 본체 몫이다.
+      # 실측: 한 태스크를 hang 시키면 같은 6초 창에서 다른 fixedDelay 태스크 29회 → **0회**,
+      # fixedRate 태스크 25회 → **0회**. 즉 스위퍼 하나가 매달리면 **네 스위퍼가 전부 굶는다**
+      # (시계·잡 리스·방치 회수·시즌). 회수 백스톱까지 같이 죽으므로 "자기복구"를 거기에 기대지 마라.
       pool:
         size: 4
   threads:

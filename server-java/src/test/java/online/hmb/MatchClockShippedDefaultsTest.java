@@ -89,6 +89,31 @@ class MatchClockShippedDefaultsTest {
                 .isEqualTo(yml);
     }
 
+    /**
+     * <b>#512 — 스윕 상한이 실제로 상한이어야 한다.</b>
+     *
+     * <p>하한: 정상적으로 느린 전이를 죽이면 안 된다. 후반 시작은 엔진 RPC 를 동기로 물고 있고
+     * 그 호출의 최대치는 {@code simulate-timeout-sec}(30s) × 2(교환 마감) × (1 + 재시도 1) =
+     * <b>작업 1개당 120s</b> 다. ⚠️ 이 상한은 <b>작업당이 아니라 스윕 전체</b> 예산이라
+     * {@code sweep-parallelism}(4)을 넘는 무거운 만료가 한 번에 몰리면 여기 걸릴 수 있다 —
+     * 걸려도 손실은 없다(전이 CAS 는 RPC 앞에서 이미 커밋돼 그 매치는 다음 스윕 후보에서 빠진다).
+     *
+     * <p>상한: 값이 커지면 이 방어층은 <b>있으나 마나</b>가 된다. 독립 검증이 실증했다 —
+     * 180s → 1h 로 바꾼 변이체가 기존 계약 전부를 통과했다(그래서 이 단언이 생겼다).
+     */
+    @Test
+    void shippedSweepTaskTimeoutIsAFiniteBudgetThatStillCoversASlowTransition() throws Exception {
+        long yml = longFromApplicationYml("sweep-task-timeout-ms");
+        long javaDefault = new online.hmb.match.MatchClockProperties().getSweepTaskTimeoutMs();
+
+        assertThat(yml)
+                .as("작업 1개 최대치(120s)보다는 넉넉하고, 방어층이 의미를 잃을 만큼 크지는 않아야 한다")
+                .isBetween(120_000L, 600_000L);
+        assertThat(javaDefault)
+                .as("Java 기본값과 yml 이 갈라지면 프로필이 하나 빠졌을 때 조용히 다른 값이 뜬다")
+                .isEqualTo(yml);
+    }
+
     @Test
     void shippedHalftimeMsIsThreeMinutes() throws Exception {
         // #216 hero 지시. 값 자체가 요구사항이라 그대로 박는다(파생·측정 대상이 아니다).

@@ -71,6 +71,17 @@ public class EngineRunnerClient {
             pending.cancel(true);
             throw new IllegalStateException("runner 응답 마감 초과(" + hardDeadline.toSeconds() + "s): "
                     + request.uri());
+        } catch (InterruptedException e) {
+            /*
+             * ⚠️ **인터럽트는 재시도하지 않는다**(#512 R1, 독립 검증 m4). 이걸 그냥 흘리면
+             * `callOnce` 의 `catch (Exception)` 이 IllegalStateException 으로 감싸고, `simulate` 의
+             * 재시도 루프가 **인터럽트 플래그가 지워진 채 한 번 더** 러너를 부른다(최대 마감만큼 더).
+             * 인터럽트가 오는 자리는 `sweepPool.shutdownNow()`(= 종료 중)라, 그때 새 왕복을 시작하는
+             * 것은 종료를 늦출 뿐이다. 플래그를 되살리고 교환도 끊는다.
+             */
+            pending.cancel(true);
+            Thread.currentThread().interrupt();
+            throw e;
         } catch (java.util.concurrent.ExecutionException e) {
             Throwable cause = e.getCause() == null ? e : e.getCause();
             if (cause instanceof Exception ex) {
@@ -119,6 +130,11 @@ public class EngineRunnerClient {
             } catch (RuntimeException e) {
                 last = e;
                 log.warn("simulate attempt {}/{} failed: {}", attempt + 1, retries + 1, e.toString());
+                // 인터럽트(= 종료 중)면 재시도하지 않는다 — `callOnce` 가 검사예외를 런타임으로
+                // 감싸므로 종류로는 못 가른다. 플래그로 가른다(`sendBounded` 가 되살려 둔다).
+                if (Thread.currentThread().isInterrupted()) {
+                    throw new IllegalStateException("엔진러너 simulate 중단(인터럽트): " + e.getMessage(), e);
+                }
             }
         }
         throw new IllegalStateException("엔진러너 simulate 실패(재시도 소진): " + last.getMessage(), last);
