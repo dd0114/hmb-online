@@ -110,8 +110,16 @@ test("① 온보딩 직후 [게임 시작] = 연습경기 튜토리얼 제안 �
   const dialog = page.getByTestId("practice-tutorial-dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText("연습경기");
-  // 모달이 뜬 동안에는 아직 아무 데도 가지 않았다.
-  await expect(page).toHaveURL(/\/home$/);
+  /*
+   * ⚠️ **여기가 #504 D1-A 로 뒤집힌 자리다**(hero 결정 2026-08-15). 구 계약은 *"모달이 뜬 동안에는
+   * 아직 아무 데도 가지 않았다"*(`/home` 유지)였다 — 판정이 이 타일의 클릭 핸들러에 있었기 때문이다.
+   * 그 자리가 곧 결함이었다: 게임 화면으로 가는 나머지 길(하단탭·URL 직접·뒤로가기)은 그 핸들러를
+   * 지나가지 않아 신규 유저가 온레일을 모른 채 통과했다(실유저 2명 / 발화 0명).
+   *
+   * 판정이 **도착**으로 올라갔으므로 모달도 도착한 화면에서 뜬다. 유저가 보는 것은 같다 —
+   * [게임 시작]을 누르면 제안을 받는다. 바뀐 것은 그 뒤에 깔린 화면뿐이다.
+   */
+  await expect(page).toHaveURL(/\/game$/);
 });
 
 test("② 수락 = **덱 화면부터**(온레일 시작) — 여기서 매치를 만들지 않는다", async ({ page }) => {
