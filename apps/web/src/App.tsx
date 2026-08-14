@@ -90,8 +90,9 @@ function AppRoutes() {
         <Route path="/login" element={<LoginPage />} />
 
         {/* ⚠️ `/welcome`(#493 W1 의 1분 미니게임)은 **없다**. hero 판정으로 걷혔다 — 첫 경험은
-            관전이 아니라 홈 [게임 시작]에서 제안하는 **진짜 연습경기**다(#493 W5,
-            `home/PracticeTutorialDialog`). 되살리려면 그 결정부터 다시 받아라. */}
+            관전이 아니라 **진짜 연습경기** 제안이다(#493 W5, `home/PracticeTutorialDialog`).
+            제안 지점은 **`/game` 도착**이다(#504 D1-A) — 구 문안의 "홈 [게임 시작]"은 그 타일에만
+            판정이 있어 나머지 진입로가 전부 샜던 자리다. 되살리려면 그 결정부터 다시 받아라. */}
 
         {/* 홈도 MatchLockGate 를 쓴다 — 게이트가 `locked && !abandonable` 일 때만 되돌리므로
             재생 중에는 경기로 가고(#217 AC1), 회수 가능한 사고 매치에서는 홈이 열려 [경기 포기]에

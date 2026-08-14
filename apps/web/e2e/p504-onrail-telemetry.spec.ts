@@ -12,9 +12,10 @@ import { skipSplash } from "./splash-mock";
  * 그러므로 여기서 재는 것은 "요청이 하나 나갔다"가 아니라 **세 동선이 서로 다른 사실을 남기는가**다:
  *  ① 홈 타일 → 제안 → 수락 (`offer_shown` → `accepted` → `step`)
  *  ② 홈 타일 → 제안 → 거절 (`offer_shown` → `declined`, **`offer_missed` 아님**)
- *  ③ **하단탭 [게임] 우회** → 제안이 평가조차 안 된다 (`offer_missed`, **`offer_shown` 0**)
- * ③이 D1(동선 결함)의 크기를 재는 유일한 신호다 — 그걸 고치면 이 이벤트가 0 으로 떨어지는 것이
- * 그 수정의 증거가 된다.
+ *  ③ **제안 없이 게임 화면에 도착** → (`offer_missed`, **`offer_shown` 0**)
+ * ③은 원래 **하단탭 우회**를 쟀다. D1-A(hero 결정)가 판정을 `/game` 도착으로 올려 그 우회는
+ * 사라졌고(계약 = `p504-d1-game-entry.spec.ts`), 지금 ③이 재는 것은 **남은 창** — 덱이 없는
+ * 자격자다(D3 스위치 기본값 ②현행 유지). 그 크기가 D3 를 뒤집을지의 근거가 된다.
  *
  * ④ 는 반대 방향이다: **계측이 동선을 막지 않는다**. 이 축이 없으면 "보고를 await 하고 실패를
  * 토스트로 올리는" 변이체가 ①~③ 을 전부 통과한다 — 그러면 관측이 튜토리얼을 깨뜨린다.
@@ -58,10 +59,12 @@ interface Harness {
   reports: Reported[];
   /** 계측 엔드포인트가 실패하는가(④ 전용). */
   telemetryFails: boolean;
+  /** 덱 없는 계정 팔(③ 전용) — `/api/deck` 404 = `useDeck` 이 `null` 로 정규화. */
+  deckMissing: boolean;
 }
 
 async function mockApi(page: Page, over: Partial<Harness> = {}): Promise<Harness> {
-  const h: Harness = { reports: [], telemetryFails: false, ...over };
+  const h: Harness = { reports: [], telemetryFails: false, deckMissing: false, ...over };
   const deck = {
     formation: "4-4-2",
     slots: TEN.map((playerId, i) => ({ playerId, role: "starter", slotIndex: i, promptText: null })),
@@ -102,7 +105,16 @@ async function mockApi(page: Page, over: Partial<Harness> = {}): Promise<Harness
     if (p === "/api/me/active-match") {
       return route.fulfill(json({ match: null, locked: false, abandonable: false }));
     }
-    if (p === "/api/deck") return route.fulfill(json(deck));
+    if (p === "/api/deck") {
+      if (h.deckMissing) {
+        // 실서버처럼 한 박자 늦게 온다. ⚠️ **여기서는 그게 계약이 아니다** — 이 스펙의 ③은 `/deck`
+        // 을 거쳐 오므로 도착 시점엔 덱이 이미 캐시에 있다. 로딩 창 가드(`deck === undefined`)를
+        // 무는 것은 `p504-d1-game-entry.spec.ts` ⑦ 이고, 변이체로 확인한 것도 그쪽이다.
+        await new Promise((r) => setTimeout(r, 300));
+        return route.fulfill(json({ code: "NOT_FOUND", message: "덱이 없습니다" }, 404));
+      }
+      return route.fulfill(json(deck));
+    }
     return route.fulfill(json({}));
   });
   return h;
@@ -167,13 +179,23 @@ test("② 거절은 '거절'로 남는다 — 제안을 못 받은 것과 구별
   expect(eventsOf(h)).not.toContain("onrail_offer_missed");
 });
 
-// ── ③ 하단탭 우회 — D1 의 크기를 재는 유일한 신호 ─────────────────────────
+// ── ③ '제안 없이 도착했다' — 남은 우회 창 ─────────────────────────────────
 
-test("③ 하단탭 [게임]으로 들어가면 제안이 평가조차 안 된 사실이 남는다", async ({ page }) => {
-  const h = await mockApi(page);
+/*
+ * ⚠️ **이 축의 대상이 바뀌었다**(#504 D1-A, hero 결정 2026-08-15). 원래 여기서 재던 것은
+ * **하단탭 [게임] 우회**였다 — 그 경로가 제안 판정을 평가조차 하지 않던 것이 D1 이고, 이 두
+ * 테스트가 그 크기를 재는 유일한 신호였다. D1-A 가 판정을 `/game` **도착**으로 올려 그 우회는
+ * 사라졌다(이제 그 경로는 제안을 받는다 — 계약은 `p504-d1-game-entry.spec.ts` ①이 소유한다).
+ *
+ * 그렇다고 이 이벤트를 지우지 않는다. **남은 창이 하나 있다**: 덱이 없는 자격자는 D3 스위치
+ * 기본값(②현행 유지)에서 여전히 제안 대신 덱없음 가드를 만난다. 그 크기가 D3 를 뒤집을지의
+ * 근거이므로, 이 축은 **그 창**을 계속 잰다 — 이벤트가 살아 있고 정확히 한 번만 센다는 성질까지.
+ */
+
+test("③ 자격이 있는데 제안 없이 게임 화면에 도착한 사실이 남는다 (덱없음 창)", async ({ page }) => {
+  const h = await mockApi(page, { deckMissing: true });
   await seedNewUser(page);
 
-  // 홈에는 하단탭이 없다(홈 자체가 내비) — 실제 유저가 그러듯 다른 화면에서 탭을 누른다.
   await page.goto("/deck");
   await navTab(page, "game").click();
   await expect(page).toHaveURL(/\/game$/);
@@ -185,8 +207,8 @@ test("③ 하단탭 [게임]으로 들어가면 제안이 평가조차 안 된 �
   expect(eventsOf(h)).not.toContain("onrail_declined");
 });
 
-test("③-b 같은 우회를 반복해도 한 번만 센다 (유저 수를 세지 방문 수를 세지 않는다)", async ({ page }) => {
-  const h = await mockApi(page);
+test("③-b 같은 도착을 반복해도 한 번만 센다 (유저 수를 세지 방문 수를 세지 않는다)", async ({ page }) => {
+  const h = await mockApi(page, { deckMissing: true });
   await seedNewUser(page);
 
   await page.goto("/deck");

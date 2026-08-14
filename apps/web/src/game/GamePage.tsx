@@ -1,13 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useActiveMatch, useAwayReports, useMe } from "../api/hooks";
+import { useActiveMatch, useAwayReports, useDeck, useMe } from "../api/hooks";
 import { useLeague } from "../api/hooks-v2";
 import { Layout } from "../common/Layout";
 import { ErrorToast } from "../common/ErrorToast";
 import { AwayReportModal } from "../lobby/AwayReportModal";
 import { shouldShowAwayPopup } from "../lobby/away-report-logic";
 import { useDecklessGuard } from "../common/useDecklessGuard";
-import { shouldOfferPracticeTutorial } from "../common/guide-storage";
+import { deckMissing } from "../common/deckless";
+import {
+  markPracticeTutorialAnswered,
+  shouldOfferPracticeTutorial,
+} from "../common/guide-storage";
+import { PracticeTutorialDialog } from "../home/PracticeTutorialDialog";
+import { useOnRail } from "../onrail/onrail-context";
+import { practiceOfferDecision } from "../onrail/practice-offer";
 import { ONRAIL_EVENTS, reportOnRail } from "../onrail/onrail-telemetry";
 import { shouldForceResume } from "../common/match-lock";
 import { useAppConfigValue } from "../common/AppConfigContext";
@@ -63,29 +70,82 @@ export function GamePage() {
   const deckless = useDecklessGuard();
 
   /**
-   * #504 D2 — **제안 자격이 있는데 제안 없이 여기 도착했다**(관측 전용).
+   * #504 D1-A — **온레일 제안의 판정 지점**(hero 결정, 2026-08-15).
    *
-   * 온레일 제안 판정은 홈 타일 `pressTile` **한 곳에만** 있고, 하단탭 [게임]·`/deck` 의
-   * `navigate("/game")`·URL 직접 진입은 그 판정을 **평가조차 하지 않는다**(#504 D1). 그 우회가
-   * 실제로 얼마나 일어나는지는 지금까지 **셀 방법이 없었다** — 서버에 아무 흔적도 안 남으므로.
+   * ## 왜 여기인가
+   * 이 판정은 원래 홈 타일 `pressTile` 한 곳에만 있었다. 그런데 이 화면으로 오는 길은 그것 하나가
+   * 아니다 — **하단탭 [게임]**(전 화면 상시 노출) · 덱 화면의 `navigate("/game")` · URL 직접 ·
+   * 뒤로가기. 그 경로들은 판정을 **평가조차 하지 않아** 신규 유저가 온레일의 존재를 모른 채
+   * 지나갔다(오픈베타 실유저 2명 / 발화 0명). 그래서 판정을 **버튼이 아니라 도착**으로 올렸다.
    *
-   * ⚠️ **여기서 제안을 띄우지 않는다.** 그건 동선 변경이라 hero 게이트 대상이고(D1), 이 웨이브는
-   * 관측만 한다. 고친 뒤 이 이벤트가 0 으로 떨어지는 것이 그 수정의 증거가 된다.
+   * ⚠️ **홈 타일은 이제 이동만 한다.** 두 화면이 각자 판정하면 그게 다시 두 벌이 되고, 새 진입로가
+   * 생길 때마다 또 샌다 — 이번 결함의 형태 그대로다.
    *
-   * ⚠️ 자격은 `me` 가 도착한 뒤에만 판정한다 — userId 를 모르는 동안은 `shouldOfferPracticeTutorial`
-   * 이 언제나 false 라(익명 키를 만들지 않는 규율) 로딩 중 판정은 언제나 "우회 아님"으로 굳는다.
+   * ⚠️ **덱을 알기 전에는 판정하지 않는다**(`deck === undefined` = 로딩). `deckMissing` 은 로딩을
+   * `false` 로 읽으므로, 기다리지 않으면 D3 분기가 언제나 "제안"으로 굳어 스위치가 무의미해진다.
+   * 같은 이유로 `userId` 도 `me` 도착 뒤에만 본다(익명 키를 만들지 않는 규율 때문에 로딩 중
+   * `shouldOfferPracticeTutorial` 은 언제나 false 다).
    *
-   * ⚠️ **경로는 싣지 않는다.** 이 컴포넌트는 `App.tsx` 의 `path="/game"` **한 곳**에만 마운트되므로
-   * 여기서 읽는 `pathname` 은 어느 동선으로 왔는지가 아니라 **도착한 화면**이고 언제나 같은 값이다.
-   * 경로 분포가 필요하면 내비게이션 **출처**를 실어야 하고, 그건 유저당 1행 좁힘(`recordOnce`)도
-   * 함께 풀어야 하는 별개 웨이브다. 지금 세는 것은 **우회한 유저 수** 하나다.
+   * ⚠️ **한 마운트에 한 번만 판정한다**(`decidedRef`). 이유는 "답한 유저가 다시 막힌다"가 **아니다** —
+   * 답하면 `eligible` 이 거짓이 되어 판정이 `"none"` 이라 그 일은 일어날 수 없다(초판 주석의 근거가
+   * 틀렸다, 독립 검증 m2). 실제 이유는 **한 방문의 판정을 하나로 굳히는 것**이다: `deck` 이 리페치로
+   * `null → 객체` 로 바뀌면 같은 방문에서 `offer_missed` 와 `offer_shown` 이 **둘 다** 나가고, 그러면
+   * D3 창의 크기를 재는 축이 흐려진다(서버는 각각 유저당 1행으로 받으므로 지워지지도 않는다).
+   *
+   * ⚠️ **대가**: 캐시가 아직 `null` 인 채로 도착하면 그 방문은 `deckless-first` 로 굳는다(늦게 도착한
+   * 덱으로 제안이 승격되지 않는다). 자격은 소모되지 않으므로 **다음 진입에 제안된다** — 그 창을 없애려면
+   * 위 두 이벤트가 같이 나가는 것을 감수해야 하고, 지금은 측정을 택했다.
    */
   const userId = me?.user?.id ?? null;
+  const { data: deck } = useDeck();
+  const [practiceAsk, setPracticeAsk] = useState(false);
+  const decidedRef = useRef<string | null>(null);
+  const onRail = useOnRail();
+
   useEffect(() => {
-    if (!userId) return;
-    if (!shouldOfferPracticeTutorial(userId)) return;
+    if (!userId || deck === undefined) return;
+    if (decidedRef.current === userId) return;
+    const decision = practiceOfferDecision({
+      eligible: shouldOfferPracticeTutorial(userId),
+      deckMissing: deckMissing(deck),
+    });
+    if (decision === "none") return;
+    decidedRef.current = userId;
+    if (decision === "offer") {
+      // 제안이 **실제로 떴다**는 사실. 이게 없으면 "못 받았다"와 "받고 거절했다"의 서버 흔적이 같다.
+      reportOnRail(userId, ONRAIL_EVENTS.offerShown);
+      setPracticeAsk(true);
+      return;
+    }
+    /*
+     * `deckless-first` — D3 기본값(②현행 유지)이 만드는 **남은 우회 창**이다. 자격이 있는데
+     * 제안 없이 도착한 것이므로 그대로 센다. ⚠️ D1-A 로 동선 우회가 사라져도 이 이벤트가 죽지
+     * 않는 이유가 여기다 — 그 크기가 D3 스위치를 뒤집을지의 근거가 된다.
+     */
     reportOnRail(userId, ONRAIL_EVENTS.offerMissed);
-  }, [userId]);
+  }, [userId, deck]);
+
+  /**
+   * 수락 = **온레일 시작**(#493 W7-v3) — 매치는 여기서 만들지 않는다. 덱 화면부터 안내하고,
+   * 경기는 온레일이 S2(덱 저장)를 마친 뒤 [경기 시작] CTA 에서 만든다(`onRail.start()` 가 `/deck` 로).
+   */
+  function acceptPracticeTutorial() {
+    markPracticeTutorialAnswered(userId);
+    reportOnRail(userId, ONRAIL_EVENTS.accepted);
+    setPracticeAsk(false);
+    onRail.start();
+  }
+
+  /**
+   * 거절 = **이 화면에 그대로** 둔다. 안내가 동선을 끊지 않는다 — 유저는 원래 여기로 오려던
+   * 참이었다(구 동작은 홈에서 물었으므로 `/game` 으로 보내 줘야 했다). 다시 묻지 않는다.
+   */
+  function declinePracticeTutorial() {
+    markPracticeTutorialAnswered(userId);
+    reportOnRail(userId, ONRAIL_EVENTS.declined);
+    onRail.skip();
+    setPracticeAsk(false);
+  }
 
   function pressAway() {
     if (!deckless.guard()) return;
@@ -200,6 +260,14 @@ export function GamePage() {
         <ErrorToast message={practice.error} onDismiss={practice.dismissError} />
 
         {deckless.dialog}
+
+        {/* #504 D1-A — 제안은 이제 **도착한 이 화면**에서 뜬다(구: 홈 타일). 판정은 위 이펙트 하나. */}
+        {practiceAsk && (
+          <PracticeTutorialDialog
+            onAccept={acceptPracticeTutorial}
+            onDecline={declinePracticeTutorial}
+          />
+        )}
 
         {showAwayPopup && awayReports && (
           <AwayReportModal
