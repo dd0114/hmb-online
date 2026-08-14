@@ -111,7 +111,8 @@ class EngineRunnerStallTest {
      */
     @Test
     void anInterruptStopsTheRetryLoopInsteadOfSpendingAnotherDeadline() throws Exception {
-        // 마감 3s · 재시도 1 → 고치기 전에는 최악 6s 를 쓴다. 인터럽트는 첫 왕복 도중에 넣는다.
+        // ⚠️ 인자 `3` 은 **요청 타임아웃**이고 교환 마감은 그 두 배(6s)다. 고치기 전에는 2회차가
+        // 그 **마감 1회분(6s)** 을 통째로 태운다(실측 6.5s). 인터럽트는 첫 왕복 도중에 넣는다.
         EngineRunnerClient client = new EngineRunnerClient(new online.hmb.common.Json().objectMapper(),
                 "http://127.0.0.1:" + server.getAddress().getPort(), 3, 1);
 
@@ -133,7 +134,7 @@ class EngineRunnerStallTest {
         caller.join(20_000);
 
         assertThat(elapsedMs.get())
-                .as("인터럽트 뒤 %d ms 를 더 썼다 — 재시도를 한 번 더 태우면 마감(3s)이 통째로 붙는다",
+                .as("인터럽트 뒤 %d ms 를 더 썼다 — 재시도를 한 번 더 태우면 교환 마감(6s)이 통째로 붙는다",
                         elapsedMs.get())
                 .isBetween(0L, 2_500L);
         assertThat(flagAfter)
