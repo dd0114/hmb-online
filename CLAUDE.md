@@ -392,7 +392,7 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 
 ## 11. 배포 (Phase 3 — 테스터 오픈) 좌표
 
-> 내부 테스터에게 실제 배포해 플레이시키는 상태. 계획 SoT = `docs/plan-v4/`(PRD-v4 §G·§H). 배포 세션 = hmb:p3dep(에픽 #122), owned-glob `infra/**` + `server-java/Dockerfile`.
+> 내부 테스터에게 실제 배포해 플레이시키는 상태. 계획 SoT = `docs/plan-v4/`(PRD-v4 §G·§H). 배포 트랙 owned-glob = `infra/**` + `server-java/Dockerfile`. **트래킹 부모 = #123**(Phase 3 트래킹, OPEN) · 건별 SoT = 개별 이슈(#505·#506·#514 등)에 직접 append. ⚠️ 구 에픽 #122 는 **2026-07-22 에 닫혔다** — 그 뒤로도 3주간 세션들이 닫힌 이슈에 STATE 를 쌓고 있었다(2026-08-17 매니저 정정). 닫힌 이슈에 append 금지. (구 배포 세션 hmb:p3dep 도 닫힘 — 현 담당 = hmb:tunnel.)
 
 - **테스터 접속**: **https://hmb-online.pages.dev** (web=Cloudflare Pages 정적)
 - **구성**: web=CF Pages · 백엔드=hero 머신 도커(java 18080 + runner 18790, **데모 8080/8790 무접촉**) · 인터넷 노출=**Cloudflare quick tunnel**(ngrok 무료는 앱 로드 동시요청에서 커넥션 끊김 — 실측 CF 8/8 vs ngrok 0/8) · AI=호스트 구독 claude CLI(모드 A). CORS 결선: web `VITE_API_BASE`=터널URL(빌드 인라인) ↔ 백엔드 `WEB_ORIGINS`=Pages URL.
