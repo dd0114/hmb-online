@@ -84,8 +84,23 @@ check "T3 dist 스냅샷 캐시에 version.json 보존" "1" "$([ -f "$SCRATCH/ca
 hdr_rule=$(awk '/^\/version\.json$/{f=1;next} f&&/Cache-Control/{print "no-store-ok"; exit} f&&/^\//{exit}' infra/pages/_headers | head -1)
 check "T4 _headers 에 /version.json Cache-Control 규칙" "no-store-ok" "$hdr_rule"
 
-# T5. 이음매의 기본값은 종전과 같다 — HMB_BUILD_CMD 미지정이면 build.sh 를 부른다(정적 계약).
+# T5. 이음매의 기본값은 종전과 같다 — HMB_BUILD_CMD 미지정이면 build.sh 를,
+#     HMB_MANIFEST_CMD 미지정이면 version-manifest.sh 를 부른다(정적 계약).
 check "T5 HMB_BUILD_CMD 기본값 = infra/pages/build.sh" "1" "$(grep -c 'HMB_BUILD_CMD:-bash infra/pages/build.sh' infra/deploy-web.sh | tr -d ' ')"
+check "T5b HMB_MANIFEST_CMD 기본값 = infra/version-manifest.sh" "1" "$(grep -c 'HMB_MANIFEST_CMD:-bash infra/version-manifest.sh' infra/deploy-web.sh | tr -d ' ')"
+
+# T6. 매니페스트가 죽어도 배포는 계속된다(가용성 우선) — 단 조용히가 아니라 경고를 남기고,
+#     version.json 은 정직하게 **부재**다(스테일 복사가 남는 것이 아니다). #506 의 해악 모델은
+#     "부재(404)"가 아니라 "그럴듯한 오답(스테일 200)"이고, 부재 시의 정직성은 T4 의 no-store 가 맡는다.
+rm -rf apps/web/dist
+PATH="$BIN:$PATH" \
+HMB_STATE_DIR="$SCRATCH/state" HMB_DIST_CACHE="$SCRATCH/cache" \
+HMB_BUILD_CMD="bash $SCRATCH/fake-build.sh" \
+HMB_MANIFEST_CMD="false" \
+bash infra/deploy-web.sh "$BACKEND" > "$SCRATCH/run6.out" 2>&1
+check "T6 매니페스트 실패에도 배포 계속(exit 0)" "0" "$?"
+check "T6 경고를 남긴다" "1" "$(grep -c '버전 매니페스트 실패' "$SCRATCH/run6.out" | tr -d ' ')"
+check "T6 version.json 은 정직한 부재(스테일 잔존 없음)" "0" "$([ -f apps/web/dist/version.json ] && echo 1 || echo 0)"
 
 echo "═══════════════════════════════"
 echo "PASS $PASS · FAIL $FAIL"
