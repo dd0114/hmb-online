@@ -77,7 +77,11 @@ if ! ls "$CACHE"/assets/*.js >/dev/null 2>&1; then
 fi
 
 # ── 2) config.json 만 교체 ─────────────────────────────────────────────────────────
-PREV=$(sed -n 's/.*"apiBase" *: *"\([^"]*\)".*/\1/p' "$CACHE/config.json" 2>/dev/null | head -1)
+# ⚠️ `|| true` 가 필요하다 — `config.json` 이 아직 없으면(첫 배포 전 캐시) `sed` 가 실패하고,
+#    `set -euo pipefail` 아래에서 그 실패가 **대입문의 종료코드**가 되어 스크립트가
+#    **아무 메시지 없이 exit 1** 한다. 이전 값 표시는 로그 편의일 뿐인데 그것 때문에 전파가
+#    통째로 죽는다(#514 수정 중 계약 하네스가 실제로 이 침묵을 밟았다).
+PREV=$(sed -n 's/.*"apiBase" *: *"\([^"]*\)".*/\1/p' "$CACHE/config.json" 2>/dev/null | head -1 || true)
 printf '{\n  "apiBase": "%s",\n  "updatedAt": "%s",\n  "source": "%s"\n}\n' \
   "$BACKEND" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${HMB_PUBLISH_SOURCE:-manual}" > "$CACHE/config.json"
 log "config.json: ${PREV:-<없음>} → $BACKEND"
@@ -144,8 +148,16 @@ run_deploy(){
     "$@" pages deploy "$CACHE" --project-name="$PROJECT" --branch=main --commit-dirty=true >/dev/null
   fi
 }
-if ! run_deploy; then
-  rc=$?
+# ⚠️ `if ! run_deploy; then rc=$?` 로 쓰면 안 된다 — 그 자리의 `$?` 는 명령이 아니라 **`!` 의 결과**라
+#    실패했을 때 항상 **0** 이다. 그래서 2026-08-17 라이브 장애에서 `Killed: 9`(SIGKILL, rc 137)가
+#    `배포 실패(rc=0)` 로 찍혔고, 바로 아래 `case` 의 124/137 안내는 **한 번도 발화하지 않았다**
+#    (그 안내를 넣은 2026-07-31 주석이 자기가 고쳤다고 믿은 바로 그 증상이 그대로 살아 있었다).
+#    더 나쁜 건 `exit "$rc"` = **`exit 0`** 이라, 이 스크립트를 직접 부르는 쪽(deploy-web.sh·사람)에는
+#    실패가 **성공으로** 나갔다는 것이다. 워치독만 무사했는데 그건 종료코드를 안 믿고 엣지를 직접
+#    다시 조회하기 때문이다(publish_verified) — 즉 이 결함은 그 독립 검증이 **가려주고 있었다**.
+rc=0
+run_deploy || rc=$?
+if [ "$rc" -ne 0 ]; then
   # ⚠️ 124 만 보면 안 된다 — `timeout -k 10` 은 유예 후 **SIGKILL** 을 보내고 그때 rc 는 **137** 이다.
   #    2026-07-31 실장애에서 로그에 남은 건 `Killed: 9` 한 줄뿐이었고(rc 137) 위 안내가 안 찍혀서,
   #    "전파가 왜 안 됐는지"가 보이지 않았다. 두 코드를 같이 잡아 사람이 읽을 수 있게 남긴다.

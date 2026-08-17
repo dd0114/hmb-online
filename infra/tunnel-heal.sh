@@ -114,6 +114,19 @@ DEFER_MARK="$STATE_DIR/heal-defer"
 TUNNEL_LOG_DIR="${HMB_TUNNEL_LOG_DIR:-$STATE_DIR/tunnel-logs}"
 TUNNEL_LOG_KEEP="${HMB_TUNNEL_LOG_KEEP:-20}"
 
+# ── 전파 예산은 실행 상한을 **알아야 한다** (#508, 2026-08-17 라이브 장애) ──────────
+# 그날의 모양: `wrangler pages deploy` 상한 240s × 재시도 3회 = 720s 인데 이 스크립트의 자기마감은
+# **420s** 다. 즉 3번째 시도는 **구조적으로 절대 못 끝난다** — 실제로 매 틱이 `RUN_TIMEOUT` 으로
+# 자살했고, 그 자살은 ⓐ 아무 사유도 안 남기고 ⓑ 락을 쥔 채 죽어 후속 틱을 굶기고 ⓒ 심박이 8분
+# 밀려 status.sh 가 "워치독이 안 돈다"를 띄웠다. **재시도 예산(#505)은 시도 횟수만 봤지 한 번의
+# 시도가 남은 시간 안에 끝날 수 있는지를 안 봤다** — 세 축 어디에도 이 축이 없었다.
+# 처방: 시도를 시작하기 전에 **남은 실행 시간**과 **1회 비용**을 비교한다. 못 끝낼 시도는
+# 시작하지 않고(그 시도는 실패가 아니라 **무산**이다) 다음 틱으로 넘긴다.
+RUN_STARTED=$(date +%s)
+PUBLISH_VERIFY_COST="${HMB_PUBLISH_VERIFY_COST:-45}"   # 검증 폴링(6×5s) + 여유
+DEPLOY_TIMEOUT="${HMB_DEPLOY_TIMEOUT:-240}"            # publish 쪽 상한(그대로 넘긴다)
+DEPLOY_TIMEOUT_MIN="${HMB_DEPLOY_TIMEOUT_MIN:-60}"     # 이보다 짧게 줄 바엔 시작하지 않는다
+
 mkdir -p "$STATE_DIR"
 
 MODE="${1:---check}"
@@ -225,6 +238,12 @@ heal_stats(){
     }' "$HEALS_FILE"
 }
 
+# 자기마감까지 남은 초. 마감이 꺼져 있으면(0) 사실상 무한 — 그때는 이 축이 존재하지 않는다.
+run_remaining(){
+  [ "${RUN_DEADLINE:-0}" -gt 0 ] 2>/dev/null || { echo 99999; return; }
+  echo $(( RUN_STARTED + RUN_DEADLINE - $(now) ))
+}
+
 # 이미 k 번 소모했을 때 다음 시도까지 기다릴 초. 60 → 120 → 240 → 상한(300).
 backoff_for(){
   local k="${1:-0}" w="$HEAL_RETRY_BASE" i=1
@@ -293,8 +312,22 @@ publish_verified(){
   #    코드 변경이 된다. 없으면 종전대로 publish 쪽 기본값 결정에 맡긴다.
   local -a pass_env=(HMB_LOCK_HELD=1 "HMB_PUBLISH_SOURCE=$src")
   [ -n "${PAGES_PROJECT:-}" ] && pass_env+=("PAGES_PROJECT=$PAGES_PROJECT")
+  local rem cap
   while [ "$i" -le "$tries" ]; do
-    env "${pass_env[@]}" "$PUBLISH" "$url" >> "$HEAL_LOG.publish" 2>&1 || true
+    # ── 못 끝낼 시도는 시작하지 않는다 (#508) ────────────────────────────────────
+    # 남은 실행 시간에 맞춰 배포 상한을 **줄여서** 넘긴다. 줄여도 최소치 미만이면 이번 틱은
+    # 여기서 접는다 — 시작해봐야 `RUN_TIMEOUT` 으로 사유 없이 죽고 락만 쥐고 있게 된다.
+    rem=$(run_remaining)
+    cap=$(( rem - PUBLISH_VERIFY_COST ))
+    [ "$cap" -gt "$DEPLOY_TIMEOUT" ] && cap="$DEPLOY_TIMEOUT"
+    if [ "$cap" -lt "$DEPLOY_TIMEOUT_MIN" ]; then
+      record PUBLISH_DEFER "실행 잔여 ${rem}s 로는 1회를 못 끝낸다(최소 $((DEPLOY_TIMEOUT_MIN + PUBLISH_VERIFY_COST))s) — try=$i/$tries, 다음 틱으로"
+      say "· 남은 실행시간 ${rem}s — 이번 틱엔 전파를 시작하지 않는다(다음 틱이 이어서 한다)"
+      return 1
+    fi
+    [ "$cap" -lt "$DEPLOY_TIMEOUT" ] && \
+      record PUBLISH_CAP "배포 상한을 ${DEPLOY_TIMEOUT}s → ${cap}s 로 줄임(실행 잔여 ${rem}s) try=$i/$tries"
+    env "${pass_env[@]}" "HMB_DEPLOY_TIMEOUT=$cap" "$PUBLISH" "$url" >> "$HEAL_LOG.publish" 2>&1 || true
     # 독립 검증 — publish 의 자기 신고가 아니라 **엣지가 주는 값**으로 판정한다.
     # 방금 올린 직후엔 엣지마다 반영이 몇 초 어긋나므로 잠깐 폴링한다.
     local j

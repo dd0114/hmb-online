@@ -47,6 +47,8 @@ echo "203.0.113.7"
 EOF
 cat > "$BIN/publish" <<'EOF'
 #!/usr/bin/env bash
+# 호출됐다는 사실과 넘겨받은 배포 상한을 남긴다 — "시작하지 않았다"를 계약으로 걸 수 있어야 한다.
+printf '%s\tHMB_DEPLOY_TIMEOUT=%s\n' "$*" "${HMB_DEPLOY_TIMEOUT:-<없음>}" >> "${HMB_TEST_PUBLISH_MARK:-/dev/null}"
 echo "fake publish $*"
 EOF
 # curl 도 가짜다 — 이 하네스는 **소켓을 하나도 열지 않는다**(샌드박스·오프라인에서도 같은 판정이
@@ -55,12 +57,14 @@ EOF
 #   · 그 밖 전부 → 000 (터널 왕복은 이 테스트의 대상이 아니다 — URL 획득에서 이미 실패한다)
 cat > "$BIN/curl" <<'EOF'
 #!/usr/bin/env bash
-for a in "$@"; do case "$a" in -fsS*|-fs) exit 1;; esac; done
-for a in "$@"; do
-  case "$a" in
-    http://localhost:*/internal/health|http://127.0.0.1:*/internal/health) printf '401'; exit 0;;
-  esac
+# -fsS 계열 = pages_backend 의 config.json 조회. 테스트가 심어 둔 "Pages 가 서빙 중인 값"을 준다
+# (파일이 없으면 응답 없음 = 종전 동작).
+for a in "$@"; do case "$a" in -fsS*|-fs)
+  [ -s "${HMB_TEST_SERVED_FILE:-}" ] || exit 1
+  cat "$HMB_TEST_SERVED_FILE"; exit 0;; esac
 done
+# 헬스 프로브(로컬 백엔드·터널 왕복 둘 다) = 401 (java 가 응답했다는 규약, tunnel-heal §3)
+for a in "$@"; do case "$a" in *internal/health*) printf '401'; exit 0;; esac; done
 printf '000'; exit 0
 EOF
 chmod +x "$BIN"/*
@@ -166,12 +170,76 @@ rm -f "$HMB_STATE_DIR/DEGRADED"; seed_heals 400
 HMB_MAX_HEALS_PER_HOUR=1 bash "$HEAL" --once >"$SCRATCH/t10.out" 2>&1; rc=$?
 check "T10 구 이름 HMB_MAX_HEALS_PER_HOUR 가 방지선으로 먹힌다" "5" "$rc"
 
+# ── P. 전파 예산이 실행 상한을 안다 (#508, 2026-08-17 라이브 장애) ────────────────
+# 그날: 배포 상한 240s × 3회 = 720s > 자기마감 420s → 3번째 시도는 **구조적으로 못 끝난다**.
+# 매 틱이 RUN_TIMEOUT 으로 자살했고 사유는 안 남고 락만 쥐고 있었다(후속 틱이 굶었다).
+# 주입: "터널은 정상인데 web 이 옛 주소를 본다"(= publish_only 경로) + 실행 잔여를 짧게.
+setup_publish_only(){   # $1 = HMB_RUN_DEADLINE
+  rm -f "$HMB_STATE_DIR/DEGRADED" "$SCRATCH/pubmark"
+  : > "$HEALLOG"; seed_heals
+  printf 'https://new-tunnel-abc.trycloudflare.com\n' > "$HMB_TUNNEL_LOG"
+  printf '{"apiBase":"https://old-tunnel-xyz.trycloudflare.com"}\n' > "$SCRATCH/served.json"
+  export HMB_TEST_SERVED_FILE="$SCRATCH/served.json" HMB_TEST_PUBLISH_MARK="$SCRATCH/pubmark"
+}
+
+# P1. 남은 실행시간으로 1회를 못 끝내면 **시작하지 않는다**.
+setup_publish_only
+HMB_RUN_DEADLINE=50 bash "$HEAL" --once >"$SCRATCH/p1.out" 2>&1; rc=$?
+check "P1 전파 시작 안 함(exit 1)" "1" "$rc"
+grep_check "P1 PUBLISH_DEFER 로 사유를 남긴다" "PUBLISH_DEFER" "$HEALLOG"
+check "P1 publish 를 부르지 않았다" "0" "$([ -s "$SCRATCH/pubmark" ] && echo 1 || echo 0)"
+check "P1 RUN_TIMEOUT 으로 죽지 않았다" "0" "$(grep -c RUN_TIMEOUT "$HEALLOG" 2>/dev/null | tr -d ' ')"
+
+# P2. 잔여가 상한보다 짧으면 **줄여서** 넘긴다(그래야 마감 안에 끝난다).
+setup_publish_only
+HMB_RUN_DEADLINE=200 HMB_PUBLISH_TRIES=1 bash "$HEAL" --once >"$SCRATCH/p2.out" 2>&1
+grep_check "P2 배포 상한을 줄였다고 기록" "PUBLISH_CAP" "$HEALLOG"
+check "P2 줄인 상한이 실제로 publish 에 전달됐다" "1" \
+  "$(awk -F'HMB_DEPLOY_TIMEOUT=' 'NF>1{v=$2+0; if (v>0 && v<240) print 1}' "$SCRATCH/pubmark" 2>/dev/null | head -1 | tr -d ' \n' || echo 0)"
+
+# P3. 마감이 넉넉하면 그냥 돈다(= P1 이 마감을 재는 것이지 전파를 막는 게 아니다).
+setup_publish_only
+HMB_RUN_DEADLINE=0 HMB_PUBLISH_TRIES=1 bash "$HEAL" --once >"$SCRATCH/p3.out" 2>&1
+check "P3 마감 없음 → publish 를 실제로 부른다" "1" "$([ -s "$SCRATCH/pubmark" ] && echo 1 || echo 0)"
+unset HMB_TEST_SERVED_FILE HMB_TEST_PUBLISH_MARK
+
+# ── R. publish 가 실패를 **실패로** 보고한다 (#508 결함1) ─────────────────────────
+# 2026-08-17 라이브: wrangler 가 SIGKILL(137) 로 죽었는데 로그는 `실패(rc=0)` 였고 종료코드도 0 이었다.
+# 원인 = `if ! cmd; then rc=$?` — 그 `$?` 는 명령이 아니라 `!` 의 결과(실패 시 항상 0)다.
+# 주입: 가짜 wrangler 를 `HMB_WRANGLER` 로 물려 원하는 종료코드를 내게 한다(네트워크 0).
+PUB="$PWD/infra/publish-backend-url.sh"
+# 캐시 온전성 게이트(index.html + assets/)를 통과시켜야 run_deploy 까지 간다 — 그 게이트가
+# 이 테스트의 대상이 아니다(빈 사이트 배포를 막는 별개 방어선이고 이미 잘 돈다).
+mkdir -p "$SCRATCH/dist/assets"; printf '<html></html>' > "$SCRATCH/dist/index.html"
+printf '/* x */' > "$SCRATCH/dist/assets/app.js"
+printf '#!/usr/bin/env bash\nexit 137\n' > "$BIN/wrangler137"; printf '#!/usr/bin/env bash\nexit 1\n' > "$BIN/wrangler1"
+chmod +x "$BIN/wrangler137" "$BIN/wrangler1"
+> "$SCRATCH/r.out"
+# R0. 캐시에 config.json 이 없어도 **조용히 죽지 않는다**(위 dist 에 일부러 안 만들었다).
+#     구 코드는 `PREV=$(sed …)` 가 set -e 로 exit 1 하며 아무것도 안 찍었다.
+run_pub(){ # $1 = 가짜 wrangler
+  env HMB_LOCK_HELD=1 HMB_STATE_DIR="$HMB_STATE_DIR" HMB_DIST_CACHE="$SCRATCH/dist" \
+      HMB_WORK_DIR="$SCRATCH/work" PAGES_PROJECT=hmb-test-nonexistent HMB_WRANGLER="$1" \
+      CLOUDFLARE_API_TOKEN=x CLOUDFLARE_ACCOUNT_ID=y \
+      bash "$PUB" https://new-tunnel-abc.trycloudflare.com >"$SCRATCH/r.out" 2>&1
+}
+run_pub "$BIN/wrangler137"; rc=$?
+grep_check "R0 config.json 없는 캐시에서도 조용히 안 죽는다" "config.json:" "$SCRATCH/r.out"
+check "R1 SIGKILL(137) 이 137 로 나간다 (구동작 0)" "137" "$rc"
+grep_check "R1 사람이 읽을 사유 — 시간초과/강제종료(rc=137)" "rc=137" "$SCRATCH/r.out"
+run_pub "$BIN/wrangler1"; rc=$?
+check "R2 일반 실패(1) 도 그대로 나간다" "1" "$rc"
+grep_check "R2 rc 를 사유에 찍는다" "rc=1" "$SCRATCH/r.out"
+
 # ── 아블레이션: 각 계약이 정말 하중을 받는가 ──────────────────────────────────────
 # ⚠️ "26개 다 green" 은 하네스가 아무것도 안 봐도 나올 수 있는 결과다. 그래서 **끄면 판정이
 #    뒤집히는지**를 같이 본다. (구 스크립트로 돌려 보는 카나리아도 23/26 red 이지만, 그쪽은
 #    주입 이음매가 없어 전부 exit 4(backend down)로 죽으므로 "예산 로직이 바뀌었다"의 증거로는
 #    약하다 — 그래서 노브 단위로 다시 판별한다.)
 echo "──────── 아블레이션 (끄면 뒤집히나) ────────"
+# ⚠️ P 섹션이 터널 로그에 URL 을 심어 뒀다 — 비우지 않으면 `--once` 가 "터널 정상" 으로 빠져
+#    heal 경로에 아예 들어가지 않고 셋 다 exit 0 이 된다(실제로 한 번 그렇게 나왔다).
+: > "$HMB_TUNNEL_LOG"
 
 # A1. DNS 게이트를 끄면 유예가 사라진다 → 같은 입력이 예산 판정으로 넘어간다.
 rm -f "$HMB_STATE_DIR/DEGRADED" "$HMB_STATE_DIR/heal-defer"; seed_heals 1500 1200 900 600 310
