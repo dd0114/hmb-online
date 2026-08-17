@@ -29,6 +29,12 @@
 /config.json
   Cache-Control: no-store
 
+# 배포 버전 매니페스트(#506). 규칙이 없던 동안 엣지가 s-maxage 7일로 캐시해, 배포물에서 파일이
+# 빠졌는데도 두 세대 전 매니페스트를 200 으로 줬다(실측 age 3.7일 HIT). 버전 확인은 "지금 뭐가
+# 떠 있나"를 묻는 것이라 스테일이 곧 오답이다 — 절대 캐시하지 않는다.
+/version.json
+  Cache-Control: no-store
+
 /viewer-embed.html
   Cache-Control: no-cache
 
