@@ -28,7 +28,20 @@ trap '[ "${LOCKED:-0}" = 1 ] && rm -rf "$LOCK"' EXIT
 
 echo "[deploy-web] backend = $BACKEND"
 rm -rf apps/web/dist
-VITE_API_BASE="$BACKEND" bash infra/pages/build.sh
+# HMB_BUILD_CMD = 계약 하네스(infra/tests/deploy-web-manifest.test.sh)의 주입 이음매.
+# 실빌드(npm ci)는 워크트리 node_modules 를 통째로 재설치하므로 테스트에서 돌릴 수 없다.
+# 기본값은 종전 경로 그대로다.
+VITE_API_BASE="$BACKEND" ${HMB_BUILD_CMD:-bash infra/pages/build.sh}
+
+# 버전 매니페스트 (#506) — 이 단계가 deploy-pages.sh 에만 있어서, 장애 복구 경로(start-tunnel.sh
+# → 여기)로 재배포할 때마다 version.json 이 배포물에서 빠졌다. 그런데 엣지가 s-maxage 7일 캐시로
+# 두 세대 전 매니페스트를 200 으로 계속 줘(실측 age 3.7일, cf-cache HIT) 실패가 404 가 아니라
+# **그럴듯한 오답**이 됐다 — 버전 식별이 가장 필요한 복구 순간에 가장 낡은 답을 준다.
+# deploy-pages.sh 42-44행과 같은 스텝(같은 스크립트·같은 env 계약)이다. `|| true` 도 같은 이유 —
+# 매니페스트는 관측용이라 그것 때문에 배포가 죽으면 안 된다.
+echo "[deploy-web] 버전 매니페스트 (dist/version.json)"
+API_URL="$BACKEND" WEB_URL="https://${PROJECT}.pages.dev" TUNNEL_KIND="cloudflare-quick(backend)+pages(web)" \
+  bash infra/version-manifest.sh infra/deploy-manifest.json >/dev/null || true
 
 echo "[deploy-web] Pages 배포 ($PROJECT)..."
 npx -y wrangler pages deploy apps/web/dist --project-name="$PROJECT" --branch=main --commit-dirty=true
