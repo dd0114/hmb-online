@@ -171,8 +171,9 @@ HMB_MAX_HEALS_PER_HOUR=1 bash "$HEAL" --once >"$SCRATCH/t10.out" 2>&1; rc=$?
 check "T10 구 이름 HMB_MAX_HEALS_PER_HOUR 가 방지선으로 먹힌다" "5" "$rc"
 
 # ── P. 전파 예산이 실행 상한을 안다 (#508, 2026-08-17 라이브 장애) ────────────────
-# 그날: 배포 상한 240s × 3회 = 720s > 자기마감 420s → 3번째 시도는 **구조적으로 못 끝난다**.
-# 매 틱이 RUN_TIMEOUT 으로 자살했고 사유는 안 남고 락만 쥐고 있었다(후속 틱이 굶었다).
+# 그날: 배포 1회 최악 ≈295s vs 자기마감 420s → 2번째 시도 완주부터 마감을 넘는다. 실측은
+# 마감 자체가 trap 레이스로 무장해제돼 한 틱이 28분을 돌았다(#514 재검증 — tunnel-heal.sh
+# 상단 주석 참조). 이 게이트는 어느 쪽이든 "못 끝낼 시도를 시작하지 않는다"로 막는다.
 # 주입: "터널은 정상인데 web 이 옛 주소를 본다"(= publish_only 경로) + 실행 잔여를 짧게.
 setup_publish_only(){   # $1 = HMB_RUN_DEADLINE
   rm -f "$HMB_STATE_DIR/DEGRADED" "$SCRATCH/pubmark"
