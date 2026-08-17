@@ -610,7 +610,16 @@ if [ "$RUN_DEADLINE" -gt 0 ] 2>/dev/null; then
       kill -TERM $$ 2>/dev/null; sleep 5; kill -KILL $$ 2>/dev/null
     fi ) >/dev/null 2>&1 &
   SELF_TIMER=$!
-  trap 'kill "$SELF_TIMER" 2>/dev/null; cleanup' EXIT INT TERM
+  # ⚠️ TERM 을 EXIT 와 같은 trap 에 묶으면 안 된다 (#518, 2026-08-17 장애의 지배 항).
+  #    구 형태 `trap 'kill $SELF_TIMER; cleanup' EXIT INT TERM` 은 **exit 가 없어서**, 타이머의
+  #    TERM 이 짧은 명령(URL 대기 sleep 2 루프·검증 폴링) 중에 도착하면 trap 이 5초 유예 안에
+  #    실행돼 **자기 처형자(타이머)를 먼저 죽이고(KILL 미발사) 락을 풀고 계속 달렸다** — 마감도
+  #    락도 없이. 실측: 03:29:03 틱이 RUN_TIMEOUT 을 찍고도 28분 34초 주행(= MTTR 34분의 대부분).
+  #    긴 foreground(publish 대기) 중 TERM 은 trap 이 유예되므로 종전대로 KILL 백스톱이 잡는다 —
+  #    그 경로는 바꾸지 않는다. 여기서 바꾸는 것은 "TERM 을 받으면 **죽는다**" 하나다:
+  #    TERM/INT → exit 143 → EXIT trap 이 타이머 정리 + cleanup(락 해제)까지 한다.
+  trap 'kill "$SELF_TIMER" 2>/dev/null; cleanup' EXIT
+  trap 'exit 143' TERM INT
 fi
 
 # ── 모드 ───────────────────────────────────────────────────────────────────────────
