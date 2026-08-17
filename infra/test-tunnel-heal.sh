@@ -232,6 +232,23 @@ run_pub "$BIN/wrangler1"; rc=$?
 check "R2 일반 실패(1) 도 그대로 나간다" "1" "$rc"
 grep_check "R2 rc 를 사유에 찍는다" "rc=1" "$SCRATCH/r.out"
 
+# ── D. 자기마감은 침묵으로 무장해제되지 않는다 (#518 — TERM trap 레이스) ──────────
+# 8-17 장애: RUN_TIMEOUT 이 찍혔는데 틱이 안 죽고 28분 34초를 돌았다. 기제 = 타이머의
+# `kill -TERM $$ → sleep 5 → kill -KILL $$` 에서, 메인이 짧은 명령(URL 대기 sleep 2 루프 등)
+# 중이면 TERM trap 이 5초 안에 실행돼 **타이머를 먼저 죽이고(KILL 미발사) 계속 달린다**.
+# 주입: 마감 3s + 가짜 cloudflared(URL 을 영영 안 찍음 → 60s URL 대기 루프가 레이스 창).
+# 구동작 = 무장해제 후 루프 완주(~60s+, exit 1) / 기대 = 마감 부근에서 자기종료(exit 143).
+# (긴 foreground 중 TERM = KILL 백스톱 경로는 이 수정이 안 건드린다 — 8-17 틱 C 로 실증됨.)
+rm -f "$HMB_STATE_DIR/DEGRADED" "$HMB_STATE_DIR/heal-defer"; seed_heals
+: > "$HMB_TUNNEL_LOG"; : > "$HEALLOG"
+D_START=$(date +%s)
+HMB_RUN_DEADLINE=3 bash "$HEAL" --once >"$SCRATCH/d1.out" 2>&1; rc=$?
+D_TOOK=$(( $(date +%s) - D_START ))
+check "D1 마감을 넘겨 계속 돌지 않는다(≤20s; 구동작 ~60s+)" "1" "$([ "$D_TOOK" -le 20 ] && echo 1 || echo 0)"
+check "D1 자기종료 코드 143(TERM 경로)" "143" "$rc"
+grep_check "D1 RUN_TIMEOUT 사유가 남는다" "RUN_TIMEOUT" "$HEALLOG"
+check "D1 락을 쥔 채 죽지 않는다" "0" "$([ -d "$HMB_STATE_DIR/deploy.lock" ] && echo 1 || echo 0)"
+
 # ── 아블레이션: 각 계약이 정말 하중을 받는가 ──────────────────────────────────────
 # ⚠️ "26개 다 green" 은 하네스가 아무것도 안 봐도 나올 수 있는 결과다. 그래서 **끄면 판정이
 #    뒤집히는지**를 같이 본다. (구 스크립트로 돌려 보는 카나리아도 23/26 red 이지만, 그쪽은
