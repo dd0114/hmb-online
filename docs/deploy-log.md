@@ -53,6 +53,43 @@ admin         admin bootstrap: nickname='hmbadmin' — admins=1
 ⚠️ **시크릿 팩(`hmb-move.tar.gz`)은 양쪽에서 삭제했다.**
 
 ---
+## 2026-08-18T15:21Z — **설치 — 터널 워치독 전용(infra)** — 라이브 설치본이 3일 낡아 머지된 수정 3건이 안 먹던 것을 반영 (#518 · #514/#515)
+
+- **git**: `67c96490690436dbae96b13018e7d7a52edf02a8` (`origin/main` 과 동일, `dirty: false`) ← 라이브 설치본 `c523f479`(08-15, #505)
+- **모듈 버전**: engine **0.43.0(무접촉)** · server-java 0.1.0(**무접촉**) · web 0.0.0(**무접촉 — 재빌드·재배포 0**) · servants 0.0.1(**무접촉**)
+- **이미지**: java `sha256:68c90a85…e1831`(**무변경**) / runner `sha256:97a82f3f…7648d1`(**무변경**) — 이번 설치는 도커를 만들지도 재기동하지도 않는다
+- **Flyway**: **무접촉**(DB 를 건드리는 단계 없음)
+- **URL**: 백엔드 터널 `https://yields-wake-reserves-camcorders.trycloudflare.com` (**회전 없음** — pid 48063, 기동 08-18 21:41 KST 가 설치(00:20) 이전임을 `ps` 로 확인) / web `https://hmb-online.pages.dev`(**무접촉**)
+- **무엇이 바뀌었나**: `bash infra/install-tunnel-heal.sh` 1회 — `infra/tunnel-heal.sh`·`infra/publish-backend-url.sh` 를 `~/.local/bin/` 사본으로 복사 + plist 재작성 + 워치독 서비스 `bootout`→`bootstrap`.
+
+**왜 이 항목이 필요한가 — 머지가 곧 반영이 아니다**
+
+워치독은 리포가 아니라 `~/.local/bin/hmb-tunnel-heal.sh` **사본**을 실행한다(워크트리가 여러 개라 특정
+체크아웃을 가리키면 조용히 죽기 때문 — 의도된 구조). 그래서 PR 이 머지돼도 **설치를 해야 라이브가 바뀐다**.
+2026-08-18 콜드 확인 시점 그 사본은 `c523f479`(08-15)였고, 머지된 수정 **3건이 전부 라이브에 없었다**:
+
+| 결함 | 라이브(설치 전) | 근거 |
+|---|---|---|
+| #518 자기마감 TERM trap 레이스 | `trap '… cleanup' EXIT INT TERM`(573행) | 08-17 장애 MTTR 34분의 지배 항 |
+| #514/#515 전파 예산 게이트 | `PUBLISH_DEFER`·`PUBLISH_CAP`·`run_remaining` **0건** | 무장해제 틱의 전파 루프 ~21분 미차단 |
+| #514 전파 실패 침묵 | `if ! run_deploy; then rc=$?` → rc 항상 0 | `Killed: 9`(137)가 "성공"으로 나갔다 |
+
+※ #506(`deploy-web.sh` version.json)은 **사본 경로가 아니다**(사람이 리포에서 직접 호출) → 이 드리프트 대상 아님.
+
+**설치 후 검증(콜드)**
+
+- 설치본 헤더 커밋 `c523f479` → **`67c96490`**
+- trap 분리 확인: `… cleanup' EXIT` + `exit 143' TERM INT` (623–624행)
+- `PUBLISH_DEFER|PUBLISH_CAP|run_remaining` **4건** 출현 · `run_deploy || rc=$?`(163행) 확인
+- 본문 `diff` vs `origin/main` — 두 파일 **IDENTICAL**
+- 설치본 `--check` 실행: `✓ 터널 정상 … ok http=401`(401 = 터널→백엔드 경로 생존 증거)
+- **라이브 무접촉 확인**: cloudflared pid 48063 `ELAPSED 2:39`(설치 이전 기동) · URL 회전 0 · `heal.log` 에 새 `HEAL_START` 0건
+
+**selftest ✗ 1건은 이번 설치가 만든 것이 아니다**
+
+`✗ heal.conf 없음 — 전파가 기본값 'hmb-online'(라이브)로 나간다` 는 `c523f479` 에도 있던 **선행 항목**이고,
+호출 지점이 `--selftest` 분기 하나뿐이라(`--check|--once` 치유 경로에는 없다) 워치독의 복구 동작을 막지 않는다.
+성질상 "전파가 랩이 아니라 라이브로 나간다"는 **단계3.5 게이트**라 별도 판단 대상.
 
 ## 2026-08-14T10:13Z — **배포 v3.30 — web 단독** — 터널 사망 긴급 복구 + admin 서브탭(#498)·공지(#473)
 
