@@ -1,3 +1,59 @@
+## 2026-08-19T08:28Z — **서버 이사 컷오버 (맥 → 윈도우 랩탑)** — #489 / 런북 #472
+
+- **성격**: 배포가 아니라 **호스트 이전**이다. 코드는 라이브와 같은 SHA 로 고정했고(`d76c6c68`),
+  바뀐 것은 **어느 기계가 응답하느냐** 뿐이다.
+- **git**: `d76c6c68ee03292f81a20d854403f403a967d1bf` (= 라이브 java 이미지가 빌드된 v3.29 SHA, detached)
+- **모듈 버전**: engine 0.1.0(무접촉) · server-java 0.1.0(**새 머신에서 재빌드**) ·
+  web 0.0.0(**무접촉 — 맥의 `dist-current`(`git=c938c6d7`) 를 그대로 이송해 발행**) · servants 0.0.1
+- **이미지**(새 머신 빌드): java `sha256:e0e571c8007b1d2a659c4b3683dba103f8302389454f0a6b2ae9bc4ee3f22759`
+  / runner `sha256:8076738c7ddf983cd1f45d6d5ff0d769fad7e5037eac73791ff29a60b938bc36`
+- **DB**: `hmb-p3-db` 737,316,864 B · sha256 `f5b5a2aadd8efb993fe5f27dfd15641913e8a0de16f5ce48d2f05907682bd974`
+  (양측 대조 일치) · Flyway **44 validated** · users 226 / matches 131 · `integrity_check ok`
+- **URL**: web `https://hmb-online.pages.dev` (고정) → apiBase
+  `https://physicians-imported-summit-helpful.trycloudflare.com` (랩탑 quick tunnel)
+- **다운타임**: `08:14:59Z` → `08:28:02Z` = **13분 03초**
+- **AI**: 모드 A 유지하되 **`~/.claude` 이송 안 함**(3.9GB) — 랩탑에서 `claude setup-token` 재로그인.
+  실행기 기동 로그 `AI 모드 live — 구독 로그인 확인됨(claude-code)`.
+
+### 왜 13분이나 걸렸나 — 전송이 아니라 **두 건의 사고 수습**이다
+
+DB 전송 자체는 **16초**였다(warm 복사 + `rsync --inplace` delta: 737MB 중 실제 전송 **425KB**,
+speedup 1199x). 정지 창을 먹은 것은 다음 둘이다.
+
+1. ⚠️ **런북 P2-12 가 정지 상태에서 실패한다** — `docker run -v hmb-p3-db:/data:ro … 'file:…?mode=ro'`
+   가 `unable to open database file` 로 죽는다. WAL 의 `-shm` 을 만들 수 없어서인데, **라이브일 땐
+   그 파일이 이미 있어 통과하고 정지하면 사라진다** = *런북이 쓰라고 지정한 바로 그 상태에서만 실패*.
+   → rw 마운트로 `.backup`(소스는 읽기만 한다). 소요 1분 49초.
+   ⚠️ 이 실패는 **조용했다** — 직전 백업 파일이 남아 있어 그 다음 `integrity_check`·`shasum` 이
+   **옛 파일에 대해 통과**했다. 해시를 새로 찍지 않았다면 낡은 DB 를 이송할 뻔했다.
+2. ⚠️ **wrangler 가 macOS AppleDouble 찌꺼기에서 죽는다** — 이송 팩이 맥에서 만들어져
+   `dist-current`/`.functions` 에 `._*` 파일이 **224개** 딸려왔고, esbuild 가
+   `functions/share/notice/._[id].js:1:0: ERROR: Unexpected "\x00"` 로 실패했다.
+   그 결과 `PUBLISH_FAIL` → 라이브가 **죽은 옛 터널을 계속 가리키는 상태로 3분** 더 머물렀다.
+   → `find … \( -name '._*' -o -name '.DS_Store' \) -delete` 후 재발행 성공.
+
+### 검증 (전부 컷오버 후 실측)
+
+```
+config.json   apiBase=physicians-imported-… · updatedAt 2026-08-19T08:27:40Z
+백엔드        /internal/health 401 · 0.158s          (토큰 있으면 200 JSON)
+runner        /health 200
+web           pages.dev 200
+CORS          preflight 200 · allow-origin https://hmb-online.pages.dev
+admin         admin bootstrap: nickname='hmbadmin' — admins=1
+워치독        active · 터널 정상 · DEGRADED 없음 · 라이브 프로젝트로 전환 완료
+실행기        폴링 시작(claude-code:sonnet, concurrency=1)
+```
+
+### 구 머신(맥) 상태 — **롤백 자산으로 남긴다**
+
+컨테이너 정지 · 터널 정지 · 실행기 정지 · **워치독 해제**(P0-7 — 안 끄면 두 머신이 같은 Pages 를
+서로 덮는다. 배포 락은 머신 간 공유되지 않는다). DB·이미지는 그대로 있다. 지우지 않는다.
+
+⚠️ **시크릿 팩(`hmb-move.tar.gz`)은 양쪽에서 삭제했다.**
+
+---
+
 ## 2026-08-14T10:13Z — **배포 v3.30 — web 단독** — 터널 사망 긴급 복구 + admin 서브탭(#498)·공지(#473)
 
 - **git**: `739f6b13787ba78ff2a70f534a6c7e53834b233e` (`origin/main`, `dirty: false`) ← 라이브 `d76c6c68`(v3.29)

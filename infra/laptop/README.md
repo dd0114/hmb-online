@@ -409,3 +409,54 @@ ssh hmb-laptop-ts wsl -e tmux -S /tmp/hmb.sock ls
 
 ⚠️ **URL 은 폭 넓은 pane 에서 뽑아라**(`-x 400`). 기본 폭이면 마지막 글자가 줄바꿈에 잘려
 `state` 가 한 글자 모자란 URL 이 나간다(실제로 겪었다 — 붙여 복원해야 했다).
+
+## 컷오버에서 실제로 터진 것 2건 (2026-08-19 실행, #489)
+
+리허설에서 잡은 4건 외에 **정지 창 안에서만 드러나는** 것이 둘 더 있었다.
+
+### ⚠️ 런북 P2-12 는 **정지 상태에서 실패한다** (라이브에서는 통과한다)
+
+```bash
+docker run --rm -v hmb-p3-db:/data:ro … sqlite3 'file:/data/hmb.db?mode=ro' '.backup …'
+#  → Error: unable to open database file
+```
+
+WAL 모드에서 SQLite 는 `-shm` 이 필요한데 **읽기전용 마운트**에서는 만들 수 없다.
+라이브일 때는 java 가 열어 둔 `-shm` 이 이미 있어 통과하고, **정지하면 사라져 실패한다** —
+즉 *런북이 이 명령을 쓰라고 지정한 바로 그 상태에서만 실패하는* 모양이다.
+→ **rw 마운트로 `.backup`** 한다(소스는 읽기만 하고, 쓰기는 `-shm` 생성뿐).
+
+⚠️ **이 실패는 조용하다.** 직전 백업 파일이 남아 있으면 이어지는 `integrity_check` 와 `shasum` 이
+**옛 파일에 대해 통과**해 버린다. 실제로 그 경로를 밟았다 — 해시를 새로 찍어 비교하지 않았다면
+낡은 DB 를 이송하고도 "검증 통과"로 읽었을 것이다. **백업 직후 mtime/해시를 반드시 새로 확인한다.**
+
+### ⚠️ 맥에서 만든 팩은 wrangler 를 죽인다 — AppleDouble `._*`
+
+```
+functions/share/notice/._[id].js:1:0: ERROR: Unexpected "\x00"
+[publish] ✗ wrangler 배포 실패 — 전파 안 됐다
+```
+
+이송 팩이 맥에서 만들어져 `dist-current`/`.functions` 에 `._*` 가 **224개** 딸려온다. esbuild 가
+그 널바이트에서 죽고, 그러면 **라우터 스왑이 통째로 실패**한다(= 라이브가 죽은 옛 터널을 계속
+가리킨다. 실측 3분 추가 다운타임). 새 머신에서 발행 **전에** 한 줄로 털어낸다:
+
+```bash
+find ~/.cache/hmb/dist-current ~/.cache/hmb/dist-current.functions \
+     \( -name '._*' -o -name '.DS_Store' \) -delete
+```
+
+### 라이브 전환 게이트는 자동 치유를 막지 않는다 (확인함)
+
+`selftest_publish_target` 은 **`--selftest` 분기에서만** 호출된다. 운영 경로(`--check|--once`)는
+그 게이트를 타지 않으므로, 컷오버 후 `heal.conf` 를 라이브로 바꾸면 워치독은 평소대로 치유·전파한다.
+`HMB_ALLOW_LIVE=1` 은 **사람이 selftest 를 돌릴 때만** 필요하다.
+
+### 실측 요약
+
+| 항목 | 값 |
+|---|---|
+| 다운타임 | `08:14:59Z → 08:28:02Z` = **13분 03초** |
+| DB delta 전송 | **16초** (737MB 중 실제 425KB · speedup 1199x) |
+| 정지 상태 `.backup` | 1분 49초 |
+| 나머지 ~10분 | **위 두 사고 수습** — 전송이 아니다 |
