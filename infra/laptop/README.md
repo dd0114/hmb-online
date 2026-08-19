@@ -161,9 +161,26 @@ hmb-tunnel-heal.service: Main process exited, code=exited, status=200/CHDIR
 *재부팅하면 복구*지 *끊기면 복구*가 아니다. 그리고 이 작업은 **리포에 없었다**(손으로 만든 것).
 버전관리 밖이라 개선 대상으로 보이지도 않았다.
 
-⚠️ **비대칭이 진단의 핵심이다**: cloudflared 는 같은 랩탑에서 같은 방향(아웃바운드)으로 나가는데
-살아남았다 — **자기 재접속 로직이 있어서**다. 맨 `ssh -R` 은 없다. 그래서 "기계가 잠들었다"가
-아니라 "연결 하나가 죽었다"로 좁혀진다.
+> ### ⚠️ 위 문단의 진단은 **틀렸다** (2026-08-18 정정, 실측)
+>
+> 트리거가 AtStartup 하나인 것은 맞다. 그러나 **"그래서 끊겨도 아무도 다시 걸지 않았다"는 거짓**이다.
+> 그 작업이 실행하는 본체 `C:\ProgramData\hmb\tunnel.ps1` 을 그때 **아무도 읽지 않았다** — 리포 밖에
+> 있었기 때문이다. 이번에 read-only 로 회수해 보니 그 안에는 **이미 재다이얼 루프가 있다**:
+> `while($true){ ssh -R 2223:localhost:22 ...; sleep 15 }`. AtStartup 은 그 루프를 *시작*할 뿐이고,
+> 끊김을 견디는 것은 루프다. 전문 = **`legacy-tunnel.ps1`**(회수한 원문 그대로).
+>
+> **그래서 cloudflared 비대칭 논증도 근거를 잃는다** — "cloudflared 는 자기 재접속이 있고 맨 `ssh -R`
+> 은 없다"가 전제였는데, 여기의 `ssh -R` 은 맨 것이 아니라 **루프에 감겨 있었다**.
+>
+> 실제 취약점은 재다이얼 유무가 아니라 그 루프의 **구조적 천장 둘**이다(실측):
+>
+> | 취약점 | 왜 재시도로 못 넘나 |
+> |---|---|
+> | **다이얼 대상이 LAN 전용** (`peter.park@BH-L175.local` · `172.30.1.33`) | 랩탑이 이 LAN 을 떠나면 **몇 번을 걸어도** 닿을 곳이 없다 |
+> | **포트 2223 고정 + `ExitOnForwardFailure=yes`** | 맥에 좀비 홀더가 끼면 **모든** 재다이얼이 거절된다. 루프는 바쁘게 도는데 성과가 0 이고, 밖에서는 건강해 보인다 |
+>
+> ⚠️ 그날 밤 둘 중 무엇이 발화했는지는 **규명되지 않았다**. 규명된 것처럼 적지 마라 — 그렇게 적으면
+> 다음 사람이 "재다이얼을 넣었으니 해결"로 읽고 LAN 천장을 그대로 남긴다.
 
 ### 처방 ① 재다이얼 — `install-reverse-tunnel-task.ps1`
 
@@ -232,6 +249,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File infra\laptop\join-personal-t
 - ⚠️ **검증은 첫 경로를 일부러 끊고 한다.** 첫 경로가 살아 있는 동안만 되는 두 번째 경로는
   이중화가 아니다.
 
+### 착지 상태 (2026-08-18 실측)
+
+| 항목 | 값 |
+|---|---|
+| 랩탑 tailscale | **이미 조인돼 있었다** — `hmb-laptop 100.65.56.104 · ehgus0114@ · windows` |
+| 맥 ⓑ 데몬 | `bh-l175-personal 100.84.111.73` · tailnet `ehgus0114@gmail.com` · BackendState **Running** |
+| 회사 tailnet | 무영향 — `tail3401b2` 정상 · **랩탑 노드 0건** · `100.64/10` 라우트는 `utun0`(회사) 그대로 |
+| userspace 유지 | 개인 IP 가 **어느 인터페이스에도 바인드되지 않음**(0건) |
+| ⓑ 경로 통과 | `ssh hmb-laptop-ts 'exit 0'` **OK** · peer `active; direct 172.30.1.42:41641` · ping 7ms |
+
+⚠️ **auth key 는 결국 필요 없었다** — 랩탑이 이미 개인 tailnet 에 있어서 맥 쪽 브라우저 로그인
+한 번으로 닫혔다. `join-personal-tailnet.ps1` 은 **새 기계용**으로 남긴다.
+
+⚠️ **`utun 개수 불변(7)` 은 불변식이 아니다** — 로그인 후 7 → 9 가 됐지만 새 utun 들은 IP 도
+라우트도 없다(맥OS 가 수시로 만든다). 검증해야 할 성질은 개수가 아니라 **①개인 IP 가 어느
+인터페이스에도 바인드되지 않을 것 ②`100.64/10` 이 계속 `utun0`(회사) 로 갈 것** 두 가지다.
+
+⚠️ **아직 안 한 검증**: 첫 경로를 실제로 끊고 ⓑ 로만 들어가 보기. 지금 증거는 **구조적 독립성**
+(`path1 = 127.0.0.1:2223` 역방향 포워드 ↔ `path2 = tailscale peer :22 via SOCKS`)까지다.
+그리고 오늘은 ⓑ 도 **같은 LAN 직결**로 붙었다 — 오프-LAN 에서 DERP 로 넘어가는 것은 설계상
+참이지만 **실측되지 않았다**. 랩탑을 다른 네트워크로 옮길 일이 생기면 그때가 그 검증이다.
+
 ## ⚠️ 자가복구가 **자기 고장에 무음**인 부류 — 맥에서도 같은 것이 터졌다 (#497)
 
 랩탑의 `WorkingDirectory` 사고(위 §)와 **같은 부류**가 2026-08-13 맥에서 발화했다. launchd plist 의
@@ -250,3 +289,174 @@ powershell -NoProfile -ExecutionPolicy Bypass -File infra\laptop\join-personal-t
 - `infra/deploy-pages.sh:67` 이 BSD 전용 `sed -i ''` 를 쓴다 → **리눅스에서 실패**한다.
   AC1~AC5 의 경로가 아니어서(전파는 `deploy-web.sh`) 이번 스코프에서는 건드리지 않는다.
   랩탑에서 Pages 프로젝트를 새로 만들거나 CORS 오리진을 바꿀 때 처음 물린다.
+
+## 이사 리허설 — 실측으로 드러난 함정 4개 (2026-08-19, #489)
+
+랩탑을 **라이브 데이터로 실제로 띄워** 봤다. 결과: 부팅은 되는데 **그대로 컷오버했으면 4곳이 깨졌다.**
+전부 "부팅 성공"이라는 신호 뒤에 숨어 있어서, 리허설 없이는 컷오버 당일에 만났을 것들이다.
+
+| # | 함정 | 어떻게 드러났나 | 처방 |
+|---|---|---|---|
+| 1 | **스키마가 코드보다 앞선다** | Flyway `Schema "main" has a version (44) that is newer than the latest available migration (41)` — 경고만 내고 **부팅은 된다** | 랩탑 리포를 **라이브 java SHA `d76c6c68`**(v3.29)로 고정 + 이미지 재빌드 → `44 migrations validated` |
+| 2 | **`.env` 에 admin 짝이 없다** | `admin bootstrap disabled (hmb.admin.nickname unset) — admins=0 (revoked=1)` — **기존 admin 을 revoke 까지 했다** | 이송 팩 복원(P0-5) → `admins=1 (hmbadmin)`. `check-env-contract.sh` = 오류 0 |
+| 3 | **web 빌드가 낡았다** | 랩탑 `dist-current` = `git 21b9562`(8/12) vs 라이브 `c938c6d7`(8/14). 컷오버 발행이 **web 을 되돌린다** | 이송 팩이 `dist-current` 를 실어 온다 — 복원 후 meta 가 라이브 값인지 **눈으로 확인** |
+| 4 | **`unpack-move.sh` 가 `~/.local/state/hmb` 를 통째로 교체한다** | 그 안의 `heal.conf`(`PAGES_PROJECT=hmb-online-lab`)가 지워지면 기본값이 **라이브** → 랩탑 워치독이 컷오버 **전에** 라이브 `config.json` 을 자기 주소로 덮는다 | **순서로 막는다**: 워치독 정지 → unpack → `heal.conf` 복원 → 워치독 재기동. selftest 가 `전파 대상 = 'hmb-online-lab'` 을 확인 |
+
+⚠️ **4번이 가장 위험하다** — 나머지 셋은 랩탑만 망가뜨리지만 4번은 **라이브 유저를 빈/낡은 스택으로 보낸다.**
+그리고 `unpack` 은 그 파일을 지웠다고 말해주지 않는다(백업은 남긴다: `~/.local/state/hmb/move/pre-unpack/`).
+
+### 리허설 착지 상태
+
+```
+DB       라이브 = 랩탑 (226 users · 131 matches · 동일 max id) · sha256 양측 일치
+Flyway   44 migrations validated · up to date · 경고 없음
+admin    admins=1 (hmbadmin)
+스모크   18080 무토큰 401 / 토큰 200 JSON · 18790 200 · CORS https://hmb-online.pages.dev
+워치독   active · 전파 대상 = hmb-online-lab (라이브 아님, selftest 12/12)
+```
+
+## 내부 포트를 tailscale 로 뚫는 법 — `serve`, netsh 아님
+
+WSL2 스택은 **VM 안**(172.27.x)에서 듣는다. 윈도우는 WSL 의 localhost 포워딩으로 `127.0.0.1:18080` 에
+닿지만 그건 **루프백뿐**이고 tailscale 인터페이스(`100.65.56.104`)에는 아무도 바인드하지 않는다 →
+tailnet 피어는 윈도우까지 와서 리스너를 못 찾는다.
+
+```bash
+# 랩탑에서 1회. tailnet 안에서만 열린다(funnel 아님).
+tailscale serve --bg --yes --tcp 18080 tcp://127.0.0.1:18080
+tailscale serve --bg --yes --tcp 18790 tcp://127.0.0.1:18790
+tailscale serve status          # "(tailnet only)" 확인
+```
+
+- **`netsh interface portproxy` 를 쓰지 마라** — 포트를 상시 열고 방화벽 규칙이 따라붙는다.
+  `serve` 는 tailscale 이 tailnet 안에서만 종단하고 방화벽·라우팅에 손대지 않는다.
+- **WSL mirrored 모드도 아니다** — `.wslconfig` 변경 + **WSL 재시작**(= 스택 중단)이 필요하다.
+- 루프백으로 넘기므로 **WSL IP 가 바뀌어도 안 깨진다**(WSL IP 를 박는 방식의 고질병).
+
+## ⚠️ 링크 속도 — 정지 창을 여기에 걸지 마라
+
+| 측정 | 값 |
+|---|---|
+| 맥 ↔ 랩탑 실효 처리량 | **0.9 ~ 2.2 MB/s** (측정 시점마다 변동) |
+| 라이브 DB | **737 MB** |
+| 단순 전송 시간 | **6 ~ 13분** — 정지 창 예산을 통째로 먹는다 |
+
+병목은 경로가 아니라 **맥 Wi-Fi** 였다(측정 당시 2.4GHz 채널8/20MHz). tailscale ⓑ 와 역방향 ssh 가
+**0.93 vs 1.25 MB/s** 로 사실상 같았다.
+
+⚠️ **"역방향이 10배 빠르다(12MB/s)"는 측정 아티팩트였다** — 원격 명령을 PowerShell 이 파싱하면서
+`>` 를 리다이렉션으로 먹어 **데이터가 실제로 건너가지 않았고** `dd` 가 일찍 끝난 것이다.
+원격 측정은 **받은 바이트 수를 확인**하지 않으면 믿지 마라.
+
+**처방 = 정지 창 밖에서 warm 복사 + 컷오버엔 delta 만.**
+
+```bash
+# 평소(서비스 살아있는 채로): 전체를 미리 보낸다
+rsync --rsync-path="wsl -e rsync" -a --inplace --partial ~/hmb-move-db/ hmb-laptop-ts:/root/hmb-move-db/
+# 컷오버: 같은 명령 = 바뀐 블록만 간다
+```
+
+`--rsync-path="wsl -e rsync"` 가 열쇠다 — 랩탑의 ssh 기본 셸은 **PowerShell** 이라 `rsync` 가 없다.
+
+## AI 실행기 인증 — `setup-token` 은 **자격 파일을 만들지 않는다** (2026-08-19, #489)
+
+랩탑은 모드 A(호스트 구독 CLI)로 간다. `~/.claude` **이송은 안 한다** — 3.9GB 인데다 "옮겨도 새
+머신에서 세션이 산다"는 보장이 런북 §④ 미해결이었다. 대신 랩탑에서 새로 로그인한다.
+
+```bash
+# 랩탑 WSL(root)에서
+claude setup-token          # 브라우저 URL → 승인 → 코드 붙여넣기
+```
+
+⚠️ **`/login` 과 다르다.** `setup-token` 은 `~/.claude/.credentials.json` 을 **만들지 않고**
+토큰을 화면에 **한 번만** 뿌리고 끝난다. 그래서 성공 직후에도 `claude -p` 는 여전히
+`Not logged in` 이라고 답한다 — 실패로 오해하기 쉽다. 토큰을 직접 갈무리해야 한다.
+
+```bash
+umask 077
+printf 'export CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$TOK" > /root/.config/hmb/claude.env
+chmod 600 /root/.config/hmb/claude.env
+```
+
+- 유효기간 **1년**. 검정 = `. /root/.config/hmb/claude.env && claude -p "reply with exactly: PONG"`.
+- ⚠️ **토큰이 찍힌 터미널 로그를 지워라**(`shred -u`). 그 파일 한 줄이 구독 접근권 전체다.
+- ⚠️ **`infra/.env` 에 넣지 마라** — `check-env-contract.sh` 가 "계약 밖 키"로 잡아 **오류 0 이
+  깨진다**. 별도 파일로 두고 실행기 기동선에서 `source` 한다(런북 P3-20 을 이렇게 읽는다):
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+source infra/.env
+source /root/.config/hmb/claude.env          # ← 추가되는 한 줄
+JAVA_URL=http://localhost:18080 SERVANT_TOKEN="$SERVANT_TOKEN" \
+  AI_EXECUTOR=claude-code AI_MODEL=sonnet AI_CONCURRENCY=1 AI_JOB_TIMEOUT_MS=240000 \
+  nohup npm run executor -w @hmb/server > /tmp/hmb-executor.log 2>&1 &
+```
+
+⚠️ `ANTHROPIC_API_KEY` 는 넣지 마라 — 구독이 아니라 **종량 과금**이 된다(런북 P3-20 경고).
+
+### 원격에서 대화형 로그인을 돌리는 법 (tmux 가 조용히 죽는다)
+
+`ssh … wsl -e bash -lc "tmux new-session -d …"` 로 띄운 tmux 는 **그 ssh 세션이 끝나면 같이
+죽는다**(WSL 이 프로세스 그룹을 정리한다). 실제로 URL 을 받아 hero 가 브라우저를 다녀오는 사이
+세션이 사라져 **코드를 넣을 대상이 없어졌다**. `setsid` + 전용 소켓이면 살아남는다:
+
+```bash
+setsid tmux -S /tmp/hmb.sock new-session -d -s cl -x 400 -y 50 \
+  'claude setup-token 2>&1 | tee /root/claude-login.log' </dev/null >/dev/null 2>&1
+# 반드시 **다른 ssh 세션에서** 생존을 확인한 뒤 URL 을 사람에게 준다
+ssh hmb-laptop-ts wsl -e tmux -S /tmp/hmb.sock ls
+```
+
+⚠️ **URL 은 폭 넓은 pane 에서 뽑아라**(`-x 400`). 기본 폭이면 마지막 글자가 줄바꿈에 잘려
+`state` 가 한 글자 모자란 URL 이 나간다(실제로 겪었다 — 붙여 복원해야 했다).
+
+## 컷오버에서 실제로 터진 것 2건 (2026-08-19 실행, #489)
+
+리허설에서 잡은 4건 외에 **정지 창 안에서만 드러나는** 것이 둘 더 있었다.
+
+### ⚠️ 런북 P2-12 는 **정지 상태에서 실패한다** (라이브에서는 통과한다)
+
+```bash
+docker run --rm -v hmb-p3-db:/data:ro … sqlite3 'file:/data/hmb.db?mode=ro' '.backup …'
+#  → Error: unable to open database file
+```
+
+WAL 모드에서 SQLite 는 `-shm` 이 필요한데 **읽기전용 마운트**에서는 만들 수 없다.
+라이브일 때는 java 가 열어 둔 `-shm` 이 이미 있어 통과하고, **정지하면 사라져 실패한다** —
+즉 *런북이 이 명령을 쓰라고 지정한 바로 그 상태에서만 실패하는* 모양이다.
+→ **rw 마운트로 `.backup`** 한다(소스는 읽기만 하고, 쓰기는 `-shm` 생성뿐).
+
+⚠️ **이 실패는 조용하다.** 직전 백업 파일이 남아 있으면 이어지는 `integrity_check` 와 `shasum` 이
+**옛 파일에 대해 통과**해 버린다. 실제로 그 경로를 밟았다 — 해시를 새로 찍어 비교하지 않았다면
+낡은 DB 를 이송하고도 "검증 통과"로 읽었을 것이다. **백업 직후 mtime/해시를 반드시 새로 확인한다.**
+
+### ⚠️ 맥에서 만든 팩은 wrangler 를 죽인다 — AppleDouble `._*`
+
+```
+functions/share/notice/._[id].js:1:0: ERROR: Unexpected "\x00"
+[publish] ✗ wrangler 배포 실패 — 전파 안 됐다
+```
+
+이송 팩이 맥에서 만들어져 `dist-current`/`.functions` 에 `._*` 가 **224개** 딸려온다. esbuild 가
+그 널바이트에서 죽고, 그러면 **라우터 스왑이 통째로 실패**한다(= 라이브가 죽은 옛 터널을 계속
+가리킨다. 실측 3분 추가 다운타임). 새 머신에서 발행 **전에** 한 줄로 털어낸다:
+
+```bash
+find ~/.cache/hmb/dist-current ~/.cache/hmb/dist-current.functions \
+     \( -name '._*' -o -name '.DS_Store' \) -delete
+```
+
+### 라이브 전환 게이트는 자동 치유를 막지 않는다 (확인함)
+
+`selftest_publish_target` 은 **`--selftest` 분기에서만** 호출된다. 운영 경로(`--check|--once`)는
+그 게이트를 타지 않으므로, 컷오버 후 `heal.conf` 를 라이브로 바꾸면 워치독은 평소대로 치유·전파한다.
+`HMB_ALLOW_LIVE=1` 은 **사람이 selftest 를 돌릴 때만** 필요하다.
+
+### 실측 요약
+
+| 항목 | 값 |
+|---|---|
+| 다운타임 | `08:14:59Z → 08:28:02Z` = **13분 03초** |
+| DB delta 전송 | **16초** (737MB 중 실제 425KB · speedup 1199x) |
+| 정지 상태 `.backup` | 1분 49초 |
+| 나머지 ~10분 | **위 두 사고 수습** — 전송이 아니다 |

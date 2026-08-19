@@ -8,12 +8,22 @@
 # WHY THIS EXISTS  (measured 2026-08-13, #489)
 #   The mac reaches this laptop through ONE path: a reverse forward that the laptop dials out,
 #   'ssh -R 2223:localhost:22 <mac>'. It was created by hand as scheduled task HMB-ReverseTunnel
-#   with a single AtStartup trigger, and it was NOT in the repo. AtStartup means "restored on
-#   reboot", NOT "restored when it drops. So the first time the connection died, nothing
-#   redialed it and remote access was gone until someone touched the machine physically.
-#   That is exactly what happened: forward dead, 2223 closed on the mac for >12h, while the
-#   laptop itself was healthy the whole time (cloudflared tunnel answering 401 in 0.107s and a
-#   6h self-heal batch running to completion).
+#   with a single AtStartup trigger, and it was NOT in the repo.
+#
+#   CORRECTION (2026-08-18, measured): the first version of this header said "AtStartup means
+#   restored on reboot, not restored when it drops, so nothing redialed it". That was wrong, and
+#   it was wrong because the task's body was never read - it lived outside version control at
+#   C:\ProgramData\hmb\tunnel.ps1. It is now captured verbatim as legacy-tunnel.ps1, and it
+#   already redials: while($true){ ssh -R ...; sleep 15 }. AtStartup only starts that loop.
+#
+#   The outage (2223 closed on the mac for >12h while the laptop was healthy the whole time -
+#   cloudflared answering 401 in 0.107s, a 6h self-heal batch running to completion) therefore
+#   has a different explanation. The two candidates, both structural in the captured loop:
+#     (a) LAN-only dial targets (BH-L175.local / 172.30.1.33) - unreachable the moment either
+#         machine is off this network, and no amount of retrying fixes that;
+#     (b) fixed port 2223 with ExitOnForwardFailure=yes - a stale holder on the mac refuses
+#         every redial forever, and the loop looks busy while achieving nothing.
+#   Which of the two fired that night is not established. Do not write it down as if it were.
 #
 #   The asymmetry is the lesson: cloudflared went out of the same machine in the same direction
 #   and survived, because cloudflared reconnects itself. Plain 'ssh -R' does not. So the fix is

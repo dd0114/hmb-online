@@ -29,16 +29,23 @@ rc=0
 #    같은 순간 `nc -z 127.0.0.1 22` 는 열려 있었다. 그 오판을 그대로 두면 hero 를 "원격 로그인을
 #    켜라"는 없는 문제로 보낸다. → 소유자와 무관한 `netstat` 로 판정한다.
 #    (PID 조회는 계속 lsof 로 한다: 역방향 포워드 리스너는 **내 사용자** sshd 세션이 만들므로 보인다.)
-port_listening(){ netstat -an -p tcp 2>/dev/null | awk '/LISTEN/{print $4}' | grep -qE "[.*]\.$1\$"; }
+# ⚠️ 그리고 정규식에 `[.*]` 를 쓰면 안 된다 — **문자클래스**라 `.` 또는 `*` **한 글자**만 매치한다.
+#    `*.22` 는 우연히 통과하지만 `127.0.0.1.2223` 은 앞 글자가 `1` 이라 **매치하지 않는다**.
+#    `ssh -R` 은 GatewayPorts 없이는 **항상 루프백에 바인드**하므로, 이 스크립트가 감시하는
+#    역방향 포워드는 그 정규식 아래에서 **구조적으로 100% 거짓 ✗** 였다(#489 에서 실측·수정).
+#    거짓 ✗ 는 조용하지 않다 — 아래 ②(좀비 탐지)가 `continue` 로 건너뛰어져 **한 번도 실행되지 못한다**.
+port_listening(){ netstat -an -p tcp 2>/dev/null | awk '/LISTEN/{print $4}' | grep -qE "\.$1\$"; }
 
 say "── 역방향 포워드 (맥 = 포워드를 받는 쪽) ──"
 
 # ① 리스너 — 있는가, 누가 쥐고 있는가
+# ⚠️ 두 포트는 **교대용**이다(랩탑 재다이얼이 2223↔2222 를 번갈아 잡는다). 정상 상태에서도
+#    **한쪽만** 떠 있는 것이 맞으므로, 안 뜬 포트를 실패로 세면 **건강할 때도 늘 "이상 있음"** 이
+#    되어 경보가 죽는다. 판정은 "둘 다"가 아니라 **"하나라도 실제로 통과"** 다(아래 ②-후).
 declare -a live_ports=()
 for p in $PORTS; do
   if ! port_listening "$p"; then
-    say "✗ :$p 리스너 없음 — 랩탑이 다이얼하지 않았거나 다이얼이 실패하고 있다"
-    rc=1
+    say "· :$p 리스너 없음 (교대용 예비 포트면 정상)"
     continue
   fi
   live_ports+=("$p")
@@ -55,13 +62,18 @@ done
 
 # ② 리스너가 **살아 있는지**는 리스너 존재로 알 수 없다 — 실제로 통과시켜 봐야 한다.
 #    좀비 홀더는 포트를 쥔 채로 연결을 못 넘긴다(= 존재하는데 죽은 것).
+passed=0
 for h in $SSH_HOSTS; do
   hp=$(ssh -G "$h" 2>/dev/null | awk '/^port /{print $2}')
   [ -z "$hp" ] && continue
   case " ${live_ports[*]:-} " in *" $hp "*) ;; *) continue;; esac
+  # ⚠️ 프로브를 `true` 로 하지 마라 — 랩탑 기본 셸이 **PowerShell** 이라 `true` 가 없어
+  #    연결·인증·명령실행이 전부 성공해도 exit 1 이 난다(= 멀쩡한 경로를 "좀비"로 오판하고,
+  #    --reap 까지 가면 **살아 있는 유일 경로를 죽인다**). `exit 0` 은 두 셸 모두에서 참이다.
   if ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=3 -o ServerAliveCountMax=2 \
-         "$h" true >/dev/null 2>&1; then
+         "$h" 'exit 0' >/dev/null 2>&1; then
     say "✓ $h (:$hp) 실제 통과 — 랩탑까지 살아 있다"
+    passed=$((passed+1))
   else
     say "✗ $h (:$hp) 리스너는 있는데 통과 못 함 = **좀비 홀더**"
     say "    랩탑은 재다이얼해도 이 포트에서 계속 거절당한다(ExitOnForwardFailure)."
@@ -79,6 +91,11 @@ for h in $SSH_HOSTS; do
     fi
   fi
 done
+
+if [ "$passed" -eq 0 ]; then
+  say "✗ 역방향 포워드로 랩탑에 닿는 경로가 **하나도 없다**"
+  rc=1
+fi
 
 # ③ 맥 sshd 가 켜져 있는가 — 꺼져 있으면 랩탑은 무엇을 해도 못 붙는다
 say ""
