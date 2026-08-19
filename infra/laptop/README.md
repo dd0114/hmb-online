@@ -357,3 +357,55 @@ rsync --rsync-path="wsl -e rsync" -a --inplace --partial ~/hmb-move-db/ hmb-lapt
 ```
 
 `--rsync-path="wsl -e rsync"` 가 열쇠다 — 랩탑의 ssh 기본 셸은 **PowerShell** 이라 `rsync` 가 없다.
+
+## AI 실행기 인증 — `setup-token` 은 **자격 파일을 만들지 않는다** (2026-08-19, #489)
+
+랩탑은 모드 A(호스트 구독 CLI)로 간다. `~/.claude` **이송은 안 한다** — 3.9GB 인데다 "옮겨도 새
+머신에서 세션이 산다"는 보장이 런북 §④ 미해결이었다. 대신 랩탑에서 새로 로그인한다.
+
+```bash
+# 랩탑 WSL(root)에서
+claude setup-token          # 브라우저 URL → 승인 → 코드 붙여넣기
+```
+
+⚠️ **`/login` 과 다르다.** `setup-token` 은 `~/.claude/.credentials.json` 을 **만들지 않고**
+토큰을 화면에 **한 번만** 뿌리고 끝난다. 그래서 성공 직후에도 `claude -p` 는 여전히
+`Not logged in` 이라고 답한다 — 실패로 오해하기 쉽다. 토큰을 직접 갈무리해야 한다.
+
+```bash
+umask 077
+printf 'export CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$TOK" > /root/.config/hmb/claude.env
+chmod 600 /root/.config/hmb/claude.env
+```
+
+- 유효기간 **1년**. 검정 = `. /root/.config/hmb/claude.env && claude -p "reply with exactly: PONG"`.
+- ⚠️ **토큰이 찍힌 터미널 로그를 지워라**(`shred -u`). 그 파일 한 줄이 구독 접근권 전체다.
+- ⚠️ **`infra/.env` 에 넣지 마라** — `check-env-contract.sh` 가 "계약 밖 키"로 잡아 **오류 0 이
+  깨진다**. 별도 파일로 두고 실행기 기동선에서 `source` 한다(런북 P3-20 을 이렇게 읽는다):
+
+```bash
+cd "$(git rev-parse --show-toplevel)"
+source infra/.env
+source /root/.config/hmb/claude.env          # ← 추가되는 한 줄
+JAVA_URL=http://localhost:18080 SERVANT_TOKEN="$SERVANT_TOKEN" \
+  AI_EXECUTOR=claude-code AI_MODEL=sonnet AI_CONCURRENCY=1 AI_JOB_TIMEOUT_MS=240000 \
+  nohup npm run executor -w @hmb/server > /tmp/hmb-executor.log 2>&1 &
+```
+
+⚠️ `ANTHROPIC_API_KEY` 는 넣지 마라 — 구독이 아니라 **종량 과금**이 된다(런북 P3-20 경고).
+
+### 원격에서 대화형 로그인을 돌리는 법 (tmux 가 조용히 죽는다)
+
+`ssh … wsl -e bash -lc "tmux new-session -d …"` 로 띄운 tmux 는 **그 ssh 세션이 끝나면 같이
+죽는다**(WSL 이 프로세스 그룹을 정리한다). 실제로 URL 을 받아 hero 가 브라우저를 다녀오는 사이
+세션이 사라져 **코드를 넣을 대상이 없어졌다**. `setsid` + 전용 소켓이면 살아남는다:
+
+```bash
+setsid tmux -S /tmp/hmb.sock new-session -d -s cl -x 400 -y 50 \
+  'claude setup-token 2>&1 | tee /root/claude-login.log' </dev/null >/dev/null 2>&1
+# 반드시 **다른 ssh 세션에서** 생존을 확인한 뒤 URL 을 사람에게 준다
+ssh hmb-laptop-ts wsl -e tmux -S /tmp/hmb.sock ls
+```
+
+⚠️ **URL 은 폭 넓은 pane 에서 뽑아라**(`-x 400`). 기본 폭이면 마지막 글자가 줄바꿈에 잘려
+`state` 가 한 글자 모자란 URL 이 나간다(실제로 겪었다 — 붙여 복원해야 했다).
