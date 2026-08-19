@@ -289,3 +289,71 @@ powershell -NoProfile -ExecutionPolicy Bypass -File infra\laptop\join-personal-t
 - `infra/deploy-pages.sh:67` 이 BSD 전용 `sed -i ''` 를 쓴다 → **리눅스에서 실패**한다.
   AC1~AC5 의 경로가 아니어서(전파는 `deploy-web.sh`) 이번 스코프에서는 건드리지 않는다.
   랩탑에서 Pages 프로젝트를 새로 만들거나 CORS 오리진을 바꿀 때 처음 물린다.
+
+## 이사 리허설 — 실측으로 드러난 함정 4개 (2026-08-19, #489)
+
+랩탑을 **라이브 데이터로 실제로 띄워** 봤다. 결과: 부팅은 되는데 **그대로 컷오버했으면 4곳이 깨졌다.**
+전부 "부팅 성공"이라는 신호 뒤에 숨어 있어서, 리허설 없이는 컷오버 당일에 만났을 것들이다.
+
+| # | 함정 | 어떻게 드러났나 | 처방 |
+|---|---|---|---|
+| 1 | **스키마가 코드보다 앞선다** | Flyway `Schema "main" has a version (44) that is newer than the latest available migration (41)` — 경고만 내고 **부팅은 된다** | 랩탑 리포를 **라이브 java SHA `d76c6c68`**(v3.29)로 고정 + 이미지 재빌드 → `44 migrations validated` |
+| 2 | **`.env` 에 admin 짝이 없다** | `admin bootstrap disabled (hmb.admin.nickname unset) — admins=0 (revoked=1)` — **기존 admin 을 revoke 까지 했다** | 이송 팩 복원(P0-5) → `admins=1 (hmbadmin)`. `check-env-contract.sh` = 오류 0 |
+| 3 | **web 빌드가 낡았다** | 랩탑 `dist-current` = `git 21b9562`(8/12) vs 라이브 `c938c6d7`(8/14). 컷오버 발행이 **web 을 되돌린다** | 이송 팩이 `dist-current` 를 실어 온다 — 복원 후 meta 가 라이브 값인지 **눈으로 확인** |
+| 4 | **`unpack-move.sh` 가 `~/.local/state/hmb` 를 통째로 교체한다** | 그 안의 `heal.conf`(`PAGES_PROJECT=hmb-online-lab`)가 지워지면 기본값이 **라이브** → 랩탑 워치독이 컷오버 **전에** 라이브 `config.json` 을 자기 주소로 덮는다 | **순서로 막는다**: 워치독 정지 → unpack → `heal.conf` 복원 → 워치독 재기동. selftest 가 `전파 대상 = 'hmb-online-lab'` 을 확인 |
+
+⚠️ **4번이 가장 위험하다** — 나머지 셋은 랩탑만 망가뜨리지만 4번은 **라이브 유저를 빈/낡은 스택으로 보낸다.**
+그리고 `unpack` 은 그 파일을 지웠다고 말해주지 않는다(백업은 남긴다: `~/.local/state/hmb/move/pre-unpack/`).
+
+### 리허설 착지 상태
+
+```
+DB       라이브 = 랩탑 (226 users · 131 matches · 동일 max id) · sha256 양측 일치
+Flyway   44 migrations validated · up to date · 경고 없음
+admin    admins=1 (hmbadmin)
+스모크   18080 무토큰 401 / 토큰 200 JSON · 18790 200 · CORS https://hmb-online.pages.dev
+워치독   active · 전파 대상 = hmb-online-lab (라이브 아님, selftest 12/12)
+```
+
+## 내부 포트를 tailscale 로 뚫는 법 — `serve`, netsh 아님
+
+WSL2 스택은 **VM 안**(172.27.x)에서 듣는다. 윈도우는 WSL 의 localhost 포워딩으로 `127.0.0.1:18080` 에
+닿지만 그건 **루프백뿐**이고 tailscale 인터페이스(`100.65.56.104`)에는 아무도 바인드하지 않는다 →
+tailnet 피어는 윈도우까지 와서 리스너를 못 찾는다.
+
+```bash
+# 랩탑에서 1회. tailnet 안에서만 열린다(funnel 아님).
+tailscale serve --bg --yes --tcp 18080 tcp://127.0.0.1:18080
+tailscale serve --bg --yes --tcp 18790 tcp://127.0.0.1:18790
+tailscale serve status          # "(tailnet only)" 확인
+```
+
+- **`netsh interface portproxy` 를 쓰지 마라** — 포트를 상시 열고 방화벽 규칙이 따라붙는다.
+  `serve` 는 tailscale 이 tailnet 안에서만 종단하고 방화벽·라우팅에 손대지 않는다.
+- **WSL mirrored 모드도 아니다** — `.wslconfig` 변경 + **WSL 재시작**(= 스택 중단)이 필요하다.
+- 루프백으로 넘기므로 **WSL IP 가 바뀌어도 안 깨진다**(WSL IP 를 박는 방식의 고질병).
+
+## ⚠️ 링크 속도 — 정지 창을 여기에 걸지 마라
+
+| 측정 | 값 |
+|---|---|
+| 맥 ↔ 랩탑 실효 처리량 | **0.9 ~ 2.2 MB/s** (측정 시점마다 변동) |
+| 라이브 DB | **737 MB** |
+| 단순 전송 시간 | **6 ~ 13분** — 정지 창 예산을 통째로 먹는다 |
+
+병목은 경로가 아니라 **맥 Wi-Fi** 였다(측정 당시 2.4GHz 채널8/20MHz). tailscale ⓑ 와 역방향 ssh 가
+**0.93 vs 1.25 MB/s** 로 사실상 같았다.
+
+⚠️ **"역방향이 10배 빠르다(12MB/s)"는 측정 아티팩트였다** — 원격 명령을 PowerShell 이 파싱하면서
+`>` 를 리다이렉션으로 먹어 **데이터가 실제로 건너가지 않았고** `dd` 가 일찍 끝난 것이다.
+원격 측정은 **받은 바이트 수를 확인**하지 않으면 믿지 마라.
+
+**처방 = 정지 창 밖에서 warm 복사 + 컷오버엔 delta 만.**
+
+```bash
+# 평소(서비스 살아있는 채로): 전체를 미리 보낸다
+rsync --rsync-path="wsl -e rsync" -a --inplace --partial ~/hmb-move-db/ hmb-laptop-ts:/root/hmb-move-db/
+# 컷오버: 같은 명령 = 바뀐 블록만 간다
+```
+
+`--rsync-path="wsl -e rsync"` 가 열쇠다 — 랩탑의 ssh 기본 셸은 **PowerShell** 이라 `rsync` 가 없다.
