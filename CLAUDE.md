@@ -395,7 +395,14 @@ HMB_PROVE_BUG=1 npx playwright test save.spec.ts goal-flight.spec.ts  # 버그 r
 > 내부 테스터에게 실제 배포해 플레이시키는 상태. 계획 SoT = `docs/plan-v4/`(PRD-v4 §G·§H). 배포 트랙 owned-glob = `infra/**` + `server-java/Dockerfile`. **트래킹 부모 = #123**(Phase 3 트래킹, OPEN) · 건별 SoT = 개별 이슈(#505·#506·#514 등)에 직접 append. ⚠️ 구 에픽 #122 는 **2026-07-22 에 닫혔다** — 그 뒤로도 3주간 세션들이 닫힌 이슈에 STATE 를 쌓고 있었다(2026-08-17 매니저 정정). 닫힌 이슈에 append 금지. (구 배포 세션 hmb:p3dep 도 닫힘 — 현 담당 = hmb:tunnel.)
 
 - **테스터 접속**: **https://hmb-online.pages.dev** (web=Cloudflare Pages 정적)
-- **구성**: web=CF Pages · 백엔드=hero 머신 도커(java 18080 + runner 18790, **데모 8080/8790 무접촉**) · 인터넷 노출=**Cloudflare quick tunnel**(ngrok 무료는 앱 로드 동시요청에서 커넥션 끊김 — 실측 CF 8/8 vs ngrok 0/8) · AI=호스트 구독 claude CLI(모드 A). CORS 결선: web `VITE_API_BASE`=터널URL(빌드 인라인) ↔ 백엔드 `WEB_ORIGINS`=Pages URL.
+- ⚠️ **라이브 호스트 = 윈도우 랩탑**(2026-08-19T08:28Z 컷오버, #489/#472 — 기록 = `docs/deploy-log.md` 최상단).
+  **맥은 롤백 자산**으로 보존(DB·이미지 그대로, 지우지 않는다) — 컨테이너·터널·실행기·**워치독 전부 정지**다.
+  ⚠️ 그래서 **맥에서 `install-tunnel-heal.sh` 를 다시 돌리지 마라** — 맥 워치독의 전파 기본값이 라이브
+  Pages(`hmb-online`)라 지금 서비스 중인 랩탑을 덮는다(컷오버 P0-7: *"안 끄면 두 머신이 같은 Pages 를
+  서로 덮는다. 배포 락은 머신 간 공유되지 않는다"*). 맥 워치독 재무장은 **롤백 절차의 일부**이지 터널 사고의
+  1차 대응이 아니다. 맥 사전점검의 `✗ heal.conf 없음` 은 **참인 경고이며 고치지 않는다** — `heal.conf` 를
+  만들어 초록으로 바꾸면 정작 롤백 때 전파가 lab 으로 새면서 점검은 ✓ 를 찍는다(근거 = #123 2026-08-21 코멘트).
+- **구성**: web=CF Pages · 백엔드=**라이브 호스트**(현재 랩탑) 도커(java 18080 + runner 18790, **데모 8080/8790 무접촉**) · 인터넷 노출=**Cloudflare quick tunnel**(ngrok 무료는 앱 로드 동시요청에서 커넥션 끊김 — 실측 CF 8/8 vs ngrok 0/8) · AI=호스트 구독 claude CLI(모드 A). CORS 결선: web `VITE_API_BASE`=터널URL(빌드 인라인) ↔ 백엔드 `WEB_ORIGINS`=Pages URL.
 - **운영 플레이북 = `docs/plan-v4/deploy-playbook.md`** (상태확인·기동·URL변경·디버깅·정지 전부). 상세 근거·아키텍처 = `docs/plan-v4/deploy.md`. 오픈 갭 = `docs/plan-v4/open-checklist.md`.
 - **핵심 커맨드** (전부 `infra/`):
   - `bash infra/status.sh` — 배포 상태 한눈에(전부 ✓면 정상)
